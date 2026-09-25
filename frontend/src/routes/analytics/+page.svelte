@@ -84,15 +84,15 @@
 		<div class="grid grid-cols-2 gap-4 lg:grid-cols-4">
 			{#each Array(8) as _, i}
 				<div
-					class="h-20 animate-pulse rounded-xl border border-slate-200 bg-gradient-to-r from-slate-100 via-slate-50 to-slate-100 dark:border-slate-800 dark:from-surface-900 dark:via-surface-800 dark:to-surface-900"
+					class="h-20 animate-pulse rounded-xl border border-slate-200 bg-gradient-to-r from-slate-100 via-slate-50 to-slate-100 shadow-card dark:border-white/[0.07] dark:from-surface-900 dark:via-white/[0.04] dark:to-surface-900"
 					style="animation-delay: {i * 80}ms"
 				></div>
 			{/each}
 		</div>
-		<div class="h-72 animate-pulse rounded-xl border border-slate-200 dark:border-slate-800 dark:bg-surface-900"></div>
+		<div class="h-72 animate-pulse rounded-xl border border-slate-200 shadow-card dark:border-white/[0.07] dark:bg-surface-900"></div>
 		<div class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
 			{#each Array(3) as _}
-				<div class="h-72 animate-pulse rounded-xl border border-slate-200 dark:border-slate-800 dark:bg-surface-900"></div>
+				<div class="h-72 animate-pulse rounded-xl border border-slate-200 shadow-card dark:border-white/[0.07] dark:bg-surface-900"></div>
 			{/each}
 		</div>
 	</div>
@@ -115,24 +115,24 @@
 	<div class="flex flex-col gap-4" transition:fade={{ duration: 150 }}>
 		<section class="grid grid-cols-2 gap-4 lg:grid-cols-4" aria-label="Summary stats">
 			{#each stats as s}
-				<div class="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-surface-900">
-					<p class="text-xs text-slate-500 dark:text-slate-400">{s.label}</p>
-					<p class="mt-1 font-mono text-xl font-semibold tabular-nums {toneText[s.tone]}">{s.value}</p>
+				<div class="rounded-xl border border-slate-200 bg-white p-4 shadow-card dark:border-white/[0.07] dark:bg-surface-900">
+					<p class="text-xs font-medium tracking-wide text-slate-500 dark:text-slate-400">{s.label}</p>
+					<p class="mt-1 font-mono text-xl font-semibold tracking-tight tabular-nums {toneText[s.tone]}">{s.value}</p>
 				</div>
 			{/each}
 		</section>
 
 		<section class="grid grid-cols-1 gap-4 xl:grid-cols-5">
-			<div class="rounded-xl border border-slate-200 bg-white p-4 xl:col-span-3 dark:border-slate-800 dark:bg-surface-900">
-				<h2 class="mb-2 text-sm font-medium">Equity curve</h2>
+			<div class="rounded-xl border border-slate-200 bg-white p-4 shadow-card xl:col-span-3 dark:border-white/[0.07] dark:bg-surface-900">
+				<h2 class="mb-2 text-[13px] font-semibold tracking-tight text-balance">Equity curve</h2>
 				{#if points.length > 0}
 					<EquityChart {points} />
 				{:else}
 					<p class="py-10 text-center text-sm text-slate-500">Not enough data.</p>
 				{/if}
 			</div>
-			<div class="rounded-xl border border-slate-200 bg-white p-4 xl:col-span-2 dark:border-slate-800 dark:bg-surface-900">
-				<h2 class="mb-2 text-sm font-medium">Drawdown</h2>
+			<div class="rounded-xl border border-slate-200 bg-white p-4 shadow-card xl:col-span-2 dark:border-white/[0.07] dark:bg-surface-900">
+				<h2 class="mb-2 text-[13px] font-semibold tracking-tight text-balance">Drawdown</h2>
 				{#if points.length > 0}
 					<UnderwaterChart {points} />
 				{:else}
@@ -142,35 +142,35 @@
 		</section>
 
 		<section class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-			<div class="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-surface-900">
-				<h2 class="mb-2 text-sm font-medium">R-distribution</h2>
+			<div class="rounded-xl border border-slate-200 bg-white p-4 shadow-card dark:border-white/[0.07] dark:bg-surface-900">
+				<h2 class="mb-2 text-[13px] font-semibold tracking-tight text-balance">R-distribution</h2>
 				<RDistributionChart {buckets} />
 			</div>
-			<div class="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-surface-900">
-				<h2 class="mb-2 text-sm font-medium">Win / loss / breakeven</h2>
+			<div class="rounded-xl border border-slate-200 bg-white p-4 shadow-card dark:border-white/[0.07] dark:bg-surface-900">
+				<h2 class="mb-2 text-[13px] font-semibold tracking-tight text-balance">Win / loss / breakeven</h2>
 				<OutcomeDonut {summary} />
 			</div>
-			<div class="rounded-xl border border-slate-200 bg-white p-4 md:col-span-2 xl:col-span-1 dark:border-slate-800 dark:bg-surface-900">
-				<h2 class="mb-2 text-sm font-medium">Tag performance</h2>
+			<div class="rounded-xl border border-slate-200 bg-white p-4 shadow-card md:col-span-2 xl:col-span-1 dark:border-white/[0.07] dark:bg-surface-900">
+				<h2 class="mb-2 text-[13px] font-semibold tracking-tight text-balance">Tag performance</h2>
 				<TagPerformanceBar {tags} />
 			</div>
 		</section>
 
-		<section class="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-surface-900" aria-label="Calendar heatmap">
+		<section class="rounded-xl border border-slate-200 bg-white p-4 shadow-card dark:border-white/[0.07] dark:bg-surface-900" aria-label="Calendar heatmap">
 			<div class="mb-2 flex items-center justify-between">
-				<h2 class="text-sm font-medium">Calendar · {year}</h2>
+				<h2 class="text-[13px] font-semibold tracking-tight text-balance">Calendar · {year}</h2>
 				<div class="flex items-center gap-1">
 					<button
 						type="button"
 						onclick={() => void shiftYear(-1)}
 						aria-label="Previous year"
-						class="grid h-7 w-7 place-items-center rounded-md border border-slate-200 text-slate-500 transition-all duration-150 hover:text-slate-900 active:scale-95 dark:border-slate-700 dark:text-slate-400 dark:hover:text-white"
+						class="grid h-7 w-7 place-items-center rounded-md border border-slate-200 text-slate-500 transition-all duration-150 hover:text-slate-900 focus-visible:outline-emerald-500 active:scale-95 dark:border-white/10 dark:text-slate-400 dark:hover:text-white"
 					>‹</button>
 					<button
 						type="button"
 						onclick={() => void shiftYear(1)}
 						aria-label="Next year"
-						class="grid h-7 w-7 place-items-center rounded-md border border-slate-200 text-slate-500 transition-all duration-150 hover:text-slate-900 active:scale-95 dark:border-slate-700 dark:text-slate-400 dark:hover:text-white"
+						class="grid h-7 w-7 place-items-center rounded-md border border-slate-200 text-slate-500 transition-all duration-150 hover:text-slate-900 focus-visible:outline-emerald-500 active:scale-95 dark:border-white/10 dark:text-slate-400 dark:hover:text-white"
 					>›</button>
 				</div>
 			</div>

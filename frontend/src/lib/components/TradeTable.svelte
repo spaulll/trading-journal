@@ -86,15 +86,15 @@
 
 <section aria-label="Trade history" class="mt-8">
 	<div class="mb-3 flex flex-wrap items-center gap-2">
-		<div class="flex rounded-lg border border-slate-200 p-0.5 dark:border-slate-800" role="tablist" aria-label="Status filter">
+		<div class="flex rounded-lg border border-slate-200 bg-white p-0.5 shadow-card dark:border-white/[0.07] dark:bg-surface-900" role="tablist" aria-label="Status filter">
 			{#each (['ALL', 'OPEN', 'CLOSED'] as StatusFilter[]) as s}
 				<button
 					type="button"
 					role="tab"
 					aria-selected={status === s}
 					onclick={() => (status = s)}
-					class="rounded-md px-3 py-1.5 font-mono text-xs transition-colors duration-150 {status === s
-						? 'bg-slate-900 font-medium text-white dark:bg-white dark:text-slate-900'
+					class="rounded-md px-3 py-1.5 font-mono text-xs tabular-nums transition-all duration-150 focus-visible:outline-emerald-500 {status === s
+						? 'bg-slate-900 font-semibold text-white dark:bg-white dark:text-slate-900'
 						: 'text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'}"
 				>
 					{s === 'ALL' ? 'All' : s === 'OPEN' ? 'Open' : 'Closed'}
@@ -103,26 +103,26 @@
 			{/each}
 		</div>
 		<label class="relative ml-auto flex-1 sm:max-w-56">
-			<Search size={14} class="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-slate-400" />
+			<Search size={14} strokeWidth={1.8} aria-hidden="true" class="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-slate-400" />
 			<input
 				type="search"
 				bind:this={searchEl}
 				bind:value={query}
 				placeholder="Symbol or ID…  ( / )"
-				class="h-9 w-full rounded-lg border border-slate-200 bg-transparent pr-2 pl-8 text-sm outline-none placeholder:text-slate-400 focus:border-emerald-500 dark:border-slate-800"
+				class="h-9 w-full rounded-lg border border-slate-200 bg-white pr-2 pl-8 text-sm shadow-card outline-none placeholder:text-slate-400 focus:border-emerald-500 focus-visible:outline-emerald-500 dark:border-white/[0.07] dark:bg-surface-900"
 			/>
 		</label>
 		<label class="relative flex-1 sm:max-w-44">
-			<span class="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 font-mono text-xs text-slate-400">#</span>
+			<span class="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 font-mono text-xs text-slate-400" aria-hidden="true">#</span>
 			<input
 				type="search"
 				bind:value={tagQuery}
 				placeholder="Tag…"
-				class="h-9 w-full rounded-lg border border-slate-200 bg-transparent pr-2 pl-7 font-mono text-sm outline-none placeholder:text-slate-400 focus:border-emerald-500 dark:border-slate-800"
+				class="h-9 w-full rounded-lg border border-slate-200 bg-white pr-2 pl-7 font-mono text-sm shadow-card outline-none placeholder:text-slate-400 focus:border-emerald-500 focus-visible:outline-emerald-500 dark:border-white/[0.07] dark:bg-surface-900"
 			/>
 		</label>
-		<label class="flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 text-sm text-slate-500 dark:border-slate-800 dark:text-slate-400">
-			<span class="font-mono text-[11px] uppercase">Sort</span>
+		<label class="flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 text-sm text-slate-500 shadow-card dark:border-white/[0.07] dark:bg-surface-900 dark:text-slate-400">
+			<span class="font-mono text-[11px] tracking-wider uppercase">Sort</span>
 			<select
 				bind:value={sort}
 				class="bg-transparent text-sm text-slate-700 outline-none dark:bg-transparent dark:text-slate-200"
@@ -138,15 +138,16 @@
 	</div>
 
 	{#if filtered.length === 0}
-		<p class="rounded-xl border border-dashed border-slate-300 px-6 py-10 text-center text-sm text-slate-500 dark:border-slate-700 dark:text-slate-400">
-			No trades match these filters.
-		</p>
+		<div class="rounded-xl border border-dashed border-slate-300 bg-white/60 px-6 py-10 text-center shadow-card dark:border-white/10 dark:bg-surface-900/60">
+			<p class="text-sm font-semibold tracking-tight">No trades match these filters</p>
+			<p class="mt-1 text-sm text-slate-500 dark:text-slate-400">Try a different symbol, tag, or status.</p>
+		</div>
 	{:else}
 		<!-- Desktop table -->
-		<div class="hidden overflow-x-auto rounded-xl border border-slate-200 md:block dark:border-slate-800">
+		<div class="hidden overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-card md:block dark:border-white/[0.07] dark:bg-surface-900">
 			<table class="w-full min-w-[760px] border-collapse text-sm">
 				<thead>
-					<tr class="border-b border-slate-200 text-left font-mono text-[11px] text-slate-400 uppercase dark:border-slate-800 dark:text-slate-500">
+					<tr class="border-b border-slate-200 text-left font-mono text-[11px] tracking-wider text-slate-400 uppercase dark:border-white/[0.07] dark:text-slate-500">
 						<th class="w-8 px-3 py-2.5"></th>
 						<th class="px-3 py-2.5">Opened</th>
 						<th class="px-3 py-2.5">Symbol</th>
@@ -160,18 +161,19 @@
 					{#each filtered as t (t.id)}
 						<tr
 							onclick={() => openTrade(t.id)}
-							class="cursor-pointer border-b border-slate-100 transition-all duration-150 last:border-0 hover:-translate-y-px hover:bg-slate-50 dark:border-slate-800/60 dark:hover:bg-surface-800/60"
+							class="cursor-pointer border-b border-slate-100 transition-all duration-150 last:border-0 hover:-translate-y-px hover:bg-slate-50 focus-visible:outline-emerald-500 dark:border-white/[0.05] dark:hover:bg-white/[0.03]"
 						>
 							<td class="px-3 py-2.5">
 								<button
 									type="button"
 									onclick={(e) => toggleExpand(t.id, e)}
 									aria-label="Preview"
-									class="grid h-6 w-6 place-items-center rounded text-slate-400 transition-transform duration-150 hover:text-slate-700 {expanded.has(t.id)
+									aria-expanded={expanded.has(t.id)}
+									class="grid h-6 w-6 place-items-center rounded text-slate-400 transition-transform duration-150 hover:text-slate-700 focus-visible:outline-emerald-500 {expanded.has(t.id)
 										? 'rotate-180'
 										: ''} dark:hover:text-slate-200"
 								>
-									<ChevronDown size={15} />
+									<ChevronDown size={15} strokeWidth={1.8} aria-hidden="true" />
 								</button>
 							</td>
 							<td class="px-3 py-2.5 whitespace-nowrap text-slate-500 dark:text-slate-400">
@@ -203,12 +205,12 @@
 							</td>
 						</tr>
 						{#if expanded.has(t.id)}
-							<tr class="border-b border-slate-100 dark:border-slate-800/60">
+							<tr class="border-b border-slate-100 dark:border-white/[0.05]">
 								<td></td>
 								<td colspan={6} class="px-3 pt-0 pb-3">
-									<div transition:slide={{ duration: 180 }} class="text-[13px] text-slate-500 dark:text-slate-400">
-										{#if t.thesis}<p><span class="font-medium text-slate-700 dark:text-slate-300">Thesis:</span> {t.thesis}</p>{/if}
-										{#if t.review_notes}<p class="mt-1"><span class="font-medium text-slate-700 dark:text-slate-300">Review:</span> {t.review_notes}</p>{/if}
+									<div transition:slide={{ duration: 180 }} class="text-[13px] leading-relaxed text-slate-500 dark:text-slate-400">
+										{#if t.thesis}<p><span class="font-semibold text-slate-700 dark:text-slate-300">Thesis:</span> {t.thesis}</p>{/if}
+										{#if t.review_notes}<p class="mt-1"><span class="font-semibold text-slate-700 dark:text-slate-300">Review:</span> {t.review_notes}</p>{/if}
 										{#if !t.thesis && !t.review_notes}<p>No notes yet — open the trade to add a thesis.</p>{/if}
 									</div>
 								</td>
@@ -225,7 +227,7 @@
 				<button
 					type="button"
 					onclick={() => openTrade(t.id)}
-					class="rounded-xl border border-slate-200 bg-white p-3.5 text-left transition-all duration-150 active:scale-[0.99] dark:border-slate-800 dark:bg-surface-900"
+					class="rounded-xl border border-slate-200 bg-white p-3.5 text-left shadow-card transition-all duration-150 focus-visible:outline-emerald-500 active:scale-[0.99] dark:border-white/[0.07] dark:bg-surface-900"
 				>
 					<div class="flex items-center justify-between gap-2">
 						<span class="font-mono text-sm font-semibold uppercase">{t.symbol ?? '—'}</span>

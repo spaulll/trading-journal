@@ -19,22 +19,23 @@
 </script>
 
 <div
-	class="flex flex-col items-center gap-2 rounded-xl border border-dashed border-slate-300 px-6 py-12 text-center dark:border-slate-700"
+	class="flex flex-col items-center gap-2 rounded-xl border border-dashed border-slate-300 bg-white/60 px-6 py-12 text-center shadow-card dark:border-white/10 dark:bg-surface-900/60"
 >
 	<span
-		class="grid h-11 w-11 place-items-center rounded-full {kind === 'error'
+		class="grid h-11 w-11 place-items-center rounded-xl {kind === 'error'
 			? 'bg-rose-500/10 text-rose-500'
-			: 'bg-slate-500/10 text-slate-400'}"
+			: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'}"
+		aria-hidden="true"
 	>
-		<Icon size={20} />
+		<Icon size={20} strokeWidth={1.8} />
 	</span>
-	<p class="text-sm font-medium">{title}</p>
-	<p class="max-w-sm text-sm text-slate-500 dark:text-slate-400">{body}</p>
+	<p class="text-sm font-semibold tracking-tight text-balance">{title}</p>
+	<p class="max-w-sm text-sm leading-relaxed text-slate-500 dark:text-slate-400">{body}</p>
 	{#if actionLabel && onAction}
 		<button
 			type="button"
 			onclick={onAction}
-			class="mt-2 h-9 rounded-lg bg-emerald-500 px-4 text-sm font-medium text-white transition-all duration-150 hover:bg-emerald-600 active:scale-[0.98]"
+			class="mt-2 h-9 rounded-lg bg-emerald-500 px-4 text-sm font-semibold text-white shadow-lift transition-all duration-150 hover:bg-emerald-600 focus-visible:outline-emerald-500 active:scale-[0.98]"
 		>
 			{actionLabel}
 		</button>

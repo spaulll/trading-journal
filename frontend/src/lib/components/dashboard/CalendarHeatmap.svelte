@@ -50,7 +50,7 @@
 
 	function cellClass(cell: Cell): string {
 		if (!cell.inYear) return 'bg-transparent';
-		if (cell.count === 0) return 'bg-slate-100 dark:bg-slate-800/60';
+		if (cell.count === 0) return 'bg-slate-100 dark:bg-white/[0.06]';
 		if (cell.pnl === 0) return 'bg-slate-300 dark:bg-slate-600';
 		const level = Math.min(4, Math.ceil((Math.abs(cell.pnl) / maxAbs) * 4));
 		if (cell.pnl > 0) {
@@ -74,7 +74,7 @@
 			{/each}
 		</div>
 		<div class="flex gap-1">
-			<div class="grid shrink-0 grid-rows-7 gap-1 pr-1 font-mono text-[10px] leading-3 text-slate-400">
+			<div class="grid shrink-0 grid-rows-7 gap-1 pr-1 font-mono text-[10px] leading-3 tabular-nums text-slate-400">
 				<span class="h-3">M</span><span class="h-3"></span><span class="h-3">W</span><span class="h-3"></span><span class="h-3">F</span><span class="h-3"></span><span class="h-3"></span>
 			</div>
 			<div class="grid grid-flow-col gap-1" style="grid-template-rows: repeat(7, minmax(0, 1fr));">
@@ -84,10 +84,13 @@
 							<div class="group relative">
 								<div
 									class="h-3 w-3 rounded-[3px] transition-all duration-150 {cellClass(cell)}"
+									role="img"
+									aria-label="{cell.key} · {fmtMoney(cell.pnl)} · {cell.count} trade{cell.count === 1 ? '' : 's'}"
 									title="{cell.key} · {fmtMoney(cell.pnl)} · {cell.count} trade{cell.count === 1 ? '' : 's'}"
 								></div>
 								<div
-									class="pointer-events-none absolute bottom-4 left-1/2 z-10 hidden -translate-x-1/2 rounded-md border border-slate-200 bg-white px-2 py-1 font-mono text-[11px] whitespace-nowrap tabular-nums shadow-lg group-hover:block dark:border-slate-700 dark:bg-surface-900"
+									class="pointer-events-none absolute bottom-4 left-1/2 z-10 hidden -translate-x-1/2 rounded-md border border-slate-200 bg-white px-2 py-1 font-mono text-[11px] whitespace-nowrap tabular-nums shadow-pop group-hover:block dark:border-white/10 dark:bg-surface-900"
+									aria-hidden="true"
 								>
 									<span class="text-slate-500 dark:text-slate-400">{cell.key}</span>
 									<span class={cell.pnl > 0 ? 'text-accent-win' : cell.pnl < 0 ? 'text-accent-loss' : 'text-accent-be'}>

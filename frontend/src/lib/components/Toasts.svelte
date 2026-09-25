@@ -25,19 +25,20 @@
 		{@const Icon = icons[toast.kind]}
 		<div
 			transition:fly={TOAST_IN}
-			class="pointer-events-auto flex items-start gap-2.5 rounded-xl border bg-white/95 px-3.5 py-3 shadow-lg backdrop-blur-md dark:bg-surface-900/95 {styles[
+			role="status"
+			class="pointer-events-auto flex items-start gap-2.5 rounded-xl border bg-white/95 px-3.5 py-3 shadow-pop backdrop-blur-md dark:bg-surface-900/95 {styles[
 				toast.kind
 			]}"
 		>
-			<Icon size={17} class="mt-0.5 shrink-0" />
-			<p class="flex-1 text-sm text-slate-700 dark:text-slate-200">{toast.message}</p>
+			<Icon size={17} strokeWidth={1.8} aria-hidden="true" class="mt-0.5 shrink-0" />
+			<p class="flex-1 text-sm leading-relaxed text-slate-700 dark:text-slate-200">{toast.message}</p>
 			<button
 				type="button"
 				onclick={() => toasts.dismiss(toast.id)}
 				aria-label="Dismiss"
-				class="shrink-0 rounded p-0.5 text-slate-400 transition-colors hover:text-slate-700 active:scale-95 dark:hover:text-slate-200"
+				class="shrink-0 rounded-md p-0.5 text-slate-400 transition-colors hover:text-slate-700 focus-visible:outline-emerald-500 active:scale-95 dark:hover:text-slate-200"
 			>
-				<X size={14} />
+				<X size={14} strokeWidth={1.8} aria-hidden="true" />
 			</button>
 		</div>
 	{/each}
