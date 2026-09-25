@@ -1,5 +1,7 @@
 """Trading Journal API entrypoint: `uvicorn app.main:app`."""
 
+import asyncio
+import logging
 from contextlib import asynccontextmanager
 
 import os  # noqa: E402
@@ -13,12 +15,28 @@ from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
 
 from app.database import create_db_and_tables  # noqa: E402
 from app.routers import analytics, screenshots, trades  # noqa: E402
+from app.services import telegram_bot  # noqa: E402
+
+log = logging.getLogger("journal")
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):  # noqa: ANN201, ARG001
     create_db_and_tables()
+    bot_task: asyncio.Task | None = None
+    if telegram_bot.is_configured():
+        if not telegram_bot._allowed_user():
+            log.error("TG_BOT_TOKEN is set but TG_ALLOWED_USER_ID is missing — bot updates will be refused")
+        bot_task = asyncio.create_task(telegram_bot.run_polling())
+    else:
+        log.warning("TG_BOT_TOKEN not set — Telegram bot disabled")
     yield
+    if bot_task is not None:
+        bot_task.cancel()
+        try:
+            await bot_task
+        except asyncio.CancelledError:
+            pass
 
 
 app = FastAPI(title="Trading Journal", lifespan=lifespan)
