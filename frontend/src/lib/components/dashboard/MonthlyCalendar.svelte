@@ -47,15 +47,26 @@
 		return out;
 	});
 
+	function fmtCellMoney(net: number): string {
+		const abs = Math.abs(net);
+		const body = abs.toLocaleString('en-US', {
+			style: 'currency',
+			currency: 'USD',
+			minimumFractionDigits: 0,
+			maximumFractionDigits: Number.isInteger(abs) ? 0 : 2
+		});
+		return (net > 0 ? '+' : '') + body;
+	}
+
 	function dayValue(net: number): string {
-		if (unit === 'usd') return fmtMoney(net);
+		if (unit === 'usd') return fmtCellMoney(net);
 		if (monthNet === 0) return '0.0%';
 		const pct = (net / Math.abs(monthNet)) * 100;
 		return `${pct > 0 ? '+' : ''}${pct.toFixed(1)}%`;
 	}
 
 	function cellClass(outcome: string, isToday: boolean): string {
-		const base = 'min-h-16 rounded-lg border p-1.5 text-left transition-colors sm:min-h-20 sm:p-2';
+		const base = 'min-w-0 overflow-hidden min-h-16 rounded-lg border p-1 text-left transition-colors sm:min-h-20 sm:p-2';
 		const ring = isToday ? ' ring-1 ring-emerald-500' : '';
 		switch (outcome) {
 			case 'win':
@@ -186,7 +197,7 @@
 									{c.day}
 								</p>
 								{#if info.trade_count > 0}
-									<p class="mt-1 truncate font-mono text-[11px] leading-tight font-semibold tabular-nums sm:text-xs {valueClass(info.net_pnl, info.trade_count)}">
+									<p class="mt-1 truncate font-mono text-[10px] leading-tight font-semibold tabular-nums sm:text-xs {valueClass(info.net_pnl, info.trade_count)}">
 										{dayValue(info.net_pnl)}
 									</p>
 									<p class="font-mono text-[9px] leading-tight text-slate-500 tabular-nums dark:text-slate-500">
