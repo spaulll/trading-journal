@@ -125,7 +125,7 @@
 			<span class="font-mono text-[11px] tracking-wider uppercase">Sort</span>
 			<select
 				bind:value={sort}
-				class="h-full appearance-none border-0 bg-transparent py-0 pr-6 text-sm text-slate-700 outline-none dark:bg-transparent dark:text-slate-200 dark:[color-scheme:dark] [&>option]:bg-white [&>option]:text-slate-900 dark:[&>option]:bg-surface-900 dark:[&>option]:text-slate-200"
+				class="h-full appearance-none border-0 bg-none bg-transparent py-0 pr-6 text-sm text-slate-700 outline-none dark:bg-transparent dark:text-slate-200 dark:[color-scheme:dark] [&>option]:bg-white [&>option]:text-slate-900 dark:[&>option]:bg-surface-900 dark:[&>option]:text-slate-200"
 				aria-label="Sort trades"
 			>
 				<option value="newest">Newest</option>
