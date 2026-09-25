@@ -1,20 +1,24 @@
-"""Bot CSV sync engine (PLAN Task 1.3).
+"""Legacy CSV one-shot migration (PLAN-v2 Task 1.4).
 
-Reads the Telegram logger CSV at TG_BOT_CSV_PATH, dedupes on `trade_id`,
-maps `#tags` -> setup and `!tags` -> mistake, and backfills missing
-`net_pnl` (gross_pnl - fees) and `r_multiple` before storing.
+Ingests historical rows from the v1 bot CSV (TG_BOT_CSV_PATH) into a
+fresh v2 journal.db, keyed by ticket (v1 `trade_id` column). Skips
+existing tickets — never duplicates. Not used at runtime; the Telegram
+client (Phase 2) is the sole live ingestion path.
+
+Usage:
+    python -m app.services.migrate_csv [--csv PATH] [--dry-run]
 """
 
+import argparse
 import math
 import os
 import re
+import sys
 from datetime import datetime
 from typing import Optional
 
 import pandas as pd
 from sqlmodel import Session, select
-
-from app.models import Tag, Trade
 
 TAG_RE = re.compile(r"[#!][\w\-/]+")
 
@@ -37,6 +41,13 @@ def parse_tags(raw: object) -> list[tuple[str, str]]:
         return found
     bare = [w.strip().lower() for w in text.replace(",", " ").split() if w.strip()]
     return [(w, "setup") for w in bare]
+
+
+def normalize_tag_list(tokens: Optional[list[str]]) -> list[tuple[str, str]]:
+    """Normalize API tag tokens (["#fvg", "!early", "bos"]) to pairs."""
+    if not tokens:
+        return []
+    return parse_tags(" ".join(tokens))
 
 
 def _to_datetime(value: object) -> Optional[datetime]:
@@ -89,7 +100,9 @@ def compute_r_multiple(
     return (exit_price - entry) / risk
 
 
-def get_or_create_tag(session: Session, name: str, category: str) -> Tag:
+def get_or_create_tag(session: Session, name: str, category: str):
+    from app.models import Tag
+
     tag = session.exec(select(Tag).where(Tag.name == name)).first()
     if tag is None:
         tag = Tag(name=name, category=category)
@@ -133,7 +146,7 @@ def row_to_trade_fields(row: pd.Series) -> dict:
         "tp": _to_float(get("tp")),
         "exit_price": exit_price,
         "gross_pnl": gross,
-        "fees": fees,
+        "fees": fees if fees is not None else 0.0,
         "net_pnl": net,
         "r_multiple": r_multiple,
         "status": status,
@@ -142,52 +155,93 @@ def row_to_trade_fields(row: pd.Series) -> dict:
     }
 
 
-def _apply_tags(session: Session, trade: Trade, raw: object) -> None:
-    trade.tags = [get_or_create_tag(session, name, cat) for name, cat in parse_tags(raw)]
+def migrate_csv(session: Session, csv_path: Optional[str] = None, dry_run: bool = False) -> dict:
+    """Import every CSV row keyed by ticket, skipping existing ones."""
+    from app.models import Trade
 
-
-def sync_trades(session: Session, csv_path: Optional[str] = None) -> dict:
-    """Upsert every CSV row keyed by `trade_id`.
-
-    Returns {"inserted": int, "updated": int, "total": int}.
-    Raises FileNotFoundError when the CSV is absent.
-    """
     path = csv_path or get_csv_path()
     if not os.path.exists(path):
-        raise FileNotFoundError(f"Bot CSV not found: {path}")
+        raise FileNotFoundError(f"Legacy CSV not found: {path}")
 
     df = pd.read_csv(path, dtype=str).fillna(value=float("nan"))
-    inserted_ids: set[str] = set()
-    updated_ids: set[str] = set()
+    inserted = 0
+    updated = 0
+    skipped = 0
 
     for _, row in df.iterrows():
-        trade_id = _to_str(row["trade_id"]) if "trade_id" in row.index else None
-        if not trade_id:
+        ticket = _to_str(row["trade_id"]) if "trade_id" in row.index else None
+        if not ticket:
+            ticket = _to_str(row["ticket"]) if "ticket" in row.index else None
+        if not ticket:
+            skipped += 1
             continue
         fields = row_to_trade_fields(row)
-        trade = session.exec(select(Trade).where(Trade.trade_id == trade_id)).first()
-        if trade is None:
-            trade = Trade(trade_id=trade_id, **fields)
-            session.add(trade)
-            session.flush()
-            _apply_tags(session, trade, row["tags"] if "tags" in row.index else None)
-            inserted_ids.add(trade_id)
-        else:
-            for key, value in fields.items():
-                # Keep existing values unless the row carries a fresh one —
-                # except status/close fields, which always reflect the latest row.
-                if value is not None or key in (
-                    "status",
-                    "timestamp_close",
-                    "exit_price",
-                    "net_pnl",
-                    "r_multiple",
-                ):
-                    setattr(trade, key, value)
-            _apply_tags(session, trade, row["tags"] if "tags" in row.index else None)
-            session.add(trade)
-            updated_ids.add(trade_id)
+        incoming_tags = parse_tags(row["tags"] if "tags" in row.index else None)
+        exists = session.exec(select(Trade).where(Trade.ticket == ticket)).first()
+        if exists is not None:
+            # Later CSV rows may carry the close leg of an earlier open row
+            # (e.g. GOLD-001 open then close). Promote OPEN -> CLOSED but
+            # never overwrite a closed record with a stale open row.
+            if fields["status"] == "CLOSED" and exists.status == "OPEN":
+                if dry_run:
+                    updated += 1
+                    continue
+                for key, value in fields.items():
+                    if value is not None or key in (
+                        "status",
+                        "timestamp_close",
+                        "exit_price",
+                        "net_pnl",
+                        "r_multiple",
+                    ):
+                        setattr(exists, key, value)
+                have = {(t.name, t.category) for t in exists.tags}
+                for name, cat in incoming_tags:
+                    if (name, cat) not in have:
+                        exists.tags.append(get_or_create_tag(session, name, cat))
+                        have.add((name, cat))
+                exists.updated_at = datetime.now()
+                session.add(exists)
+                updated += 1
+            else:
+                skipped += 1
+            continue
+        if dry_run:
+            inserted += 1
+            continue
+        trade = Trade(ticket=ticket, **fields)
+        session.add(trade)
+        session.flush()
+        trade.tags = [
+            get_or_create_tag(session, name, cat)
+            for name, cat in incoming_tags
+        ]
+        session.add(trade)
+        inserted += 1
 
-    session.commit()
-    total = len(session.exec(select(Trade)).all())
-    return {"inserted": len(inserted_ids), "updated": len(updated_ids), "total": total}
+    if not dry_run:
+        session.commit()
+    total = session.exec(select(Trade)).all()
+    return {"inserted": inserted, "updated": updated, "skipped": skipped, "total": len(total)}
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="One-shot legacy CSV migration")
+    parser.add_argument("--csv", default=None, help="Override TG_BOT_CSV_PATH")
+    parser.add_argument("--dry-run", action="store_true")
+    args = parser.parse_args()
+
+    from dotenv import load_dotenv
+
+    load_dotenv()
+
+    from app.database import engine
+
+    with Session(engine) as session:
+        result = migrate_csv(session, csv_path=args.csv, dry_run=args.dry_run)
+    print(result)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

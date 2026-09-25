@@ -1,5 +1,5 @@
 import { derived, get, writable } from 'svelte/store';
-import { ApiError, api, errMsg, type ScreenshotDto, type TradeDto } from '$lib/api';
+import { errMsg, type ScreenshotDto, type TradeDto, api } from '$lib/api';
 import { toasts } from './toast';
 
 export const trades = writable<TradeDto[]>([]);
@@ -23,27 +23,21 @@ export async function loadTrades(quiet = false): Promise<void> {
 	}
 }
 
-/** POST sync-bot → toast counts → refresh tables without reload. */
-export async function syncFromBot(): Promise<void> {
+/** Reload trades from the API (v1 bot CSV sync retired in PLAN-v2). */
+export async function refreshTrades(): Promise<void> {
 	if (get(syncing)) return;
 	syncing.set(true);
 	try {
-		const r = await api.syncBot();
 		await loadTrades(true);
-		const fresh = r.inserted + r.updated;
-		toasts.push(
-			'success',
-			fresh === 0
-				? 'Already up to date — no new bot trades.'
-				: `Synced ${r.total} trade${r.total === 1 ? '' : 's'} (${r.inserted} new, ${r.updated} updated).`
-		);
 	} catch (e) {
-		const msg = e instanceof ApiError && e.status === 404 ? 'Bot CSV not found on server.' : errMsg(e);
-		toasts.push('error', `Sync failed — ${msg}`);
+		toasts.push('error', `Refresh failed — ${errMsg(e)}`);
 	} finally {
 		syncing.set(false);
 	}
 }
+
+/** Deprecated v1 alias — kept for Header/empty-state compat until Phase 5. */
+export const syncFromBot = refreshTrades;
 
 export function upsertTrade(trade: TradeDto): void {
 	trades.update((list) => {

@@ -42,7 +42,7 @@ def _equity_points(trades: list[Trade]) -> list[dict]:
                 "equity": round(equity, 2),
                 "drawdown": round(equity - peak, 2),
                 "net_pnl": net,
-                "trade_id": t.trade_id,
+                "trade_id": t.ticket,
             }
         )
     return points

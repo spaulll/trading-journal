@@ -29,8 +29,8 @@
 {:else if $trades.length === 0}
 	<StateBlock
 		title="No trades yet"
-		body="Log trades with the Telegram bot, then pull them in with a single click."
-		actionLabel="Sync from Bot"
+		body="Open a trade from the web UI or log one with the Telegram bot — it appears here live."
+		actionLabel="Refresh"
 		onAction={() => void syncFromBot()}
 	/>
 	<TradeModal />

@@ -19,7 +19,8 @@ export interface ScreenshotDto {
 
 export interface TradeDto {
 	id: number;
-	trade_id: string;
+	ticket: string;
+	trade_id: string; // deprecated v1 alias of ticket — remove in Phase 5
 	timestamp_open: string | null;
 	timestamp_close: string | null;
 	direction: string | null;
@@ -38,8 +39,16 @@ export interface TradeDto {
 	thesis: string | null;
 	review_notes: string | null;
 	created_at: string;
+	updated_at: string;
 	tags: TagDto[];
 	screenshots: ScreenshotDto[];
+}
+
+export interface PagedTrades {
+	items: TradeDto[];
+	total: number;
+	page: number;
+	page_size: number;
 }
 
 export interface SyncResult {
@@ -125,12 +134,23 @@ function json(init: RequestInit = {}): RequestInit {
 
 export const api = {
 	health: () => req<{ status: string }>('/api/health'),
-	listTrades: () => req<TradeDto[]>('/api/trades'),
+	listTrades: async (params?: string): Promise<TradeDto[]> => {
+		const data = await req<TradeDto[] | PagedTrades>(`/api/trades${params ?? ''}`);
+		return Array.isArray(data) ? data : data.items;
+	},
+	listTradesPaged: (params?: string) =>
+		req<PagedTrades>(`/api/trades${params ?? '?page=1&page_size=50'}`),
 	getTrade: (id: number) => req<TradeDto>(`/api/trades/${id}`),
+	openTrade: (payload: Record<string, unknown>) =>
+		req<TradeDto>('/api/trades/open', json({ method: 'POST', body: JSON.stringify(payload) })),
+	updateTsl: (id: number, current_sl: number) =>
+		req<TradeDto>(`/api/trades/${id}/tsl`, json({ method: 'POST', body: JSON.stringify({ current_sl }) })),
+	closeTrade: (id: number, payload: Record<string, unknown>) =>
+		req<TradeDto>(`/api/trades/${id}/close`, json({ method: 'POST', body: JSON.stringify(payload) })),
 	patchTrade: (id: number, patch: Record<string, unknown>) =>
 		req<TradeDto>(`/api/trades/${id}`, json({ method: 'PATCH', body: JSON.stringify(patch) })),
-	deleteTrade: (id: number) => req<{ deleted: number }>(`/api/trades/${id}`, { method: 'DELETE' }),
-	syncBot: () => req<SyncResult>('/api/trades/sync-bot', { method: 'POST' }),
+	deleteTrade: (id: number, deleteAssets = false) =>
+		req<{ deleted: number }>(`/api/trades/${id}${deleteAssets ? '?delete_assets=true' : ''}`, { method: 'DELETE' }),
 	summary: () => req<SummaryDto>('/api/analytics/summary'),
 	equityCurve: () => req<{ points: EquityPoint[] }>('/api/analytics/equity-curve'),
 	rDistribution: () => req<{ buckets: RBucket[] }>('/api/analytics/r-distribution'),

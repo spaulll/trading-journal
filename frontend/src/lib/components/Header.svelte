@@ -54,7 +54,7 @@
 			class="flex h-9 items-center gap-2 rounded-lg bg-emerald-500 px-3.5 text-sm font-semibold text-white shadow-lift transition-all duration-150 hover:bg-emerald-600 focus-visible:outline-emerald-500 active:scale-[0.98] disabled:cursor-wait disabled:opacity-70"
 		>
 			<RefreshCw size={16} strokeWidth={1.8} aria-hidden="true" class={$syncing ? 'animate-spin' : ''} />
-			<span class="hidden sm:inline">{$syncing ? 'Syncing…' : 'Sync from Bot'}</span>
+			<span class="hidden sm:inline">{$syncing ? 'Refreshing…' : 'Refresh'}</span>
 			<span class="sm:hidden">{$syncing ? '…' : 'Sync'}</span>
 		</button>
 	</div>
