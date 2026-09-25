@@ -2,7 +2,9 @@
 
 from contextlib import asynccontextmanager
 
-from dotenv import load_dotenv
+import os  # noqa: E402
+
+from dotenv import load_dotenv  # noqa: E402
 
 load_dotenv()
 
@@ -21,6 +23,14 @@ async def lifespan(app: FastAPI):  # noqa: ANN201, ARG001
 
 app = FastAPI(title="Trading Journal", lifespan=lifespan)
 
+# Comma-separated extra origins for LAN access, e.g.
+# CORS_ORIGINS=http://10.10.10.162:3100,http://10.10.10.162:5173
+_extra_origins = [
+    origin.strip()
+    for origin in os.getenv("CORS_ORIGINS", "").split(",")
+    if origin.strip()
+]
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -28,6 +38,7 @@ app.add_middleware(
         "http://127.0.0.1:3000",
         "http://localhost:5173",
         "http://127.0.0.1:5173",
+        *_extra_origins,
     ],
     allow_credentials=True,
     allow_methods=["*"],
