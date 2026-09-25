@@ -48,6 +48,48 @@ export interface SyncResult {
 	total: number;
 }
 
+export interface SummaryDto {
+	total_trades: number;
+	open_trades: number;
+	wins: number;
+	losses: number;
+	breakeven: number;
+	net_pnl: number;
+	win_rate: number;
+	profit_factor: number | null;
+	expectancy: number;
+	avg_win: number;
+	avg_loss: number;
+	max_drawdown: number;
+}
+
+export interface EquityPoint {
+	timestamp: string;
+	equity: number;
+	drawdown: number;
+	net_pnl: number;
+	trade_id: string;
+}
+
+export interface RBucket {
+	label: string;
+	count: number;
+}
+
+export interface TagPerf {
+	name: string;
+	category: string;
+	trade_count: number;
+	net_pnl: number;
+	win_rate: number;
+}
+
+export interface CalendarDay {
+	date: string;
+	net_pnl: number;
+	trade_count: number;
+}
+
 export class ApiError extends Error {
 	status: number;
 	constructor(status: number, message: string) {
@@ -89,6 +131,12 @@ export const api = {
 		req<TradeDto>(`/api/trades/${id}`, json({ method: 'PATCH', body: JSON.stringify(patch) })),
 	deleteTrade: (id: number) => req<{ deleted: number }>(`/api/trades/${id}`, { method: 'DELETE' }),
 	syncBot: () => req<SyncResult>('/api/trades/sync-bot', { method: 'POST' }),
+	summary: () => req<SummaryDto>('/api/analytics/summary'),
+	equityCurve: () => req<{ points: EquityPoint[] }>('/api/analytics/equity-curve'),
+	rDistribution: () => req<{ buckets: RBucket[] }>('/api/analytics/r-distribution'),
+	tagPerformance: () => req<{ tags: TagPerf[] }>('/api/analytics/tag-performance'),
+	calendar: (year?: number) =>
+		req<{ year: number; days: CalendarDay[] }>(`/api/analytics/calendar${year ? `?year=${year}` : ''}`),
 	uploadScreenshot: async (id: number, file: File, label: string): Promise<ScreenshotDto> => {
 		const form = new FormData();
 		form.append('file', file);
