@@ -7,8 +7,27 @@
 	import TagPerformanceBar from '$lib/components/charts/TagPerformanceBar.svelte';
 	import UnderwaterChart from '$lib/components/charts/UnderwaterChart.svelte';
 	import CalendarHeatmap from '$lib/components/dashboard/CalendarHeatmap.svelte';
+	import KpiStrip from '$lib/components/dashboard/KpiStrip.svelte';
+	import LongShortOverview from '$lib/components/dashboard/LongShortOverview.svelte';
+	import MonthlyCalendar from '$lib/components/dashboard/MonthlyCalendar.svelte';
+	import RadarAnalytics from '$lib/components/dashboard/RadarAnalytics.svelte';
+	import SessionGrid from '$lib/components/dashboard/SessionGrid.svelte';
+	import StatPanels from '$lib/components/dashboard/StatPanels.svelte';
 	import StateBlock from '$lib/components/StateBlock.svelte';
-	import { api, errMsg, type CalendarDay, type EquityPoint, type RBucket, type SummaryDto, type TagPerf } from '$lib/api';
+	import {
+		api,
+		errMsg,
+		type ActivityStreaks,
+		type CalendarDay,
+		type DirectionStats,
+		type EquityPoint,
+		type KpiDashboard,
+		type MonthlyCalendarDto,
+		type RadarProfiles,
+		type RBucket,
+		type SummaryDto,
+		type TagPerf
+	} from '$lib/api';
 	import { fmtMoney, pnlTone, toneText } from '$lib/utils/format';
 
 	let loading = $state(true);
@@ -19,17 +38,29 @@
 	let tags = $state<TagPerf[]>([]);
 	let days = $state<CalendarDay[]>([]);
 	let year = $state(new Date().getFullYear());
+	// PLAN-v2 Phase 4 widgets.
+	let kpi = $state<KpiDashboard | null>(null);
+	let monthData = $state<MonthlyCalendarDto | null>(null);
+	let monthCursor = $state({ y: new Date().getFullYear(), m: new Date().getMonth() + 1 });
+	let activity = $state<ActivityStreaks | null>(null);
+	let longShort = $state<{ buy: DirectionStats; sell: DirectionStats } | null>(null);
+	let radarData = $state<RadarProfiles | null>(null);
 
 	async function load(): Promise<void> {
 		loading = true;
 		error = null;
 		try {
-			const [s, e, r, t, c] = await Promise.all([
+			const [s, e, r, t, c, k, mc, a, ls, rd] = await Promise.all([
 				api.summary(),
 				api.equityCurve(),
 				api.rDistribution(),
 				api.tagPerformance(),
-				api.calendar(year)
+				api.calendar(year),
+				api.kpi(),
+				api.monthlyCalendar(monthCursor.y, monthCursor.m),
+				api.activity(),
+				api.longShort(),
+				api.radar()
 			]);
 			summary = s;
 			points = e.points;
@@ -37,6 +68,12 @@
 			tags = t.tags;
 			days = c.days;
 			year = c.year;
+			kpi = k;
+			monthData = mc;
+			monthCursor = { y: mc.year, m: mc.month };
+			activity = a;
+			longShort = ls;
+			radarData = rd;
 		} catch (e) {
 			error = errMsg(e);
 		} finally {
@@ -50,6 +87,25 @@
 			const c = await api.calendar(year);
 			days = c.days;
 			year = c.year;
+		} catch (e) {
+			error = errMsg(e);
+		}
+	}
+
+	async function shiftMonth(delta: number): Promise<void> {
+		let { y, m } = monthCursor;
+		m += delta;
+		if (m < 1) {
+			m = 12;
+			y -= 1;
+		}
+		if (m > 12) {
+			m = 1;
+			y += 1;
+		}
+		try {
+			monthData = await api.monthlyCalendar(y, m);
+			monthCursor = { y: monthData.year, m: monthData.month };
 		} catch (e) {
 			error = errMsg(e);
 		}
@@ -107,12 +163,34 @@
 {:else if summary.total_trades === 0}
 	<StateBlock
 		title="No closed trades yet"
-		body="Sync trades from the Telegram bot to unlock equity, R-distribution and tag analytics."
+		body="Log trades with the Telegram bot to unlock equity, R-distribution and tag analytics."
 		actionLabel="Back to trades"
 		onAction={() => (window.location.href = '/')}
 	/>
 {:else}
 	<div class="flex flex-col gap-4" transition:fade={{ duration: 150 }}>
+		{#if kpi}
+			<KpiStrip {kpi} />
+			<SessionGrid {kpi} />
+		{/if}
+		{#if monthData}
+			<MonthlyCalendar
+				data={monthData}
+				yearDays={days}
+				onPrev={() => void shiftMonth(-1)}
+				onNext={() => void shiftMonth(1)}
+			/>
+		{/if}
+		{#if activity}
+			<StatPanels {activity} />
+		{/if}
+		{#if longShort && activity}
+			<LongShortOverview {longShort} {activity} />
+		{/if}
+		{#if radarData}
+			<RadarAnalytics radar={radarData} />
+		{/if}
+
 		<section class="grid grid-cols-2 gap-4 lg:grid-cols-4" aria-label="Summary stats">
 			{#each stats as s}
 				<div class="rounded-xl border border-slate-200 bg-white p-4 shadow-card dark:border-white/[0.07] dark:bg-surface-900">

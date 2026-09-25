@@ -99,6 +99,84 @@ export interface CalendarDay {
 	trade_count: number;
 }
 
+// --- PLAN-v2 Phase 4 TradeZella DTOs ---
+
+export interface KpiSession {
+	net_pnl: number;
+	trade_count: number;
+	win_rate: number;
+	return_pct: number;
+}
+
+export interface KpiDashboard {
+	net_pnl: number;
+	net_pnl_change_pct: number | null;
+	sparkline: number[];
+	avg_realized_rr: { current: number; target: number };
+	win_rate: { rate: number; wins: number; losses: number; breakeven: number };
+	profit_factor: number | null;
+	sessions: Record<string, KpiSession>;
+}
+
+export interface MonthDay {
+	net_pnl: number;
+	trade_count: number;
+	outcome: 'win' | 'loss' | 'be' | 'inactive';
+}
+
+export interface MonthlyCalendarDto {
+	year: number;
+	month: number;
+	weeks: { label: string; net_pnl: number; trade_count: number }[];
+	days: Record<string, MonthDay>;
+	summary: {
+		trading_days: number;
+		day_win_rate: number;
+		winning_days: number;
+		losing_days: number;
+		breakeven_days: number;
+	};
+	outcome: { wins: number; losses: number; breakeven: number };
+}
+
+export interface ActivityStreaks {
+	total_trades: number;
+	open_trades: number;
+	closed_trades: number;
+	winning_trades: number;
+	losing_trades: number;
+	max_win_streak: number;
+	max_loss_streak: number;
+	avg_win_streak: number;
+	avg_loss_streak: number;
+	max_winning_days: number;
+	max_losing_days: number;
+	trading_days: number;
+	avg_daily_volume: number;
+	best_trade: { ticket: string; net_pnl: number } | null;
+	worst_trade: { ticket: string; net_pnl: number } | null;
+}
+
+export interface DirectionStats {
+	trades: number;
+	wins: number;
+	losses: number;
+	breakeven: number;
+	win_rate: number;
+	avg_win: number;
+	avg_loss: number;
+	best: { ticket: string; net_pnl: number } | null;
+	worst: { ticket: string; net_pnl: number } | null;
+	avg_win_duration_min: number | null;
+	avg_loss_duration_min: number | null;
+	max_win_streak: number;
+}
+
+export interface RadarProfiles {
+	weekday: { day: string; trades: number; wins: number; win_rate: number; net_pnl: number }[];
+	sessions: { session: string; trades: number; win_rate: number; net_pnl: number; profit_pct: number }[];
+}
+
 export class ApiError extends Error {
 	status: number;
 	constructor(status: number, message: string) {
@@ -157,6 +235,12 @@ export const api = {
 	tagPerformance: () => req<{ tags: TagPerf[] }>('/api/analytics/tag-performance'),
 	calendar: (year?: number) =>
 		req<{ year: number; days: CalendarDay[] }>(`/api/analytics/calendar${year ? `?year=${year}` : ''}`),
+	kpi: () => req<KpiDashboard>('/api/analytics/kpi-dashboard'),
+	monthlyCalendar: (year: number, month: number) =>
+		req<MonthlyCalendarDto>(`/api/analytics/monthly-calendar?year=${year}&month=${month}`),
+	activity: () => req<ActivityStreaks>('/api/analytics/activity-and-streaks'),
+	longShort: () => req<{ buy: DirectionStats; sell: DirectionStats }>('/api/analytics/long-short-stats'),
+	radar: () => req<RadarProfiles>('/api/analytics/radar-profiles'),
 	uploadScreenshot: async (id: number, file: File, label: string): Promise<ScreenshotDto> => {
 		const form = new FormData();
 		form.append('file', file);
