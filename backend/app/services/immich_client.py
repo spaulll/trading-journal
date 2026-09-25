@@ -95,7 +95,7 @@ async def delete_assets(asset_ids: list[str]) -> None:
 async def fetch_thumbnail(asset_id: str) -> tuple[bytes, str]:
     async with _client() as client:
         resp = await client.get(f"/api/assets/{asset_id}/thumbnail")
-        if resp.status_code == 404:
+        if resp.status_code in (400, 404):
             raise FileNotFoundError(asset_id)
         resp.raise_for_status()
         return resp.content, resp.headers.get("content-type", "image/webp")
@@ -104,7 +104,7 @@ async def fetch_thumbnail(asset_id: str) -> tuple[bytes, str]:
 async def fetch_original(asset_id: str) -> tuple[bytes, str]:
     async with _client() as client:
         resp = await client.get(f"/api/assets/{asset_id}/original")
-        if resp.status_code == 404:
+        if resp.status_code in (400, 404):
             raise FileNotFoundError(asset_id)
         resp.raise_for_status()
         return resp.content, resp.headers.get("content-type", "application/octet-stream")
