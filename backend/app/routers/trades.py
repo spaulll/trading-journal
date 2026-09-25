@@ -88,8 +88,19 @@ def delete_trade(trade_id: int, session: Session = Depends(get_session)):
     trade = session.get(Trade, trade_id)
     if trade is None:
         raise HTTPException(status_code=404, detail="Trade not found")
+    asset_ids = [s.immich_asset_id for s in trade.screenshots]
     session.exec(delete(TradeTagLink).where(TradeTagLink.trade_id == trade_id))
     session.exec(delete(Screenshot).where(Screenshot.trade_id == trade_id))
     session.delete(trade)
     session.commit()
+    if asset_ids:
+        # Best-effort: don't fail the delete if Immich is unreachable.
+        try:
+            import asyncio
+
+            from app.services import immich_client
+
+            asyncio.run(immich_client.delete_assets(asset_ids))
+        except Exception:
+            pass
     return {"deleted": trade_id}

@@ -45,10 +45,9 @@ async def upload_screenshot(
         raise HTTPException(status_code=502, detail=f"Immich upload failed: {exc}")
 
     try:
-        album_id = await immich_client.resolve_monthly_album(
-            immich_client.month_album_name(trade.timestamp_open)
-        )
-        await immich_client.add_assets_to_album(album_id, [asset_id])
+        album_name = immich_client.month_album_name(trade.timestamp_open)
+        album_id = await immich_client.resolve_monthly_album(album_name)
+        await immich_client.add_assets_to_album(album_id, [asset_id], album_name)
     except (httpx.HTTPError, RuntimeError) as exc:
         # Avoid orphaning the asset when the album step fails.
         try:

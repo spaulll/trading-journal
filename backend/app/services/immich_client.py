@@ -79,9 +79,14 @@ async def upload_asset(
         return resp.json()["id"]
 
 
-async def add_assets_to_album(album_id: str, asset_ids: list[str]) -> None:
+async def add_assets_to_album(album_id: str, asset_ids: list[str], album_name: Optional[str] = None) -> None:
+    """Attach assets; on a stale cached album id, re-resolve once and retry."""
     async with _client() as client:
         resp = await client.put(f"/api/albums/{album_id}/assets", json={"ids": asset_ids})
+        if resp.status_code in (400, 404) and album_name:
+            _album_cache.pop(album_name, None)
+            album_id = await resolve_monthly_album(album_name)
+            resp = await client.put(f"/api/albums/{album_id}/assets", json={"ids": asset_ids})
         resp.raise_for_status()
 
 
