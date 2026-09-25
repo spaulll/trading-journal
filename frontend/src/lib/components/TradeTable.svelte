@@ -6,22 +6,55 @@
 	import type { TradeDto } from '$lib/api';
 
 	type StatusFilter = 'ALL' | 'OPEN' | 'CLOSED';
+	type SortKey = 'newest' | 'oldest' | 'net-desc' | 'net-asc' | 'r-desc';
 
 	let status: StatusFilter = $state('ALL');
 	let query = $state('');
 	let tagQuery = $state('');
+	let sort: SortKey = $state('newest');
+	let searchEl: HTMLInputElement | null = $state(null);
 	let expanded = $state<Set<number>>(new Set());
+
+	function onGlobalKey(e: KeyboardEvent): void {
+		const target = e.target as HTMLElement | null;
+		const typing =
+			target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT');
+		if (e.key === '/' && !typing) {
+			e.preventDefault();
+			searchEl?.focus();
+		}
+	}
+
+	function sortTrades(list: TradeDto[]): TradeDto[] {
+		const byTime = (t: TradeDto) => t.timestamp_open ?? t.created_at;
+		const numLast = (v: number | null | undefined, desc: boolean) =>
+			v === null || v === undefined ? (desc ? -Infinity : Infinity) : v;
+		const next = [...list];
+		switch (sort) {
+			case 'oldest':
+				return next.sort((a, b) => byTime(a).localeCompare(byTime(b)));
+			case 'net-desc':
+				return next.sort((a, b) => numLast(b.net_pnl, true) - numLast(a.net_pnl, true));
+			case 'net-asc':
+				return next.sort((a, b) => numLast(a.net_pnl, false) - numLast(b.net_pnl, false));
+			case 'r-desc':
+				return next.sort((a, b) => numLast(b.r_multiple, true) - numLast(a.r_multiple, true));
+			default:
+				return next.sort((a, b) => byTime(b).localeCompare(byTime(a)));
+		}
+	}
 
 	const filtered = $derived.by(() => {
 		const q = query.trim().toLowerCase();
 		const tq = tagQuery.trim().toLowerCase().replace(/^[#!]/, '');
-		return $trades.filter((t) => {
+		const list = $trades.filter((t) => {
 			if (status !== 'ALL' && t.status !== status) return false;
 			if (q && !(t.symbol ?? '').toLowerCase().includes(q) && !(t.trade_id ?? '').toLowerCase().includes(q))
 				return false;
 			if (tq && !t.tags.some((tag) => tag.name.toLowerCase().includes(tq))) return false;
 			return true;
 		});
+		return sortTrades(list);
 	});
 
 	const counts = $derived.by(() => ({
@@ -49,6 +82,8 @@
 	}
 </script>
 
+<svelte:window onkeydown={onGlobalKey} />
+
 <section aria-label="Trade history" class="mt-8">
 	<div class="mb-3 flex flex-wrap items-center gap-2">
 		<div class="flex rounded-lg border border-slate-200 p-0.5 dark:border-slate-800" role="tablist" aria-label="Status filter">
@@ -71,8 +106,9 @@
 			<Search size={14} class="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-slate-400" />
 			<input
 				type="search"
+				bind:this={searchEl}
 				bind:value={query}
-				placeholder="Symbol or ID…"
+				placeholder="Symbol or ID…  ( / )"
 				class="h-9 w-full rounded-lg border border-slate-200 bg-transparent pr-2 pl-8 text-sm outline-none placeholder:text-slate-400 focus:border-emerald-500 dark:border-slate-800"
 			/>
 		</label>
@@ -84,6 +120,20 @@
 				placeholder="Tag…"
 				class="h-9 w-full rounded-lg border border-slate-200 bg-transparent pr-2 pl-7 font-mono text-sm outline-none placeholder:text-slate-400 focus:border-emerald-500 dark:border-slate-800"
 			/>
+		</label>
+		<label class="flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 text-sm text-slate-500 dark:border-slate-800 dark:text-slate-400">
+			<span class="font-mono text-[11px] uppercase">Sort</span>
+			<select
+				bind:value={sort}
+				class="bg-transparent text-sm text-slate-700 outline-none dark:bg-transparent dark:text-slate-200"
+				aria-label="Sort trades"
+			>
+				<option value="newest">Newest</option>
+				<option value="oldest">Oldest</option>
+				<option value="net-desc">Net ↓</option>
+				<option value="net-asc">Net ↑</option>
+				<option value="r-desc">R ↓</option>
+			</select>
 		</label>
 	</div>
 
