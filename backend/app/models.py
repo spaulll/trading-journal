@@ -36,6 +36,12 @@ class Trade(SQLModel, table=True):
     ticket: str = Field(unique=True, index=True)  # MT5 deal ID / bot ID
     timestamp_open: Optional[datetime] = Field(default=None, index=True)
     timestamp_close: Optional[datetime] = None
+    # Explicit lifecycle timestamps (backfill sets these directly; live flow
+    # mirrors timestamp_open/timestamp_close).
+    entry_time: Optional[datetime] = Field(default=None, index=True)
+    exit_time: Optional[datetime] = None
+    duration_minutes: Optional[int] = None
+    session: Optional[str] = Field(default=None, index=True)  # Asia | London | New York | Outside
     direction: Optional[str] = None  # buy | sell
     symbol: Optional[str] = Field(default=None, index=True)
     size: Optional[float] = None
@@ -104,6 +110,10 @@ class TradeRead(SQLModel):
     trade_id: str
     timestamp_open: Optional[datetime] = None
     timestamp_close: Optional[datetime] = None
+    entry_time: Optional[datetime] = None
+    exit_time: Optional[datetime] = None
+    duration_minutes: Optional[int] = None
+    session: Optional[str] = None
     direction: Optional[str] = None
     symbol: Optional[str] = None
     size: Optional[float] = None
@@ -155,6 +165,8 @@ class TradeOpenRequest(SQLModel):
     tp: Optional[float] = None
     ticket: Optional[str] = None
     timestamp_open: Optional[datetime] = None
+    entry_time: Optional[datetime] = None  # explicit entry (bot `time:` flag); defaults to now
+    session: Optional[str] = None  # manual override; otherwise auto-resolved
     thesis: Optional[str] = None
     tags: Optional[list[str]] = None
 
@@ -170,6 +182,33 @@ class TradeCloseRequest(SQLModel):
 
 class TradeTSLRequest(SQLModel):
     current_sl: float
+
+
+class BackfillRecord(SQLModel):
+    """Single historical trade (or one item of a batch POST)."""
+
+    symbol: str
+    direction: str  # buy | sell
+    size: float
+    entry_price: float
+    exit_price: float
+    entry_time: datetime
+    exit_time: datetime
+    initial_sl: Optional[float] = None
+    tp: Optional[float] = None
+    gross_pnl: Optional[float] = None
+    fees: Optional[float] = None
+    net_pnl: Optional[float] = None
+    r_multiple: Optional[float] = None
+    ticket: Optional[str] = None
+    session: Optional[str] = None  # manual override; otherwise auto-resolved
+    thesis: Optional[str] = None
+    review_notes: Optional[str] = None
+    tags: Optional[list[str]] = None
+
+
+class BackfillRequest(SQLModel):
+    records: list[BackfillRecord]
 
 
 class DailyNoteRead(SQLModel):

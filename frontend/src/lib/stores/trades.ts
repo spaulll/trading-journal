@@ -45,8 +45,7 @@ export async function submitOpen(payload: Record<string, unknown>): Promise<bool
 	}
 }
 
-export async function submitClose(tradeId: number, payload: Record<string, unknown>): Promise<boolean> {
-	lifecycleBusy.set(true);
+export async function submitClose(tradeId: number, payload: Record<string, unknown>): Promise<boolean> {	lifecycleBusy.set(true);
 	try {
 		const trade = await api.closeTrade(tradeId, payload);
 		upsertTrade(trade);
@@ -56,6 +55,26 @@ export async function submitClose(tradeId: number, payload: Record<string, unkno
 		return true;
 	} catch (e) {
 		toasts.push('error', `Close failed — ${errMsg(e)}`);
+		return false;
+	} finally {
+		lifecycleBusy.set(false);
+	}
+}
+
+export async function submitBackfill(record: Record<string, unknown>): Promise<boolean> {
+	lifecycleBusy.set(true);
+	try {
+		const r = await api.backfill(record);
+		lifecycleModal.set(null);
+		await loadTrades(true);
+		if (r.inserted.length > 0) {
+			toasts.push('success', `Backfilled ${r.inserted.length} trade${r.inserted.length === 1 ? '' : 's'} (${r.inserted[0]}${r.inserted.length > 1 ? ', …' : ''}).`);
+		} else {
+			toasts.push('success', 'Nothing new — record already exists.');
+		}
+		return true;
+	} catch (e) {
+		toasts.push('error', `Backfill failed — ${errMsg(e)}`);
 		return false;
 	} finally {
 		lifecycleBusy.set(false);
@@ -75,8 +94,7 @@ export async function loadTrades(quiet = false): Promise<void> {
 }
 
 /** Reload trades from the API (v1 bot CSV sync retired in PLAN-v2). */
-export async function refreshTrades(): Promise<void> {
-	if (get(syncing)) return;
+export async function refreshTrades(): Promise<void> {	if (get(syncing)) return;
 	syncing.set(true);
 	try {
 		await loadTrades(true);

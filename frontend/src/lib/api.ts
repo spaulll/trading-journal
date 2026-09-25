@@ -23,6 +23,10 @@ export interface TradeDto {
 	trade_id: string; // deprecated v1 alias of ticket — remove in Phase 5
 	timestamp_open: string | null;
 	timestamp_close: string | null;
+	entry_time: string | null;
+	exit_time: string | null;
+	duration_minutes: number | null;
+	session: string | null;
 	direction: string | null;
 	symbol: string | null;
 	size: number | null;
@@ -229,6 +233,11 @@ export const api = {
 		req<TradeDto>(`/api/trades/${id}`, json({ method: 'PATCH', body: JSON.stringify(patch) })),
 	deleteTrade: (id: number, deleteAssets = false) =>
 		req<{ deleted: number }>(`/api/trades/${id}${deleteAssets ? '?delete_assets=true' : ''}`, { method: 'DELETE' }),
+	backfill: (payload: Record<string, unknown>) =>
+		req<{ inserted: string[]; skipped: string[]; total: number }>(
+			'/api/trades/backfill',
+			json({ method: 'POST', body: JSON.stringify(payload) })
+		),
 	summary: () => req<SummaryDto>('/api/analytics/summary'),
 	equityCurve: () => req<{ points: EquityPoint[] }>('/api/analytics/equity-curve'),
 	rDistribution: () => req<{ buckets: RBucket[] }>('/api/analytics/r-distribution'),

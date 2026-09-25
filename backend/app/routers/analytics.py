@@ -55,7 +55,10 @@ def _close_day(t: Trade) -> Optional[datetime]:
 
 
 def _session_of(t: Trade) -> str:
-    ts = _as_naive(t.timestamp_open) or _as_naive(t.timestamp_close)
+    stored = (t.session or "").strip().lower()
+    if stored in ("london", "new_york", "newyork", "asia", "outside"):
+        return "new_york" if stored == "newyork" else stored
+    ts = _as_naive(t.entry_time) or _as_naive(t.timestamp_open) or _as_naive(t.timestamp_close)
     if ts is None:
         return "outside"
     for name, (start, end) in SESSION_BOUNDS.items():

@@ -7,13 +7,15 @@ imports go through app.services.migrate_csv (one-shot).
 
 import os
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Optional, Union
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlmodel import Session, delete, select
 
 from app.database import get_session
 from app.models import (
+    BackfillRecord,
+    BackfillRequest,
     DailyNote,
     Screenshot,
     ScreenshotRead,
@@ -33,6 +35,7 @@ from app.services.migrate_csv import (
     normalize_tag_list,
     parse_tags,
 )
+from app.services.session_resolver import duration_minutes, normalize_session
 
 router = APIRouter(prefix="/api/trades", tags=["trades"])
 
@@ -141,9 +144,12 @@ def open_trade(payload: TradeOpenRequest, session: Session = Depends(get_session
     if session.exec(select(Trade).where(Trade.ticket == ticket)).first() is not None:
         raise HTTPException(status_code=409, detail=f"ticket already exists: {ticket}")
 
+    opened_at = payload.entry_time or payload.timestamp_open or _now()
     trade = Trade(
         ticket=ticket,
-        timestamp_open=payload.timestamp_open or _now(),
+        timestamp_open=opened_at,
+        entry_time=opened_at,
+        session=normalize_session(payload.session, opened_at),
         direction=direction,
         symbol=payload.symbol.upper(),
         size=payload.size,
@@ -219,7 +225,14 @@ def close_trade(trade_id: int, payload: TradeCloseRequest, session: Session = De
     trade.fees = fees or 0.0
     trade.net_pnl = net
     trade.r_multiple = r
-    trade.timestamp_close = payload.timestamp_close or _now()
+    closed_at = payload.timestamp_close or _now()
+    trade.timestamp_close = closed_at
+    trade.exit_time = closed_at
+    trade.duration_minutes = duration_minutes(
+        trade.entry_time or trade.timestamp_open, closed_at
+    )
+    if not trade.session:
+        trade.session = normalize_session(None, trade.entry_time or trade.timestamp_open)
     trade.status = "CLOSED"
     trade.updated_at = _now()
     if payload.review_notes is not None:
@@ -246,6 +259,98 @@ def close_trade(trade_id: int, payload: TradeCloseRequest, session: Session = De
             f"{guard['trades']} trades (cap {guard['max_trades']}). Walk away from the screen!"
         )
     return to_trade_read(trade)
+
+
+@router.post("/backfill")
+def backfill_trades(
+    body: Union[BackfillRecord, BackfillRequest], session: Session = Depends(get_session)
+):
+    """Ingest single or batch historical records with explicit timestamps.
+
+    Sessions and durations resolve automatically; screenshot uploads to these
+    trades route to the matching historical "YYYY-MM Trades" Immich album
+    via their entry timestamps.
+    """
+    records = body.records if isinstance(body, BackfillRequest) else [body]
+    if not records:
+        raise HTTPException(status_code=422, detail="No records provided")
+    if len(records) > 500:
+        raise HTTPException(status_code=422, detail="Batch limit is 500 records")
+
+    inserted: list[str] = []
+    skipped: list[str] = []
+    for rec in records:
+        ticket, created = insert_backfill_record(session, rec)
+        (inserted if created else skipped).append(ticket)
+
+    session.commit()
+    total = len(session.exec(select(Trade)).all())
+    return {"inserted": inserted, "skipped": skipped, "total": total}
+
+
+def insert_backfill_record(session: Session, rec: BackfillRecord) -> tuple[str, bool]:
+    """Insert one historical CLOSED trade. Returns (ticket, created)."""
+    direction = (rec.direction or "").lower()
+    if direction not in ("buy", "sell"):
+        raise HTTPException(status_code=422, detail=f"Bad direction: {rec.direction!r}")
+    if rec.size <= 0:
+        raise HTTPException(status_code=422, detail="size must be positive")
+    if rec.exit_time < rec.entry_time:
+        raise HTTPException(status_code=422, detail="exit_time precedes entry_time")
+
+    ticket = (rec.ticket or "").strip() or _backfill_ticket(session, rec.symbol, rec.entry_time)
+    if session.exec(select(Trade).where(Trade.ticket == ticket)).first() is not None:
+        return ticket, False
+
+    fees = rec.fees if rec.fees is not None else 0.0
+    gross = rec.gross_pnl
+    net = rec.net_pnl if rec.net_pnl is not None else (
+        (gross - (fees or 0.0)) if gross is not None else None
+    )
+    r = rec.r_multiple if rec.r_multiple is not None else compute_r_multiple(
+        direction, rec.entry_price, rec.initial_sl, rec.exit_price
+    )
+    trade = Trade(
+        ticket=ticket,
+        timestamp_open=rec.entry_time,
+        timestamp_close=rec.exit_time,
+        entry_time=rec.entry_time,
+        exit_time=rec.exit_time,
+        duration_minutes=duration_minutes(rec.entry_time, rec.exit_time),
+        session=normalize_session(rec.session, rec.entry_time),
+        direction=direction,
+        symbol=rec.symbol.upper(),
+        size=rec.size,
+        entry_price=rec.entry_price,
+        initial_sl=rec.initial_sl,
+        current_sl=rec.initial_sl,
+        tp=rec.tp,
+        exit_price=rec.exit_price,
+        gross_pnl=gross,
+        fees=fees or 0.0,
+        net_pnl=net,
+        r_multiple=r,
+        status="CLOSED",
+        thesis=rec.thesis,
+        review_notes=rec.review_notes,
+    )
+    session.add(trade)
+    session.flush()
+    trade.tags = [
+        get_or_create_tag(session, name, cat) for name, cat in normalize_tag_list(rec.tags)
+    ]
+    session.add(trade)
+    return ticket, True
+
+
+def _backfill_ticket(session: Session, symbol: str, entry: datetime) -> str:
+    """Unique ticket from symbol + entry stamp, numeric suffix on clash."""
+    base = f"{(symbol or 'TRADE').upper()}-{entry.strftime('%Y%m%dT%H%M')}"
+    ticket, n = base, 2
+    while session.exec(select(Trade).where(Trade.ticket == ticket)).first() is not None:
+        ticket = f"{base}-{n}"
+        n += 1
+    return ticket
 
 
 @router.get("")

@@ -75,12 +75,39 @@ def _to_float(token: str, what: str) -> float:
         raise BotParseError(f"Bad {what}: {token!r}") from None
 
 
+def _parse_explicit_time(tail: str) -> tuple[Optional[datetime], str]:
+    """Pull an optional `time: HH:MM` / `time: YYYY-MM-DD HH:MM` flag from tail.
+
+    Returns (entry_time or None, tail with the flag removed).
+    """
+    m = re.search(
+        r"time\s*:\s*(\d{4}-\d{2}-\d{2}\s+\d{1,2}:\d{2}|\d{1,2}:\d{2})", tail, re.IGNORECASE
+    )
+    if not m:
+        return None, tail
+    raw = m.group(1).strip()
+    try:
+        if re.match(r"^\d{4}-", raw):
+            entry = datetime.strptime(raw, "%Y-%m-%d %H:%M")
+        else:
+            hh, mm = raw.split(":")
+            now = datetime.now(timezone.utc)
+            entry = now.replace(hour=int(hh), minute=int(mm), second=0, microsecond=0,
+                                tzinfo=None)
+    except ValueError:
+        raise BotParseError(f"Bad time value: {raw!r} (use HH:MM or YYYY-MM-DD HH:MM)")
+    if not (0 <= entry.hour <= 23 and 0 <= entry.minute <= 59):
+        raise BotParseError(f"Bad time value: {raw!r}")
+    return entry, (tail[: m.start()] + tail[m.end():]).strip(" ,")
+
+
 def parse_open(text: str) -> dict:
-    """`buy gold, 0.1, 4000, 3990, 4020, #fvg ...`."""
+    """`buy gold, 0.1, 4000, 3990, 4020, #fvg ...` (+ optional `time:` flag)."""
     m = re.match(r"(?i)^\s*(buy|sell)\s+([a-z0-9\-/.]+)\s*,(.*)$", text.strip(), re.DOTALL)
     if not m:
         raise BotParseError("Open syntax: `buy SYMBOL, SIZE, ENTRY, SL, [TP], [#tags]`")
     direction, symbol, rest = m.group(1).lower(), m.group(2).upper(), m.group(3)
+    entry_time, rest = _parse_explicit_time(rest)
     parts = _split_args(rest)
     if len(parts) < 3:
         raise BotParseError("Open needs at least SIZE, ENTRY and SL")
@@ -102,8 +129,57 @@ def parse_open(text: str) -> dict:
         "entry_price": entry,
         "initial_sl": sl,
         "tp": tp,
+        "entry_time": entry_time,
         "tags": tail.split() if tail else [],
         "thesis": None,
+    }
+
+
+def parse_past(text: str) -> dict:
+    """`past buy gold, 0.1, 4000, 3990, 4020, exit: 4015, pnl: 150, date: 2026-09-20 14:30`."""
+    m = re.match(r"(?i)^\s*past\s+(buy|sell)\s+([a-z0-9\-/.]+)\s*,(.*)$", text.strip(), re.DOTALL)
+    if not m:
+        raise BotParseError(
+            "Backfill syntax: `past buy SYMBOL, SIZE, ENTRY, SL, TP, exit: EXIT, pnl: PNL, date: YYYY-MM-DD HH:MM`"
+        )
+    direction, symbol, rest = m.group(1).lower(), m.group(2).upper(), m.group(3)
+
+    def grab(flag: str) -> Optional[str]:
+        found = re.search(rf"{flag}\s*:\s*([^\s,][^,]*)", rest, re.IGNORECASE)
+        return found.group(1).strip() if found else None
+
+    exit_raw, pnl_raw, date_raw = grab("exit"), grab("pnl"), grab("date")
+    fee_raw = grab("fee")
+    if exit_raw is None or pnl_raw is None or date_raw is None:
+        raise BotParseError("Backfill needs `exit:`, `pnl:` and `date: YYYY-MM-DD HH:MM`")
+    try:
+        entry_time = datetime.strptime(date_raw.strip(), "%Y-%m-%d %H:%M")
+    except ValueError:
+        raise BotParseError(f"Bad date: {date_raw!r} (use YYYY-MM-DD HH:MM)") from None
+
+    cleaned = re.sub(r"(?i)\b(exit|pnl|fee|date)\s*:\s*[^\s,][^,]*", "", rest)
+    parts = _split_args(cleaned)
+    if len(parts) < 3:
+        raise BotParseError("Backfill needs at least SIZE, ENTRY and SL")
+    tp: Optional[float] = None
+    tag_start = 3
+    if len(parts) > 3 and re.match(r"^[+-]?[\d.]+$", parts[3].strip()):
+        tp = _to_float(parts[3], "TP")
+        tag_start += 1
+    tail = " ".join(parts[tag_start:])
+    return {
+        "direction": direction,
+        "symbol": symbol,
+        "size": _to_float(parts[0], "size"),
+        "entry_price": _to_float(parts[1], "entry"),
+        "initial_sl": _to_float(parts[2], "SL"),
+        "tp": tp,
+        "exit_price": _to_float(exit_raw, "exit"),
+        "gross_pnl": _to_float(pnl_raw, "pnl"),
+        "fees": _to_float(fee_raw, "fee") if fee_raw else 0.0,
+        "entry_time": entry_time,
+        "exit_time": entry_time,
+        "tags": tail.split() if tail else [],
     }
 
 
@@ -261,14 +337,18 @@ async def do_open(chat_id: int, session: Session, args: dict) -> None:
     from app.models import Trade
     from app.routers.trades import _flag_breach_day, _generate_ticket, _guardrail_breached
     from app.services.migrate_csv import get_or_create_tag, normalize_tag_list
+    from app.services.session_resolver import normalize_session
 
     if args["size"] <= 0:
         await send_text(chat_id, "❌ Size must be positive.")
         return
     ticket = _generate_ticket(args["symbol"])
+    opened_at = args.get("entry_time") or _now()
     trade = Trade(
         ticket=ticket,
-        timestamp_open=_now(),
+        timestamp_open=opened_at,
+        entry_time=opened_at,
+        session=normalize_session(None, opened_at),
         direction=args["direction"],
         symbol=args["symbol"],
         size=args["size"],
@@ -360,10 +440,50 @@ async def do_close(chat_id: int, session: Session, args: dict) -> None:
 HELP = (
     "📒 Trading Journal bot\n"
     "Open: `buy gold, 0.1, 4000, 3990, 4020, #fvg`\n"
+    "Open @ time: `buy gold, 0.1, 4000, 3990, 4020, time: 14:30`\n"
     "TSL: `tsl gold, 4005`\n"
     "Close: `close gold, 4015, +150, fee: 3.5, !early, notes`\n"
+    "Backfill: `past buy gold, 0.1, 4000, 3990, 4020, exit: 4015, pnl: 150, date: 2026-09-20 14:30`\n"
     "Commands: /open · /cancel"
 )
+
+
+async def do_past(chat_id: int, session: Session, args: dict) -> None:
+    from app.models import BackfillRecord
+    from app.routers.trades import insert_backfill_record
+
+    rec = BackfillRecord(
+        symbol=args["symbol"],
+        direction=args["direction"],
+        size=args["size"],
+        entry_price=args["entry_price"],
+        exit_price=args["exit_price"],
+        entry_time=args["entry_time"],
+        exit_time=args["exit_time"],
+        initial_sl=args["initial_sl"],
+        tp=args["tp"],
+        gross_pnl=args["gross_pnl"],
+        fees=args["fees"],
+        tags=args["tags"],
+    )
+    try:
+        ticket, created = insert_backfill_record(session, rec)
+    except Exception as exc:
+        detail = getattr(exc, "detail", str(exc))
+        await send_text(chat_id, f"❌ Backfill failed — {detail}")
+        return
+    if not created:
+        await send_text(chat_id, f"⏭️ Already recorded: {ticket}.")
+        return
+    session.commit()
+    trade = session.exec(select(Trade).where(Trade.ticket == ticket)).first()
+    info = ""
+    if trade is not None:
+        r_txt = f"{trade.r_multiple:+.2f}R" if trade.r_multiple is not None else "n/a"
+        net_txt = f"{trade.net_pnl:+.2f}" if trade.net_pnl is not None else "n/a"
+        dur = trade.duration_minutes if trade.duration_minutes is not None else 0
+        info = f" {net_txt} ({r_txt}), {trade.session}, {dur}m"
+    await send_text(chat_id, f"📚 Backfilled {args['direction'].upper()} {args['symbol']} 🎫 {ticket}.{info}")
 
 
 async def handle_text(chat_id: int, text: str, session: Session) -> None:
@@ -416,7 +536,9 @@ async def handle_text(chat_id: int, text: str, session: Session) -> None:
             return
 
     try:
-        if re.match(r"(?i)^\s*(buy|sell)\s", body):
+        if re.match(r"(?i)^\s*past\s", body):
+            await do_past(chat_id, session, parse_past(body))
+        elif re.match(r"(?i)^\s*(buy|sell)\s", body):
             await do_open(chat_id, session, parse_open(body))
         elif re.match(r"(?i)^\s*tsl\s", body):
             args = parse_tsl(body)
@@ -613,7 +735,7 @@ async def _process_update(update: dict) -> None:
         if photos:
             await handle_photo(chat_id, photos[-1]["file_id"], session)
             # A captioned command still executes (photo already routed above).
-            if text.strip() and re.match(r"(?i)^\s*(buy|sell|tsl|close|/open|/cancel)", text.strip()):
+            if text.strip() and re.match(r"(?i)^\s*(buy|sell|tsl|close|past|/open|/cancel)", text.strip()):
                 await handle_text(chat_id, text, session)
         elif text:
             # EOD review replies (Phase 3) are picked up there; ignore here

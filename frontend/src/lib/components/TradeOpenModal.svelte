@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { Plus, X } from 'lucide-svelte';
 	import { fade, scale } from 'svelte/transition';
-	import { dismissLifecycle, lifecycleBusy, submitOpen } from '$lib/stores/trades';
+	import { dismissLifecycle, lifecycleBusy, submitBackfill, submitOpen } from '$lib/stores/trades';
 	import { fmtMoney } from '$lib/utils/format';
 	import { FADE, MODAL } from '$lib/utils/transitions';
 
@@ -21,6 +21,33 @@
 	let tp = $state('');
 	let tags = $state('');
 	let formError = $state<string | null>(null);
+	let mode = $state<'live' | 'backfill'>('live');
+	// Backfill-only fields (UTC).
+	let entryAt = $state('');
+	let exitAt = $state('');
+	let exitPrice = $state('');
+	let netPnl = $state('');
+
+	function sessionForHour(h: number): string {
+		if (h < 6) return 'Asia';
+		if (h < 7) return 'Outside';
+		if (h < 13) return 'London';
+		if (h < 22) return 'New York';
+		return 'Outside';
+	}
+
+	function sessionForUTC(d: Date): string {
+		return sessionForHour(d.getUTCHours() + d.getUTCMinutes() / 60);
+	}
+
+	const liveSession = $derived(sessionForUTC(new Date()));
+	// Session preview parsed from the literal entry stamp (server resolves
+	// the same naive-UTC value, so this preview always matches).
+	const backfillSession = $derived.by(() => {
+		const m = entryAt.trim().match(/T(\d{2}):(\d{2})/);
+		if (!m) return null;
+		return sessionForHour(parseInt(m[1], 10) + parseInt(m[2], 10) / 60);
+	});
 
 	const num = (v: string): number | null => {
 		const n = parseFloat(v);
@@ -64,6 +91,10 @@
 	async function submit(e: SubmitEvent): Promise<void> {
 		e.preventDefault();
 		formError = null;
+		if (mode === 'backfill') {
+			await submitBackfillForm();
+			return;
+		}
 		if (!symbol.trim()) {
 			formError = 'Symbol is required.';
 			return;
@@ -87,6 +118,51 @@
 			entry_price: entryN,
 			initial_sl: slN,
 			tp: tpN,
+			tags: tags.split(/[\s,]+/).filter(Boolean)
+		});
+	}
+
+	const exitN = $derived(num(exitPrice));
+	const netN = $derived(netPnl.trim() === '' ? null : num(netPnl));
+
+	async function submitBackfillForm(): Promise<void> {
+		if (!symbol.trim()) {
+			formError = 'Symbol is required.';
+			return;
+		}
+		if (sizeN === null || sizeN <= 0) {
+			formError = 'Lot size must be positive.';
+			return;
+		}
+		if (entryN === null) {
+			formError = 'Entry price must be a number.';
+			return;
+		}
+		if (exitN === null) {
+			formError = 'Exit price must be a number.';
+			return;
+		}
+		if (!entryAt.trim() || !exitAt.trim()) {
+			formError = 'Entry and exit date/time are required (UTC).';
+			return;
+		}
+		const entryIso = `${entryAt.trim()}:00`;
+		const exitIso = `${exitAt.trim()}:00`;
+		if (exitIso <= entryIso) {
+			formError = 'Exit must be after entry.';
+			return;
+		}
+		await submitBackfill({
+			symbol: symbol.trim(),
+			direction,
+			size: sizeN,
+			entry_price: entryN,
+			exit_price: exitN,
+			entry_time: entryIso,
+			exit_time: exitIso,
+			initial_sl: slN,
+			tp: tpN,
+			net_pnl: netN,
 			tags: tags.split(/[\s,]+/).filter(Boolean)
 		});
 	}
@@ -123,6 +199,28 @@
 		</div>
 
 		<form class="px-5 py-4" onsubmit={submit}>
+			<div class="mb-3 grid grid-cols-2 gap-1 rounded-lg border border-slate-200 p-1 dark:border-white/10" role="group" aria-label="Entry mode">
+				<button
+					type="button"
+					onclick={() => (mode = 'live')}
+					aria-pressed={mode === 'live'}
+					class="rounded-md py-1.5 text-sm font-semibold transition-all duration-150 focus-visible:outline-emerald-500 {mode === 'live'
+						? 'bg-emerald-500 text-white shadow'
+						: 'text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'}"
+				>
+					Live Trade
+				</button>
+				<button
+					type="button"
+					onclick={() => (mode = 'backfill')}
+					aria-pressed={mode === 'backfill'}
+					class="rounded-md py-1.5 text-sm font-semibold transition-all duration-150 focus-visible:outline-emerald-500 {mode === 'backfill'
+						? 'bg-emerald-500 text-white shadow'
+						: 'text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'}"
+				>
+					Historical / Backfill
+				</button>
+			</div>
 			<div class="grid grid-cols-2 gap-3">
 				<label class={label}>
 					Symbol
@@ -169,8 +267,42 @@
 				<input type="text" bind:value={tags} placeholder="#breakout" autocomplete="off" class="{field} font-sans" />
 			</label>
 
+			{#if mode === 'backfill'}
+				<fieldset class="mt-3 rounded-xl border border-slate-200 p-3 dark:border-white/10">
+					<legend class="px-1 font-mono text-[11px] tracking-wider text-slate-400 uppercase">Historical exit (UTC)</legend>
+					<div class="grid grid-cols-2 gap-3">
+						<label class={label}>
+							Entry date/time
+							<input type="datetime-local" value={entryAt} oninput={(e) => (entryAt = e.currentTarget.value)} class={field} />
+						</label>
+						<label class={label}>
+							Exit date/time
+							<input type="datetime-local" value={exitAt} oninput={(e) => (exitAt = e.currentTarget.value)} class={field} />
+						</label>
+						<label class={label}>
+							Exit price
+							<input type="number" value={exitPrice} oninput={(e) => (exitPrice = e.currentTarget.value)} step="any" class={field} />
+						</label>
+						<label class={label}>
+							Net PnL <span class="font-normal opacity-70">(optional)</span>
+							<input type="number" value={netPnl} oninput={(e) => (netPnl = e.currentTarget.value)} step="any" class={field} />
+						</label>
+					</div>
+					<p class="mt-2 font-mono text-[11px] tabular-nums text-slate-500 dark:text-slate-400" aria-live="polite">
+						Session: <span class="font-bold">{backfillSession ?? '— pick entry time —'}</span>
+					</p>
+				</fieldset>
+			{/if}
+
 			<div class="mt-4 rounded-xl border border-slate-200 bg-slate-50/70 px-3.5 py-3 dark:border-white/[0.07] dark:bg-white/[0.02]" aria-live="polite">
-				<p class="font-mono text-[11px] tracking-wider text-slate-400 uppercase">Risk preview <span class="normal-case">(estimate)</span></p>
+				<p class="font-mono text-[11px] tracking-wider text-slate-400 uppercase">
+					{mode === 'live' ? 'Risk preview' : 'Backfill preview'} <span class="normal-case">(estimate)</span>
+				</p>
+				{#if mode === 'live'}
+					<p class="mt-1 font-mono text-[11px] tabular-nums text-slate-500 dark:text-slate-400">
+						Entry now · Session: <span class="font-bold text-slate-700 dark:text-slate-200">{liveSession}</span> (auto)
+					</p>
+				{/if}
 				{#if riskEst !== null && riskDist !== null}
 					<p class="mt-1 font-mono text-sm tabular-nums">
 						Risk <span class="font-bold text-rose-600 dark:text-rose-400">{fmtMoney(riskEst)}</span>
@@ -207,7 +339,7 @@
 					disabled={$lifecycleBusy}
 					class="h-10 rounded-lg bg-emerald-500 px-5 text-sm font-semibold text-white shadow-lift transition-all duration-150 hover:bg-emerald-600 focus-visible:outline-emerald-500 active:scale-[0.98] disabled:cursor-wait disabled:opacity-70"
 				>
-					{$lifecycleBusy ? 'Opening…' : 'Open trade'}
+					{$lifecycleBusy ? (mode === 'live' ? 'Opening…' : 'Saving…') : mode === 'live' ? 'Open trade' : 'Backfill trade'}
 				</button>
 			</div>
 		</form>
