@@ -14,6 +14,8 @@
 	let fees = $state('');
 	let mistakes = $state('');
 	let notes = $state('');
+	// Explicit exit (UTC); empty = now.
+	let exitAt = $state('');
 	let formError = $state<string | null>(null);
 
 	$effect(() => {
@@ -65,6 +67,7 @@
 			exit_price: exitN,
 			gross_pnl: grossN,
 			fees: feesN ?? 0,
+			timestamp_close: exitAt.trim() ? `${exitAt.trim()}:00` : undefined,
 			mistake_tags: mistakes.split(/[\s,]+/).filter(Boolean),
 			review_notes: notes.trim() || null
 		});
@@ -126,6 +129,10 @@
 					<label class={label}>
 						Broker fees
 						<input type="number" value={fees} oninput={(e) => (fees = e.currentTarget.value)} min="0" step="any" class={field} />
+					</label>
+					<label class={label}>
+						Exit time (UTC) <span class="font-normal opacity-70">empty = now</span>
+						<input type="datetime-local" value={exitAt} oninput={(e) => (exitAt = e.currentTarget.value)} class={field} />
 					</label>
 				</div>
 				<label class="{label} mt-3">

@@ -121,11 +121,11 @@
 				class="h-9 w-full rounded-lg border border-slate-200 bg-white pr-2 pl-7 font-mono text-sm shadow-card outline-none placeholder:text-slate-400 focus:border-emerald-500 focus-visible:outline-emerald-500 dark:border-white/[0.07] dark:bg-surface-900"
 			/>
 		</label>
-		<label class="flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 text-sm text-slate-500 shadow-card dark:border-white/[0.07] dark:bg-surface-900 dark:text-slate-400">
+		<label class="relative flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 text-sm text-slate-500 shadow-card dark:border-white/[0.07] dark:bg-surface-900 dark:text-slate-400">
 			<span class="font-mono text-[11px] tracking-wider uppercase">Sort</span>
 			<select
 				bind:value={sort}
-				class="bg-transparent text-sm text-slate-700 outline-none dark:bg-transparent dark:text-slate-200"
+				class="appearance-none bg-transparent pr-6 text-sm text-slate-700 outline-none dark:bg-transparent dark:text-slate-200 dark:[color-scheme:dark] [&>option]:bg-white [&>option]:text-slate-900 dark:[&>option]:bg-surface-900 dark:[&>option]:text-slate-200"
 				aria-label="Sort trades"
 			>
 				<option value="newest">Newest</option>
@@ -134,6 +134,7 @@
 				<option value="net-asc">Net ↑</option>
 				<option value="r-desc">R ↓</option>
 			</select>
+			<ChevronDown size={14} strokeWidth={2} aria-hidden="true" class="pointer-events-none absolute right-2 text-slate-400" />
 		</label>
 	</div>
 

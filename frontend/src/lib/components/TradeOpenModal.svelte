@@ -22,6 +22,8 @@
 	let tags = $state('');
 	let formError = $state<string | null>(null);
 	let mode = $state<'live' | 'backfill'>('live');
+	// Live explicit entry (UTC); empty = now.
+	let liveEntryAt = $state('');
 	// Backfill-only fields (UTC).
 	let entryAt = $state('');
 	let exitAt = $state('');
@@ -40,7 +42,11 @@
 		return sessionForHour(d.getUTCHours() + d.getUTCMinutes() / 60);
 	}
 
-	const liveSession = $derived(sessionForUTC(new Date()));
+	const liveSession = $derived.by(() => {
+		const m = liveEntryAt.trim().match(/T(\d{2}):(\d{2})/);
+		if (m) return sessionForHour(parseInt(m[1], 10) + parseInt(m[2], 10) / 60);
+		return sessionForUTC(new Date());
+	});
 	// Session preview parsed from the literal entry stamp (server resolves
 	// the same naive-UTC value, so this preview always matches).
 	const backfillSession = $derived.by(() => {
@@ -118,6 +124,7 @@
 			entry_price: entryN,
 			initial_sl: slN,
 			tp: tpN,
+			entry_time: liveEntryAt.trim() ? `${liveEntryAt.trim()}:00` : undefined,
 			tags: tags.split(/[\s,]+/).filter(Boolean)
 		});
 	}
@@ -267,6 +274,13 @@
 				<input type="text" bind:value={tags} placeholder="#breakout" autocomplete="off" class="{field} font-sans" />
 			</label>
 
+			{#if mode === 'live'}
+				<label class="{label} mt-3">
+					Entry time (UTC) <span class="font-normal opacity-70">empty = now</span>
+					<input type="datetime-local" value={liveEntryAt} oninput={(e) => (liveEntryAt = e.currentTarget.value)} class={field} />
+				</label>
+			{/if}
+
 			{#if mode === 'backfill'}
 				<fieldset class="mt-3 rounded-xl border border-slate-200 p-3 dark:border-white/10">
 					<legend class="px-1 font-mono text-[11px] tracking-wider text-slate-400 uppercase">Historical exit (UTC)</legend>
@@ -300,7 +314,7 @@
 				</p>
 				{#if mode === 'live'}
 					<p class="mt-1 font-mono text-[11px] tabular-nums text-slate-500 dark:text-slate-400">
-						Entry now · Session: <span class="font-bold text-slate-700 dark:text-slate-200">{liveSession}</span> (auto)
+						Entry {liveEntryAt.trim() ? `${liveEntryAt.trim().replace('T', ' ')} UTC` : 'now'} · Session: <span class="font-bold text-slate-700 dark:text-slate-200">{liveSession}</span> (auto)
 					</p>
 				{/if}
 				{#if riskEst !== null && riskDist !== null}

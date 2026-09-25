@@ -3,6 +3,8 @@
 	import uPlot from 'uplot';
 	import 'uplot/dist/uPlot.min.css';
 	import type { EquityPoint } from '$lib/api';
+	import { fmtDate, fmtMoney, pnlTone } from '$lib/utils/format';
+	import { tooltipPlugin } from '$lib/components/charts/uplotTooltip';
 
 	const { points }: { points: EquityPoint[] } = $props();
 
@@ -21,6 +23,13 @@
 				height: 260,
 				cursor: { show: true, x: true, y: true },
 				legend: { show: false },
+				plugins: [
+					tooltipPlugin((idx) => {
+						const p = points[idx];
+						if (!p) return null;
+						return { title: fmtDate(p.timestamp), value: fmtMoney(p.equity), tone: pnlTone(p.equity) };
+					})
+				],
 				axes: [
 					{
 						stroke: '#64748b',
