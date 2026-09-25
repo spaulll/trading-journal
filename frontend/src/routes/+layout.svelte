@@ -1,18 +1,19 @@
 <script lang="ts">
+	import Header from '$lib/components/Header.svelte';
+	import Nav from '$lib/components/Nav.svelte';
+	import Toasts from '$lib/components/Toasts.svelte';
 	import '../app.css';
-	import favicon from '$lib/assets/favicon.svg';
 
 	let { children } = $props();
 </script>
 
-<svelte:head>
-	<link rel="icon" href={favicon} />
-	<link rel="preconnect" href="https://fonts.googleapis.com" />
-	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous" />
-	<link
-		href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap"
-		rel="stylesheet"
-	/>
-</svelte:head>
-
-{@render children()}
+<div class="min-h-[100dvh] bg-surface-50 text-slate-900 dark:bg-surface-950 dark:text-slate-100">
+	<Nav />
+	<div class="lg:pl-60">
+		<Header />
+		<main class="mx-auto w-full max-w-7xl px-4 pt-6 pb-28 sm:px-6 lg:pb-12">
+			{@render children()}
+		</main>
+	</div>
+	<Toasts />
+</div>

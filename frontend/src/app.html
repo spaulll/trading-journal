@@ -5,6 +5,13 @@
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
 		<meta name="text-scale" content="scale" />
 		%sveltekit.head%
+		<script>
+			try {
+				if ((localStorage.getItem('tj-theme') || 'dark') !== 'dark') {
+					document.documentElement.classList.remove('dark');
+				}
+			} catch (e) {}
+		</script>
 	</head>
 	<body data-sveltekit-preload-data="hover">
 		<div style="display: contents">%sveltekit.body%</div>
