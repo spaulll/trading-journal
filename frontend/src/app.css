@@ -2,6 +2,17 @@
 @tailwind components;
 @tailwind utilities;
 
+@layer utilities {
+	/* Scrollable without a visible scrollbar (modals, zoom overlays). */
+	.no-scrollbar {
+		scrollbar-width: none;
+		-ms-overflow-style: none;
+	}
+	.no-scrollbar::-webkit-scrollbar {
+		display: none;
+	}
+}
+
 body {
 	@apply bg-surface-50 text-slate-900 dark:bg-surface-950 dark:text-slate-100 antialiased;
 	font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';

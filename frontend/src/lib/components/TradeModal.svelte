@@ -152,7 +152,7 @@
 		onclick={onBackdrop}
 		onkeydown={onBackdropKey}
 		tabindex={-1}
-		class="fixed inset-0 z-50 overflow-y-auto bg-black/60 p-4 backdrop-blur-sm sm:p-6"
+		class="no-scrollbar fixed inset-0 z-50 overflow-y-auto bg-black/60 p-4 backdrop-blur-sm sm:p-6"
 		role="dialog"
 		aria-modal="true"
 		aria-label="Trade detail"
@@ -188,7 +188,7 @@
 				</button>
 			</div>
 
-			<div class="max-h-[calc(100dvh-12rem)] overflow-y-auto px-5 py-4">
+			<div class="no-scrollbar max-h-[calc(100dvh-12rem)] overflow-y-auto px-5 py-4">
 				<!-- Metrics -->
 				<dl class="grid grid-cols-2 gap-x-4 gap-y-3 font-mono text-sm tabular-nums sm:grid-cols-4">
 					<div><dt class="text-[11px] text-slate-400 uppercase">Entry</dt><dd>{fmtNum(trade.entry_price)}</dd></div>
