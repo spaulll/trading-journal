@@ -161,7 +161,8 @@ async def send_text(
     text: str,
     reply_markup: Optional[dict] = None,
     parse_mode: Optional[str] = None,
-) -> None:
+) -> int:
+    """Send a message; returns the Telegram message_id (for reply tracking)."""
     payload: dict[str, Any] = {"chat_id": chat_id, "text": text}
     if reply_markup:
         payload["reply_markup"] = reply_markup
@@ -170,15 +171,16 @@ async def send_text(
     async with _api() as client:
         resp = await client.post("/sendMessage", json=payload)
         resp.raise_for_status()
+        return int(resp.json()["result"]["message_id"])
 
 
-async def notify(text: str, reply_markup: Optional[dict] = None) -> None:
+async def notify(text: str, reply_markup: Optional[dict] = None) -> Optional[int]:
     """Phase 3 scheduler entry point — alerts the owner chat."""
     uid = _allowed_user()
     if not uid:
         log.warning("notify skipped: TG_ALLOWED_USER_ID not set")
-        return
-    await send_text(int(uid), text, reply_markup)
+        return None
+    return await send_text(int(uid), text, reply_markup)
 
 
 def trade_actions_keyboard(trade_id: int) -> dict:

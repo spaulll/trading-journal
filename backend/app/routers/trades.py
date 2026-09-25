@@ -51,8 +51,8 @@ def to_trade_read(trade: Trade) -> TradeRead:
     )
 
 
-def _guardrail_breached(session: Session) -> bool:
-    """Phase 1 data-side guardrail check (Telegram alerts land in Phase 3)."""
+def _guardrail_status(session: Session) -> dict:
+    """Trading-day PnL + open count vs caps (naive-UTC day bounds)."""
     try:
         max_loss = float(os.getenv("MAX_DAILY_LOSS", "-250.0"))
     except ValueError:
@@ -79,8 +79,17 @@ def _guardrail_breached(session: Session) -> bool:
         if closed_at is None or closed_at < day_start:
             continue
         daily_pnl += t.net_pnl or 0.0
-    # Include the pending trade in the count for the open path.
-    return daily_pnl <= max_loss or len(todays) >= max_trades
+    return {
+        "breached": daily_pnl <= max_loss or len(todays) >= max_trades,
+        "daily_pnl": round(daily_pnl, 2),
+        "trades": len(todays),
+        "max_loss": max_loss,
+        "max_trades": max_trades,
+    }
+
+
+def _guardrail_breached(session: Session) -> bool:
+    return bool(_guardrail_status(session)["breached"])
 
 
 def _flag_breach_day(session: Session) -> None:
@@ -100,6 +109,19 @@ def _as_naive_utc(dt: Optional[datetime]) -> Optional[datetime]:
     if dt.tzinfo is not None:
         return dt.astimezone(timezone.utc).replace(tzinfo=None)
     return dt
+
+
+def _alert_guardrail(text: str) -> None:
+    """Best-effort Telegram breach alert (never fails the API call)."""
+    try:
+        import asyncio
+
+        from app.services import telegram_bot
+
+        if telegram_bot.is_configured():
+            asyncio.run(telegram_bot.notify(text))
+    except Exception:
+        pass
 
 
 def _generate_ticket(symbol: str) -> str:
@@ -137,7 +159,8 @@ def open_trade(payload: TradeOpenRequest, session: Session = Depends(get_session
     session.flush()
 
     tag_pairs = normalize_tag_list(payload.tags)
-    if _guardrail_breached(session):
+    guard = _guardrail_status(session)
+    if guard["breached"]:
         if not any(name == "discipline_breach" for name, _ in tag_pairs):
             tag_pairs.append(("discipline_breach", "mistake"))
         _flag_breach_day(session)
@@ -146,6 +169,12 @@ def open_trade(payload: TradeOpenRequest, session: Session = Depends(get_session
     session.add(trade)
     session.commit()
     session.refresh(trade)
+    if guard["breached"]:
+        _alert_guardrail(
+            f"🚨 GUARDRAIL BREACH on open {trade.ticket}: "
+            f"day PnL {guard['daily_pnl']:+.2f} (cap {guard['max_loss']:+.2f}), "
+            f"{guard['trades']} trades (cap {guard['max_trades']}). Walk away from the screen!"
+        )
     return to_trade_read(trade)
 
 
@@ -205,10 +234,17 @@ def close_trade(trade_id: int, payload: TradeCloseRequest, session: Session = De
                 existing.add(pair)
     session.add(trade)
     session.flush()
-    if _guardrail_breached(session):
+    guard = _guardrail_status(session)
+    if guard["breached"]:
         _flag_breach_day(session)
     session.commit()
     session.refresh(trade)
+    if guard["breached"]:
+        _alert_guardrail(
+            f"🚨 GUARDRAIL BREACH on close {trade.ticket}: "
+            f"day PnL {guard['daily_pnl']:+.2f} (cap {guard['max_loss']:+.2f}), "
+            f"{guard['trades']} trades (cap {guard['max_trades']}). Walk away from the screen!"
+        )
     return to_trade_read(trade)
 
 

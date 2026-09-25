@@ -15,7 +15,7 @@ from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
 
 from app.database import create_db_and_tables  # noqa: E402
 from app.routers import analytics, screenshots, trades  # noqa: E402
-from app.services import telegram_bot  # noqa: E402
+from app.services import scheduler, telegram_bot  # noqa: E402
 
 log = logging.getLogger("journal")
 
@@ -30,7 +30,11 @@ async def lifespan(app: FastAPI):  # noqa: ANN201, ARG001
         bot_task = asyncio.create_task(telegram_bot.run_polling())
     else:
         log.warning("TG_BOT_TOKEN not set — Telegram bot disabled")
+    sched = scheduler.build_scheduler()
+    sched.start()
+    log.info("scheduler started: %s", scheduler.job_summary(sched))
     yield
+    sched.shutdown(wait=False)
     if bot_task is not None:
         bot_task.cancel()
         try:
