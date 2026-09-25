@@ -1,0 +1,3 @@
+trade_id,timestamp_open,timestamp_close,direction,symbol,size,entry_price,initial_sl,tp,exit_price,gross_pnl,fees,tags
+GOLD-001,2026-09-24T10:00:00,,sell,gold,0.1,4305.97,4312.14,4292.08,,,,#fvg
+GOLD-001,2026-09-24T10:00:00,2026-09-24T14:30:00,sell,gold,0.1,4305.97,4312.14,4292.08,4300.00,59.0,2.0,"#fvg !early"
