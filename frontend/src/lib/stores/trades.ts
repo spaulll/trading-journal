@@ -3,7 +3,7 @@ import { ApiError, api, errMsg, type ScreenshotDto, type TradeDto } from '$lib/a
 import { toasts } from './toast';
 
 export const trades = writable<TradeDto[]>([]);
-export const tradesLoading = writable(false);
+export const tradesLoading = writable(true);
 export const tradesError = writable<string | null>(null);
 export const syncing = writable(false);
 export const selectedTradeId = writable<number | null>(null);
