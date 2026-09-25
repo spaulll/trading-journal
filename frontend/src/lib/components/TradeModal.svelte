@@ -1,18 +1,19 @@
 <script lang="ts">
-	import { fade, scale } from 'svelte/transition';
+	import { fade, fly } from 'svelte/transition';
 	import { ImagePlus, Trash2, X, ZoomIn } from 'lucide-svelte';
 	import { api, type ScreenshotDto } from '$lib/api';
 	import {
 		appendScreenshot,
 		closeTrade,
 		removeTrade,
+		requestClose,
 		selectedTradeId,
 		trades,
 		upsertTrade
 	} from '$lib/stores/trades';
 	import { toasts } from '$lib/stores/toast';
 	import { fmtDateTime, fmtMoney, fmtNum, fmtR, pnlTone, toneText } from '$lib/utils/format';
-	import { FADE, MODAL } from '$lib/utils/transitions';
+	import { DRAWER, FADE } from '$lib/utils/transitions';
 
 	const LABELS = ['entry', 'exit', 'setup', 'mistake'] as const;
 
@@ -152,17 +153,17 @@
 		onclick={onBackdrop}
 		onkeydown={onBackdropKey}
 		tabindex={-1}
-		class="no-scrollbar fixed inset-0 z-50 overflow-y-auto bg-surface-950/70 p-4 backdrop-blur-sm sm:p-6"
+		class="fixed inset-0 z-50 bg-surface-950/70 backdrop-blur-sm"
 		role="dialog"
 		aria-modal="true"
 		aria-label="Trade detail"
 	>
 		<div
-			transition:scale={MODAL}
-			class="mx-auto w-full max-w-3xl rounded-2xl border border-slate-200 bg-white shadow-pop dark:border-white/[0.08] dark:bg-surface-900"
+			transition:fly={DRAWER}
+			class="absolute top-0 right-0 flex h-full w-full max-w-md flex-col border-l border-slate-200 bg-white shadow-pop dark:border-white/[0.08] dark:bg-surface-900"
 		>
 			<!-- Header -->
-			<div class="flex items-center gap-2.5 border-b border-slate-200 px-5 py-4 dark:border-white/[0.07]">
+			<div class="flex shrink-0 items-center gap-2.5 border-b border-slate-200 px-5 py-4 dark:border-white/[0.07]">
 				<span class="font-mono text-base font-semibold tracking-tight uppercase">{trade.symbol ?? '—'}</span>
 				<span
 					class="rounded-md px-2 py-0.5 font-mono text-[11px] font-semibold tracking-wide uppercase {(trade.direction ?? '').toLowerCase() === 'sell'
@@ -178,17 +179,26 @@
 				>
 					{trade.status}
 				</span>
+				{#if trade.status === 'OPEN'}
+					<button
+						type="button"
+						onclick={() => requestClose(trade.id)}
+						class="ml-auto h-8 shrink-0 rounded-lg bg-rose-500 px-3 text-[13px] font-semibold text-white shadow-pop transition-all duration-150 hover:bg-rose-600 focus-visible:outline-rose-500 active:scale-[0.98]"
+					>
+						Close trade
+					</button>
+				{/if}
 				<button
 					type="button"
 					onclick={closeTrade}
 					aria-label="Close"
-					class="ml-auto grid h-8 w-8 place-items-center rounded-lg text-slate-400 transition-all hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-emerald-500 active:scale-95 dark:hover:bg-white/[0.06] dark:hover:text-slate-200"
+					class="{trade.status === 'OPEN' ? '' : 'ml-auto '}grid h-8 w-8 shrink-0 place-items-center rounded-lg text-slate-400 transition-all hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-emerald-500 active:scale-95 dark:hover:bg-white/[0.06] dark:hover:text-slate-200"
 				>
 					<X size={17} strokeWidth={1.8} aria-hidden="true" />
 				</button>
 			</div>
 
-			<div class="no-scrollbar max-h-[calc(100dvh-12rem)] overflow-y-auto px-5 py-4">
+			<div class="no-scrollbar min-h-0 flex-1 overflow-y-auto px-5 py-4">
 				<!-- Metrics -->
 				<dl class="grid grid-cols-2 gap-x-4 gap-y-3 font-mono text-sm tabular-nums sm:grid-cols-4">
 					<div><dt class="text-[11px] tracking-wider text-slate-400 uppercase">Entry</dt><dd>{fmtNum(trade.entry_price)}</dd></div>

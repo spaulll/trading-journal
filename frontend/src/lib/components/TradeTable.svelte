@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { ChevronDown, Search } from 'lucide-svelte';
 	import { slide } from 'svelte/transition';
-	import { trades, openTrade } from '$lib/stores/trades';
+	import { trades, openTrade, requestClose } from '$lib/stores/trades';
 	import { fmtDateTime, fmtMoney, fmtR, pnlTone, toneText } from '$lib/utils/format';
 	import type { TradeDto } from '$lib/api';
 
@@ -155,6 +155,7 @@
 						<th class="px-3 py-2.5 text-right">Net</th>
 						<th class="px-3 py-2.5 text-right">R</th>
 						<th class="px-3 py-2.5">Tags</th>
+						<th class="px-3 py-2.5 text-right">Action</th>
 					</tr>
 				</thead>
 				<tbody>
@@ -203,11 +204,25 @@
 									{/each}
 								</span>
 							</td>
+							<td class="px-3 py-2.5 text-right">
+								{#if t.status === 'OPEN'}
+									<button
+										type="button"
+										onclick={(e) => {
+											e.stopPropagation();
+											requestClose(t.id);
+										}}
+										class="h-7 rounded-lg bg-rose-500/10 px-2.5 font-mono text-[11px] font-bold uppercase tracking-wide text-rose-600 transition-all duration-150 hover:bg-rose-500 hover:text-white focus-visible:outline-rose-500 active:scale-95 dark:text-rose-400"
+									>
+										Close
+									</button>
+								{/if}
+							</td>
 						</tr>
 						{#if expanded.has(t.id)}
 							<tr class="border-b border-slate-100 dark:border-white/[0.05]">
 								<td></td>
-								<td colspan={6} class="px-3 pt-0 pb-3">
+								<td colspan={7} class="px-3 pt-0 pb-3">
 									<div transition:slide={{ duration: 180 }} class="text-[13px] leading-relaxed text-slate-500 dark:text-slate-400">
 										{#if t.thesis}<p><span class="font-semibold text-slate-700 dark:text-slate-300">Thesis:</span> {t.thesis}</p>{/if}
 										{#if t.review_notes}<p class="mt-1"><span class="font-semibold text-slate-700 dark:text-slate-300">Review:</span> {t.review_notes}</p>{/if}
@@ -224,15 +239,32 @@
 		<!-- Mobile cards -->
 		<div class="grid grid-cols-1 gap-2.5 md:hidden">
 			{#each filtered as t (t.id)}
-				<button
-					type="button"
+				<div
+					role="button"
+					tabindex={0}
 					onclick={() => openTrade(t.id)}
+					onkeydown={(e) => e.key === 'Enter' && openTrade(t.id)}
 					class="rounded-xl border border-slate-200 bg-white p-3.5 text-left shadow-card transition-all duration-150 focus-visible:outline-emerald-500 active:scale-[0.99] dark:border-white/[0.07] dark:bg-surface-900"
 				>
 					<div class="flex items-center justify-between gap-2">
 						<span class="font-mono text-sm font-semibold uppercase">{t.symbol ?? '—'}</span>
-						<span class="font-mono text-sm font-medium tabular-nums {toneText[pnlTone(t.net_pnl)]}">
-							{fmtMoney(t.net_pnl)}
+						<span class="flex items-center gap-2">
+							<span class="font-mono text-sm font-medium tabular-nums {toneText[pnlTone(t.net_pnl)]}">
+								{fmtMoney(t.net_pnl)}
+							</span>
+							{#if t.status === 'OPEN'}
+								<button
+									type="button"
+									onclick={(e) => {
+										e.stopPropagation();
+										requestClose(t.id);
+									}}
+									aria-label="Close trade"
+									class="h-7 rounded-lg bg-rose-500/10 px-2.5 font-mono text-[11px] font-bold uppercase tracking-wide text-rose-600 transition-all active:scale-95 dark:text-rose-400"
+								>
+									Close
+								</button>
+							{/if}
 						</span>
 					</div>
 					<div class="mt-1.5 flex items-center justify-between text-xs">
@@ -248,7 +280,7 @@
 							{/each}
 						</span>
 					{/if}
-				</button>
+				</div>
 			{/each}
 		</div>
 	{/if}

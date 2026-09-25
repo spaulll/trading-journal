@@ -11,6 +11,57 @@ export const selectedTradeId = writable<number | null>(null);
 export const openTrades = derived(trades, ($t) => $t.filter((t) => t.status === 'OPEN'));
 export const closedTrades = derived(trades, ($t) => $t.filter((t) => t.status !== 'OPEN'));
 
+/** Interactive lifecycle modal state (Phase 5). */
+export type LifecycleModal = { kind: 'open' } | { kind: 'close'; tradeId: number };
+export const lifecycleModal = writable<LifecycleModal | null>(null);
+export const lifecycleBusy = writable(false);
+
+export function requestOpen(): void {
+	lifecycleModal.set({ kind: 'open' });
+}
+
+export function requestClose(tradeId: number): void {
+	selectedTradeId.set(null);
+	lifecycleModal.set({ kind: 'close', tradeId });
+}
+
+export function dismissLifecycle(): void {
+	if (!get(lifecycleBusy)) lifecycleModal.set(null);
+}
+
+export async function submitOpen(payload: Record<string, unknown>): Promise<boolean> {
+	lifecycleBusy.set(true);
+	try {
+		const trade = await api.openTrade(payload);
+		upsertTrade(trade);
+		lifecycleModal.set(null);
+		toasts.push('success', `Opened ${(trade.direction ?? '').toUpperCase()} ${trade.symbol ?? ''} (${trade.ticket}).`);
+		return true;
+	} catch (e) {
+		toasts.push('error', `Open failed — ${errMsg(e)}`);
+		return false;
+	} finally {
+		lifecycleBusy.set(false);
+	}
+}
+
+export async function submitClose(tradeId: number, payload: Record<string, unknown>): Promise<boolean> {
+	lifecycleBusy.set(true);
+	try {
+		const trade = await api.closeTrade(tradeId, payload);
+		upsertTrade(trade);
+		lifecycleModal.set(null);
+		const net = trade.net_pnl === null ? 'n/a' : `${trade.net_pnl >= 0 ? '+' : ''}${trade.net_pnl.toFixed(2)}`;
+		toasts.push('success', `Closed ${trade.symbol ?? ''} ${net} (${trade.r_multiple === null ? 'n/a' : `${trade.r_multiple.toFixed(2)}R`}).`);
+		return true;
+	} catch (e) {
+		toasts.push('error', `Close failed — ${errMsg(e)}`);
+		return false;
+	} finally {
+		lifecycleBusy.set(false);
+	}
+}
+
 export async function loadTrades(quiet = false): Promise<void> {
 	if (!quiet) tradesLoading.set(true);
 	tradesError.set(null);
