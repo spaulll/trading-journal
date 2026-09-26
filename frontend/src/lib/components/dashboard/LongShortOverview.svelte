@@ -164,6 +164,9 @@
 	});
 
 	$effect(() => {
+		// `side` is a dep so the doughnut re-renders even if two sides ever
+		// share identical W/L/BE counts.
+		side;
 		[sel.wins, sel.losses, sel.breakeven].join(',');
 		void $theme;
 		if (canvas) render();
