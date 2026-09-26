@@ -67,15 +67,42 @@ def _session_of(t: Trade) -> str:
     return "outside"
 
 
+# Breakeven rule (shared everywhere): |net_pnl| <= BE_TOLERANCE counts as
+# breakeven, not a win/loss. Dust-level residuals (fees rounding, FX
+# conversion) must not flip the outcome donut, monthly calendar, or
+# long/short stats. Tolerance is 1 cent — exact-zero and sub-cent nets are BE.
+BE_TOLERANCE = 0.01
+
+
+def _is_win(net: float) -> bool:
+    return net > BE_TOLERANCE
+
+
+def _is_loss(net: float) -> bool:
+    return net < -BE_TOLERANCE
+
+
+def _is_be(net: float) -> bool:
+    return abs(net) <= BE_TOLERANCE
+
+
+def _sign(net: float) -> int:
+    if _is_win(net):
+        return 1
+    if _is_loss(net):
+        return -1
+    return 0
+
+
 def _win_loss_counts(nets: list[float]) -> tuple[int, int, int]:
-    wins = sum(1 for n in nets if n > 0)
-    losses = sum(1 for n in nets if n < 0)
+    wins = sum(1 for n in nets if _is_win(n))
+    losses = sum(1 for n in nets if _is_loss(n))
     return wins, losses, len(nets) - wins - losses
 
 
 def _profit_factor(nets: list[float]) -> Optional[float]:
-    gross_profit = sum(n for n in nets if n > 0)
-    gross_loss = abs(sum(n for n in nets if n < 0))
+    gross_profit = sum(n for n in nets if _is_win(n))
+    gross_loss = abs(sum(n for n in nets if _is_loss(n)))
     return round(gross_profit / gross_loss, 3) if gross_loss else None
 
 
@@ -128,8 +155,8 @@ def summary(session: Session = Depends(get_session)):
     trades = _closed_trades(session)
     nets = [t.net_pnl if t.net_pnl is not None else 0.0 for t in trades]
     total = len(trades)
-    wins = [n for n in nets if n > 0]
-    losses = [n for n in nets if n < 0]
+    wins = [n for n in nets if _is_win(n)]
+    losses = [n for n in nets if _is_loss(n)]
     net_pnl = round(sum(nets), 2)
     win_rate = round(len(wins) / total * 100, 2) if total else 0.0
     gross_profit = sum(wins)
@@ -202,7 +229,7 @@ def tag_performance(session: Session = Depends(get_session)):
             )
         ).all()
         nets = [t.net_pnl if t.net_pnl is not None else 0.0 for t in link_rows]
-        wins = sum(1 for n in nets if n > 0)
+        wins = sum(1 for n in nets if _is_win(n))
         rows.append(
             {
                 "name": tag.name,
@@ -271,7 +298,7 @@ def kpi_dashboard(session: Session = Depends(get_session)):
     for name in ("london", "new_york", "asia", "outside"):
         bucket = [t for t in trades if _session_of(t) == name]
         bnets = [t.net_pnl or 0.0 for t in bucket]
-        bwins = sum(1 for n in bnets if n > 0)
+        bwins = sum(1 for n in bnets if _is_win(n))
         bnet = round(sum(bnets), 2)
         sessions[name] = {
             "net_pnl": bnet,
@@ -332,9 +359,9 @@ def monthly_calendar(
         net = round(v["net_pnl"], 2)
         if v["trade_count"] == 0:
             outcome = "inactive"
-        elif net > 0:
+        elif _is_win(net):
             outcome = "win"
-        elif net < 0:
+        elif _is_loss(net):
             outcome = "loss"
         else:
             outcome = "be"
@@ -377,7 +404,7 @@ def monthly_calendar(
 def activity_and_streaks(session: Session = Depends(get_session)):
     trades = _closed_trades(session)
     nets = [t.net_pnl if t.net_pnl is not None else 0.0 for t in trades]
-    signs = [1 if n > 0 else (-1 if n < 0 else 0) for n in nets]
+    signs = [_sign(n) for n in nets]
     win_runs, loss_runs = _streak_runs(signs)
 
     daily: dict[str, float] = defaultdict(float)
@@ -390,7 +417,7 @@ def activity_and_streaks(session: Session = Depends(get_session)):
         daily[key] += t.net_pnl if t.net_pnl is not None else 0.0
         volume[key] += t.size or 0.0
     ordered_days = sorted(daily)
-    day_signs = [1 if daily[d] > 0 else (-1 if daily[d] < 0 else 0) for d in ordered_days]
+    day_signs = [_sign(daily[d]) for d in ordered_days]
     # Calendar-consecutive same-sign day runs (gaps and BE break the run).
     max_wdays = max_ldays = 0
     cur, cur_sign, prev = 0, 0, None
@@ -432,10 +459,10 @@ def activity_and_streaks(session: Session = Depends(get_session)):
 def _direction_stats(trades: list[Trade]) -> dict:
     nets = [t.net_pnl if t.net_pnl is not None else 0.0 for t in trades]
     wins, losses, be = _win_loss_counts(nets)
-    signs = [1 if n > 0 else (-1 if n < 0 else 0) for n in nets]
+    signs = [_sign(n) for n in nets]
     win_runs, _ = _streak_runs(signs)
-    win_nets = [n for n in nets if n > 0]
-    loss_nets = [n for n in nets if n < 0]
+    win_nets = [n for n in nets if _is_win(n)]
+    loss_nets = [n for n in nets if _is_loss(n)]
 
     def avg_dur(pred) -> Optional[float]:
         mins = []
@@ -460,8 +487,8 @@ def _direction_stats(trades: list[Trade]) -> dict:
         "avg_loss": round(sum(loss_nets) / len(loss_nets), 2) if loss_nets else 0.0,
         "best": {"ticket": best.ticket, "net_pnl": best.net_pnl} if best else None,
         "worst": {"ticket": worst.ticket, "net_pnl": worst.net_pnl} if worst else None,
-        "avg_win_duration_min": avg_dur(lambda t: (t.net_pnl or 0.0) > 0),
-        "avg_loss_duration_min": avg_dur(lambda t: (t.net_pnl or 0.0) < 0),
+        "avg_win_duration_min": avg_dur(lambda t: _is_win(t.net_pnl or 0.0)),
+        "avg_loss_duration_min": avg_dur(lambda t: _is_loss(t.net_pnl or 0.0)),
         "max_win_streak": max(win_runs, default=0),
     }
 
@@ -482,7 +509,7 @@ def radar_profiles(session: Session = Depends(get_session)):
     for i, name in enumerate(day_names):
         bucket = [t for t in trades if (_close_day(t) is not None and _close_day(t).weekday() == i)]
         nets = [t.net_pnl or 0.0 for t in bucket]
-        w = sum(1 for n in nets if n > 0)
+        w = sum(1 for n in nets if _is_win(n))
         weekday.append(
             {
                 "day": name,
@@ -497,7 +524,7 @@ def radar_profiles(session: Session = Depends(get_session)):
     for name in ("london", "new_york", "asia", "outside"):
         bucket = [t for t in trades if _session_of(t) == name]
         nets = [t.net_pnl or 0.0 for t in bucket]
-        w = sum(1 for n in nets if n > 0)
+        w = sum(1 for n in nets if _is_win(n))
         net = round(sum(nets), 2)
         sessions.append(
             {
