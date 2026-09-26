@@ -13,12 +13,16 @@
 		data,
 		yearDays,
 		onPrev,
-		onNext
+		onNext,
+		onPrevYear,
+		onNextYear
 	}: {
 		data: MonthlyCalendarDto;
 		yearDays: CalendarDay[];
 		onPrev: () => void;
 		onNext: () => void;
+		onPrevYear: () => void;
+		onNextYear: () => void;
 	} = $props();
 
 	const MONTHS = [
@@ -106,8 +110,8 @@
 
 	let donut = $state<HTMLCanvasElement | null>(null);
 	let chart: Chart | null = null;
-	let yearDonut = $state<HTMLCanvasElement | null>(null);
-	let yearChart: Chart | null = null;
+	let yearPie = $state<HTMLCanvasElement | null>(null);
+	let yearPieChart: Chart | null = null;
 
 	// Yearly outcome summary (Year tab): day-level wins/losses/BE derived from
 	// yearDays with the shared BE rule. Mirrors the monthly outcome donut so
@@ -183,12 +187,12 @@
 
 	onMount(() => {
 		renderDonut();
-		renderYearDonut();
+		renderYearPie();
 		return () => {
 			chart?.destroy();
 			chart = null;
-			yearChart?.destroy();
-			yearChart = null;
+			yearPieChart?.destroy();
+			yearPieChart = null;
 		};
 	});
 
@@ -202,18 +206,18 @@
 		[yearOutcome.wins, yearOutcome.losses, yearOutcome.breakeven].join(',');
 		void $theme;
 		tab;
-		if (yearDonut) renderYearDonut();
+		if (yearPie) renderYearPie();
 	});
 
-	function renderYearDonut(): void {
-		if (!yearDonut) return;
+	function renderYearPie(): void {
+		if (!yearPie) return;
 		const p = palette();
 		Chart.defaults.color = p.axis;
 		Chart.defaults.borderColor = p.grid;
 		Chart.defaults.font.family = 'Geist, ui-sans-serif, sans-serif';
-		yearChart?.destroy();
-		yearChart = new Chart(yearDonut, {
-			type: 'doughnut',
+		yearPieChart?.destroy();
+		yearPieChart = new Chart(yearPie, {
+			type: 'pie',
 			data: {
 				labels: ['Winning days', 'Losing days', 'Breakeven'],
 				datasets: [
@@ -221,15 +225,14 @@
 						data: [yearOutcome.wins, yearOutcome.losses, yearOutcome.breakeven],
 						backgroundColor: [p.win, p.loss, p.flat],
 						borderColor: p.panel,
-						borderWidth: 3,
-						hoverOffset: 8
+						borderWidth: 2,
+						hoverOffset: 6
 					}
 				]
 			},
 			options: {
 				responsive: true,
 				maintainAspectRatio: false,
-				cutout: '70%',
 				animation: { duration: 850, easing: 'easeOutQuart', animateRotate: true },
 				plugins: {
 					legend: {
@@ -261,8 +264,8 @@
 	onDestroy(() => {
 		chart?.destroy();
 		chart = null;
-		yearChart?.destroy();
-		yearChart = null;
+		yearPieChart?.destroy();
+		yearPieChart = null;
 	});
 
 	const navBtn =
@@ -272,11 +275,19 @@
 <section class="card p-5" aria-label="Monthly trading calendar">
 	<div class="mb-4 flex flex-wrap items-center gap-2">
 		<div class="flex items-center gap-1.5">
-			<button type="button" onclick={onPrev} aria-label="Previous month" class={navBtn}>‹</button>
-			<h2 class="display min-w-40 text-center text-lg text-fg">
-				{MONTHS[data.month - 1]} {data.year}
-			</h2>
-			<button type="button" onclick={onNext} aria-label="Next month" class={navBtn}>›</button>
+			{#if tab === 'year'}
+				<button type="button" onclick={onPrevYear} aria-label="Previous year" class={navBtn}>‹</button>
+				<h2 class="display min-w-40 text-center text-lg text-fg">
+					{data.year}
+				</h2>
+				<button type="button" onclick={onNextYear} aria-label="Next year" class={navBtn}>›</button>
+			{:else}
+				<button type="button" onclick={onPrev} aria-label="Previous month" class={navBtn}>‹</button>
+				<h2 class="display min-w-40 text-center text-lg text-fg">
+					{MONTHS[data.month - 1]} {data.year}
+				</h2>
+				<button type="button" onclick={onNext} aria-label="Next month" class={navBtn}>›</button>
+			{/if}
 		</div>
 
 		<div class="ml-auto flex flex-wrap items-center gap-2">
@@ -299,7 +310,7 @@
 				<CalendarHeatmap days={yearDays} year={data.year} />
 			</div>
 			<aside class="flex min-w-0 flex-col gap-3" aria-label="Year summary">
-				<div class="h-44"><canvas bind:this={yearDonut}></canvas></div>
+				<div class="h-36"><canvas bind:this={yearPie}></canvas></div>
 				<div class="grid grid-cols-2 gap-2">
 					<div class="rounded-xl border border-line bg-raised/50 p-3">
 						<p class="text-[11px] text-dim">Trading days</p>

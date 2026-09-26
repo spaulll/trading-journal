@@ -110,6 +110,18 @@
 		}
 	}
 
+	async function shiftYear(delta: number): Promise<void> {
+		const y = monthCursor.y + delta;
+		const m = monthCursor.m;
+		try {
+			monthData = await api.monthlyCalendar(y, m);
+			monthCursor = { y: monthData.year, m: monthData.month };
+			await loadYearDays(monthData.year);
+		} catch (e) {
+			error = errMsg(e);
+		}
+	}
+
 	onMount(() => {
 		void load();
 	});
@@ -186,6 +198,8 @@
 				yearDays={days}
 				onPrev={() => void shiftMonth(-1)}
 				onNext={() => void shiftMonth(1)}
+				onPrevYear={() => void shiftYear(-1)}
+				onNextYear={() => void shiftYear(1)}
 			/>
 		{/if}
 
