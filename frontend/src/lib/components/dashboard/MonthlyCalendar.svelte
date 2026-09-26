@@ -305,39 +305,40 @@
 	</div>
 
 	{#if tab === 'year'}
-		<div class="grid grid-cols-1 gap-5 xl:grid-cols-4">
-			<div class="min-w-0 xl:col-span-3">
-				<CalendarHeatmap days={yearDays} year={data.year} />
-			</div>
-			<aside class="flex min-w-0 flex-col gap-3" aria-label="Year summary">
-				<div class="h-36"><canvas bind:this={yearPie}></canvas></div>
-				<div class="grid grid-cols-2 gap-2">
-					<div class="rounded-xl border border-line bg-raised/50 p-3">
-						<p class="text-[11px] text-dim">Trading days</p>
-						<p class="num text-lg font-bold text-fg">{yearOutcome.days}</p>
-					</div>
-					<div class="rounded-xl border border-line bg-raised/50 p-3">
-						<p class="text-[11px] text-dim">Day win rate</p>
-						<p class="num text-lg font-bold text-fg">{yearOutcome.winRate.toFixed(1)}%</p>
-					</div>
-					<div class="rounded-xl border border-line bg-raised/50 p-3">
-						<p class="text-[11px] text-dim">Year net</p>
-						<p class="num text-lg font-bold {valueClass(yearOutcome.net, yearOutcome.days)}">{fmtMoney(yearOutcome.net)}</p>
-					</div>
-					<div class="rounded-xl border border-line bg-raised/50 p-3">
-						<p class="text-[11px] text-dim">Breakeven days</p>
-						<p class="num text-lg font-bold text-flat">{yearOutcome.breakeven}</p>
-					</div>
-					<div class="rounded-xl border border-win/25 bg-win/8 p-3">
-						<p class="text-[11px] text-dim">Winning days</p>
-						<p class="num text-lg font-bold text-win">{yearOutcome.wins}</p>
-					</div>
-					<div class="rounded-xl border border-loss/25 bg-loss/8 p-3">
-						<p class="text-[11px] text-dim">Losing days</p>
-						<p class="num text-lg font-bold text-loss">{yearOutcome.losses}</p>
-					</div>
+		<CalendarHeatmap days={yearDays} year={data.year} />
+		<div class="mt-5 grid grid-cols-1 gap-5 md:grid-cols-[240px_minmax(0,1fr)] md:items-center">
+			<figure class="mx-auto w-full max-w-60" aria-label="Yearly outcome by day">
+				<div class="h-44"><canvas bind:this={yearPie}></canvas></div>
+				<figcaption class="num mt-1 text-center text-[11px] text-dim">
+					{yearOutcome.wins}W · {yearOutcome.losses}L · {yearOutcome.breakeven}BE over {yearOutcome.days} days
+				</figcaption>
+			</figure>
+			<div class="grid min-w-0 grid-cols-2 gap-2 sm:grid-cols-3" aria-label="Year summary">
+				<div class="min-w-0 rounded-xl border border-line bg-raised/50 p-3">
+					<p class="text-[11px] text-dim">Trading days</p>
+					<p class="num mt-0.5 text-lg font-bold text-fg">{yearOutcome.days}</p>
 				</div>
-			</aside>
+				<div class="min-w-0 rounded-xl border border-line bg-raised/50 p-3">
+					<p class="text-[11px] text-dim">Day win rate</p>
+					<p class="num mt-0.5 text-lg font-bold text-fg">{yearOutcome.winRate.toFixed(1)}%</p>
+				</div>
+				<div class="min-w-0 rounded-xl border border-line bg-raised/50 p-3">
+					<p class="text-[11px] text-dim">Year net</p>
+					<p class="num mt-0.5 text-lg font-bold {valueClass(yearOutcome.net, yearOutcome.days)}">{fmtMoney(yearOutcome.net)}</p>
+				</div>
+				<div class="min-w-0 rounded-xl border border-line bg-raised/50 p-3">
+					<p class="text-[11px] text-dim">Breakeven days</p>
+					<p class="num mt-0.5 text-lg font-bold text-flat">{yearOutcome.breakeven}</p>
+				</div>
+				<div class="min-w-0 rounded-xl border border-win/25 bg-win/8 p-3">
+					<p class="text-[11px] text-dim">Winning days</p>
+					<p class="num mt-0.5 text-lg font-bold text-win">{yearOutcome.wins}</p>
+				</div>
+				<div class="min-w-0 rounded-xl border border-loss/25 bg-loss/8 p-3">
+					<p class="text-[11px] text-dim">Losing days</p>
+					<p class="num mt-0.5 text-lg font-bold text-loss">{yearOutcome.losses}</p>
+				</div>
+			</div>
 		</div>
 	{:else}
 		<div class="grid grid-cols-1 gap-5 xl:grid-cols-4">
