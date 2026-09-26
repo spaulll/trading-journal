@@ -31,6 +31,7 @@ from app.models import (
 )
 from app.services.migrate_csv import (
     compute_r_multiple,
+    estimate_gross_pnl,
     get_or_create_tag,
     normalize_tag_list,
     parse_tags,
@@ -211,12 +212,16 @@ def close_trade(trade_id: int, payload: TradeCloseRequest, session: Session = De
     fees = payload.fees if payload.fees is not None else (trade.fees or 0.0)
     if payload.gross_pnl is not None:
         gross = payload.gross_pnl
-    elif trade.entry_price is not None:
-        # Fallback: derive gross from exit vs entry when size implies FX notional.
-        # Keep None when we cannot compute honestly instead of guessing.
-        gross = trade.gross_pnl
     else:
-        gross = None
+        # Fallback when the client omits gross: price-based estimate for known
+        # symbols (FX 100k, GOLD 100, BTC 1, USDJPY converted at exit). Keeps
+        # None for unknown symbols instead of guessing — net then stays null
+        # only when no deterministic value exists.
+        gross = estimate_gross_pnl(
+            trade.direction, trade.symbol, trade.size, trade.entry_price, payload.exit_price
+        )
+        if gross is None:
+            gross = trade.gross_pnl
     net = (gross - (fees or 0.0)) if gross is not None else None
     r = compute_r_multiple(trade.direction, trade.entry_price, trade.initial_sl, payload.exit_price)
 

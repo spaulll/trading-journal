@@ -399,14 +399,26 @@ async def do_tsl(chat_id: int, session: Session, symbol: str, new_sl: float) -> 
 
 async def do_close(chat_id: int, session: Session, args: dict) -> None:
     from app.routers.trades import _flag_breach_day, _guardrail_breached
-    from app.services.migrate_csv import compute_r_multiple, get_or_create_tag, normalize_tag_list
+    from app.services.migrate_csv import (
+        compute_r_multiple,
+        estimate_gross_pnl,
+        get_or_create_tag,
+        normalize_tag_list,
+    )
 
     trade = resolve_open_trade(session, args["symbol"])
     if trade is None:
         await send_text(chat_id, f"❌ No OPEN {args['symbol'].upper()} trade to close.")
         return
     fees = args["fees"] if args["fees"] is not None else (trade.fees or 0.0)
-    gross = args["gross_pnl"] if args["gross_pnl"] is not None else trade.gross_pnl
+    if args["gross_pnl"] is not None:
+        gross = args["gross_pnl"]
+    else:
+        gross = estimate_gross_pnl(
+            trade.direction, trade.symbol, trade.size, trade.entry_price, args["exit_price"]
+        )
+        if gross is None:
+            gross = trade.gross_pnl
     net = (gross - (fees or 0.0)) if gross is not None else None
     r = compute_r_multiple(trade.direction, trade.entry_price, trade.initial_sl, args["exit_price"])
     trade.exit_price = args["exit_price"]

@@ -100,6 +100,40 @@ def compute_r_multiple(
     return (exit_price - entry) / risk
 
 
+def estimate_gross_pnl(
+    direction: Optional[str],
+    symbol: Optional[str],
+    size: Optional[float],
+    entry: Optional[float],
+    exit_price: Optional[float],
+) -> Optional[float]:
+    """Price-based gross estimate when the client omits gross_pnl.
+
+    Contract sizes (standard lots): FX majors 100k units, GOLD/XAUUSD 100oz,
+    BTC 1 coin. USDJPY converts JPY → USD at the exit price. Returns None for
+    unknown symbols or missing inputs — callers must keep None rather than
+    guess. Never used when the client supplies an explicit gross_pnl.
+    """
+    if not direction or not symbol or size is None or entry is None or exit_price is None:
+        return None
+    if size <= 0:
+        return None
+    sym = symbol.strip().upper()
+    is_buy = direction.strip().lower().startswith("buy")
+    diff = (exit_price - entry) if is_buy else (entry - exit_price)
+    if sym in ("EURUSD", "GBPUSD", "EURUSD.", "GBPUSD."):
+        return round(diff * size * 100000, 2)
+    if sym in ("USDJPY",):
+        if exit_price == 0:
+            return None
+        return round(diff * size * 100000 / exit_price, 2)
+    if sym in ("GOLD", "XAUUSD"):
+        return round(diff * size * 100, 2)
+    if sym in ("BTCUSD", "BTC", "XBTUSD"):
+        return round(diff * size, 2)
+    return None
+
+
 def get_or_create_tag(session: Session, name: str, category: str):
     from app.models import Tag
 
