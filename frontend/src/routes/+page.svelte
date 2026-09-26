@@ -16,7 +16,8 @@
 		requestOpen,
 		trades,
 		tradesError,
-		tradesLoading
+		tradesLoading,
+		tradesTotal
 	} from '$lib/stores/trades';
 	import { fmtMoney, fmtR, pnlTone, toneText } from '$lib/utils/format';
 	import { countup } from '$lib/utils/motion';
@@ -27,7 +28,8 @@
 
 	const closed = $derived($trades.filter((t) => t.status !== 'OPEN'));
 
-	/** Client-side roll-up for the masthead ribbon — no extra API call. */
+	/** Client-side roll-up over the FULL trade set (loadTrades fetches all pages).
+	 * Total count comes from the API `total`, not items.length. */
 	const stats = $derived.by(() => {
 		const wins = closed.filter((t) => (t.net_pnl ?? 0) > 0).length;
 		const losses = closed.filter((t) => (t.net_pnl ?? 0) < 0).length;
@@ -101,7 +103,7 @@
 	<PageHead
 		eyebrow="workspace"
 		title="Trades"
-		meta="{$openTrades.length} open · {$trades.length} logged · {closed.length} closed"
+		meta="{$openTrades.length} open · {$tradesTotal || $trades.length} logged · {closed.length} closed"
 	>
 		<button type="button" onclick={() => requestOpen()} class="btn btn-primary h-10 px-4 text-sm">
 			<Plus size={16} strokeWidth={2.2} aria-hidden="true" />
