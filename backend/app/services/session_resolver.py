@@ -5,10 +5,14 @@ Sessions:
   London    07:00 - 13:00 UTC
   New York  13:00 - 22:00 UTC
   Outside   anything else (06:00-07:00, 22:00-24:00 gaps included)
+
+All inputs normalize via app.services.timeutils.as_naive_utc (naive-UTC policy).
 """
 
 from datetime import datetime, timezone
 from typing import Optional, Union
+
+from app.services.timeutils import as_naive_utc
 
 ASIA = "Asia"
 LONDON = "London"
@@ -22,16 +26,14 @@ def resolve_session(entry: Optional[Union[datetime, str]]) -> str:
     """Map an entry timestamp (UTC) to its killzone session."""
     dt: Optional[datetime] = None
     if isinstance(entry, datetime):
-        dt = entry
+        dt = as_naive_utc(entry)
     elif isinstance(entry, str) and entry.strip():
         try:
-            dt = datetime.fromisoformat(entry.strip().replace("Z", "+00:00"))
+            dt = as_naive_utc(datetime.fromisoformat(entry.strip().replace("Z", "+00:00")))
         except ValueError:
             return OUTSIDE
     if dt is None:
         return OUTSIDE
-    if dt.tzinfo is not None:
-        dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
     h = dt.hour + dt.minute / 60
     if 0 <= h < 6:
         return ASIA
@@ -56,10 +58,9 @@ def duration_minutes(entry: Optional[datetime], exit: Optional[datetime]) -> Opt
     if entry is None or exit is None:
         return None
 
-    def naive(dt: datetime) -> datetime:
-        return dt.astimezone(timezone.utc).replace(tzinfo=None) if dt.tzinfo else dt
-
-    secs = (naive(exit) - naive(entry)).total_seconds()
+    o, c = as_naive_utc(entry), as_naive_utc(exit)
+    assert o is not None and c is not None
+    secs = (c - o).total_seconds()
     if secs < 0:
         return None
     return int(secs // 60)

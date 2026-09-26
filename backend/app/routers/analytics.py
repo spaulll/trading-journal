@@ -17,6 +17,7 @@ from sqlmodel import Session, select
 
 from app.database import get_session
 from app.models import Tag, Trade, TradeTagLink
+from app.services.timeutils import as_naive_utc, trade_close_day
 
 router = APIRouter(prefix="/api/analytics", tags=["analytics"])
 
@@ -43,15 +44,13 @@ SESSION_BOUNDS = {"london": (7, 13), "new_york": (13, 22), "asia": (0, 6)}
 
 
 def _as_naive(dt: Optional[datetime]) -> Optional[datetime]:
-    if dt is None:
-        return None
-    if dt.tzinfo is not None:
-        return dt.astimezone(timezone.utc).replace(tzinfo=None)
-    return dt
+    """Back-compat alias — single source is app.services.timeutils.as_naive_utc."""
+    return as_naive_utc(dt)
 
 
 def _close_day(t: Trade) -> Optional[datetime]:
-    return _as_naive(t.timestamp_close) or _as_naive(t.timestamp_open)
+    """Back-compat alias — single source is app.services.timeutils.trade_close_day."""
+    return trade_close_day(t)
 
 
 def _session_of(t: Trade) -> str:

@@ -37,12 +37,18 @@ from app.services.migrate_csv import (
     parse_tags,
 )
 from app.services.session_resolver import duration_minutes, normalize_session
+from app.services.timeutils import as_naive_utc, trade_close_day
 
 router = APIRouter(prefix="/api/trades", tags=["trades"])
 
 
 def _now() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def _as_naive_utc(dt: Optional[datetime]) -> Optional[datetime]:
+    """Back-compat alias — single source is app.services.timeutils.as_naive_utc."""
+    return as_naive_utc(dt)
 
 
 def to_trade_read(trade: Trade) -> TradeRead:
@@ -107,14 +113,6 @@ def _flag_breach_day(session: Session) -> None:
     session.add(note)
 
 
-def _as_naive_utc(dt: Optional[datetime]) -> Optional[datetime]:
-    if dt is None:
-        return None
-    if dt.tzinfo is not None:
-        return dt.astimezone(timezone.utc).replace(tzinfo=None)
-    return dt
-
-
 def _alert_guardrail(text: str) -> None:
     """Best-effort Telegram breach alert (never fails the API call)."""
     try:
@@ -145,7 +143,8 @@ def open_trade(payload: TradeOpenRequest, session: Session = Depends(get_session
     if session.exec(select(Trade).where(Trade.ticket == ticket)).first() is not None:
         raise HTTPException(status_code=409, detail=f"ticket already exists: {ticket}")
 
-    opened_at = payload.entry_time or payload.timestamp_open or _now()
+    opened_at = as_naive_utc(payload.entry_time or payload.timestamp_open or _now())
+    assert opened_at is not None
     trade = Trade(
         ticket=ticket,
         timestamp_open=opened_at,
@@ -230,7 +229,8 @@ def close_trade(trade_id: int, payload: TradeCloseRequest, session: Session = De
     trade.fees = fees or 0.0
     trade.net_pnl = net
     trade.r_multiple = r
-    closed_at = payload.timestamp_close or _now()
+    closed_at = as_naive_utc(payload.timestamp_close or _now())
+    assert closed_at is not None
     trade.timestamp_close = closed_at
     trade.exit_time = closed_at
     trade.duration_minutes = duration_minutes(
