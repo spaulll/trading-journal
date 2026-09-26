@@ -262,10 +262,12 @@ def calendar(
     target_year = year or datetime.now().year
     daily: dict[str, dict] = defaultdict(lambda: {"net_pnl": 0.0, "trade_count": 0})
     for t in _closed_trades(session):
-        ts = t.timestamp_close or t.timestamp_open
-        if ts is None or ts.year != target_year:
+        # Naive-UTC close day (same helper as monthly-calendar / streaks) so
+        # day boundaries never mix aware vs naive timestamps.
+        day = _close_day(t)
+        if day is None or day.year != target_year:
             continue
-        key = ts.date().isoformat()
+        key = day.date().isoformat()
         daily[key]["net_pnl"] += t.net_pnl if t.net_pnl is not None else 0.0
         daily[key]["trade_count"] += 1
     days = [

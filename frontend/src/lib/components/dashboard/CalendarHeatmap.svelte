@@ -48,6 +48,16 @@
 
 	const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
+	// Month labels aligned to actual week columns: show the month name at the
+	// first column where that month's 1st appears (GitHub-style), otherwise blank.
+	// Same grid-flow-col + gap-1 + w-3 columns as the day grid so labels line up.
+	const monthLabels = $derived.by(() => {
+		return weeks.map((week) => {
+			const first = week.find((c) => c.inYear && c.date?.getDate() === 1)?.date;
+			return first ? MONTHS[first.getMonth()] : '';
+		});
+	});
+
 	function cellClass(cell: Cell): string {
 		if (!cell.inYear) return 'bg-transparent';
 		if (cell.count === 0) return 'bg-raised';
@@ -68,10 +78,13 @@
 
 <div class="overflow-x-auto pb-1">
 	<div class="w-max">
-		<div class="mb-1.5 flex justify-between pl-8 font-mono text-[10px] text-dim" aria-hidden="true">
-			{#each MONTHS as month}
-				<span>{month}</span>
-			{/each}
+		<div class="mb-1.5 flex gap-1 font-mono text-[10px] text-dim" aria-hidden="true">
+			<div class="shrink-0 pr-1 leading-3"><span class="invisible block h-3">M</span></div>
+			<div class="grid grid-flow-col gap-1">
+				{#each monthLabels as label, i (i)}
+					<span class="w-3 overflow-visible whitespace-nowrap">{label}</span>
+				{/each}
+			</div>
 		</div>
 		<div class="flex gap-1">
 			<div class="grid shrink-0 grid-rows-7 gap-1 pr-1 font-mono text-[10px] leading-3 tabular-nums text-dim">
