@@ -9,7 +9,7 @@ Sessions:
 All inputs normalize via app.services.timeutils.as_naive_utc (naive-UTC policy).
 """
 
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Optional, Union
 
 from app.services.timeutils import as_naive_utc
