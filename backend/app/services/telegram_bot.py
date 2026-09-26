@@ -562,6 +562,8 @@ async def _download_telegram_file(file_path: str) -> bytes:
 
 
 async def attach_photo_to_trade(chat_id: int, session: Session, trade_id: int, file_id: str) -> None:
+    from sqlmodel import select
+
     from app.models import Screenshot
     from app.services import immich_client
 
@@ -574,17 +576,32 @@ async def attach_photo_to_trade(chat_id: int, session: Session, trade_id: int, f
         resp.raise_for_status()
         file_path = resp.json()["result"]["file_path"]
     data = await _download_telegram_file(file_path)
-    filename = file_path.rsplit("/", 1)[-1] or "chart.jpg"
-    content_type = "image/jpeg"
-    if filename.lower().endswith(".png"):
-        content_type = "image/png"
-    elif filename.lower().endswith(".webp"):
-        content_type = "image/webp"
-    asset_id = await immich_client.upload_asset(data, filename, content_type)
-    album_name = immich_client.month_album_name(trade.timestamp_open)
+    if len(data) > 15 * 1024 * 1024:
+        await send_text(chat_id, "❌ Image exceeds 15 MB limit.")
+        return
+    original = file_path.rsplit("/", 1)[-1] or "chart.jpg"
+    digest = immich_client.sha256_hex(data)
+    dup = session.exec(
+        select(Screenshot).where(Screenshot.trade_id == trade.id, Screenshot.sha256 == digest)
+    ).first()
+    if dup is not None:
+        await send_text(chat_id, "⏭️ Identical screenshot already attached to this trade.")
+        return
+    asset_id, stored, _moment = await immich_client.upload_trade_screenshot(
+        data, trade, "setup", original, "image/jpeg"
+    )
+    album_name = immich_client.month_album_name(immich_client.open_moment(trade))
     album_id = await immich_client.resolve_monthly_album(album_name)
     await immich_client.add_assets_to_album(album_id, [asset_id], album_name)
-    shot = Screenshot(trade_id=trade.id, immich_asset_id=asset_id, label="setup")
+    shot = Screenshot(
+        trade_id=trade.id,
+        immich_asset_id=asset_id,
+        label="setup",
+        original_filename=original[:255],
+        stored_filename=stored,
+        sha256=digest,
+        byte_size=len(data),
+    )
     session.add(shot)
     session.commit()
     await send_text(

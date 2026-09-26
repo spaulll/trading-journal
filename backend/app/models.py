@@ -69,6 +69,11 @@ class Screenshot(SQLModel, table=True):
     trade_id: int = Field(foreign_key="trade.id", index=True)
     immich_asset_id: str = Field(index=True)
     label: str = Field(default="setup")  # entry | exit | setup | mistake
+    # Trade-aware Immich naming + dedupe (backfilled for legacy rows).
+    original_filename: Optional[str] = None
+    stored_filename: Optional[str] = None
+    sha256: Optional[str] = Field(default=None, index=True)
+    byte_size: Optional[int] = None
     created_at: datetime = Field(default_factory=_utcnow)
 
     trade: Optional[Trade] = Relationship(back_populates="screenshots")
@@ -99,6 +104,10 @@ class ScreenshotRead(SQLModel):
     trade_id: int
     immich_asset_id: str
     label: str
+    original_filename: Optional[str] = None
+    stored_filename: Optional[str] = None
+    sha256: Optional[str] = None
+    byte_size: Optional[int] = None
     created_at: datetime
 
 

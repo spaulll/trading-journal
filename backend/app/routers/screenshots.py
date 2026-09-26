@@ -3,7 +3,7 @@
 import httpx
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import Response
-from sqlmodel import Session
+from sqlmodel import Session, select
 
 from app.database import get_session
 from app.models import Screenshot, ScreenshotRead, Trade
@@ -14,6 +14,14 @@ router = APIRouter(tags=["screenshots"])
 MAX_BYTES = 15 * 1024 * 1024
 LABELS = {"entry", "exit", "setup", "mistake"}
 THUMB_CACHE_HEADERS = {"Cache-Control": "public, max-age=86400"}
+
+
+def _is_image(data: bytes) -> bool:
+    return (
+        data.startswith(b"\x89PNG\r\n\x1a\n")
+        or data.startswith(b"\xff\xd8\xff")
+        or (data.startswith(b"RIFF") and data[8:12] == b"WEBP")
+    )
 
 
 @router.post("/api/trades/{trade_id}/screenshots", response_model=ScreenshotRead)
@@ -36,16 +44,27 @@ async def upload_screenshot(
         raise HTTPException(status_code=422, detail="Empty file")
     if len(data) > MAX_BYTES:
         raise HTTPException(status_code=413, detail="Image exceeds 15 MB limit")
+    if not _is_image(data):
+        raise HTTPException(status_code=415, detail="Unrecognized image bytes (png/jpg/webp only)")
 
+    digest = immich_client.sha256_hex(data)
+    dup = session.exec(
+        select(Screenshot).where(Screenshot.trade_id == trade.id, Screenshot.sha256 == digest)
+    ).first()
+    if dup is not None:
+        raise HTTPException(status_code=409, detail="Identical image already attached to this trade")
+
+    original = file.filename or "screenshot.png"
     try:
-        asset_id = await immich_client.upload_asset(
-            data, file.filename or "screenshot.png", file.content_type or "image/png"
+        asset_id, stored, _moment = await immich_client.upload_trade_screenshot(
+            data, trade, label, original, file.content_type or "image/png"
         )
     except (httpx.HTTPError, RuntimeError) as exc:
         raise HTTPException(status_code=502, detail=f"Immich upload failed: {exc}")
 
     try:
-        album_name = immich_client.month_album_name(trade.timestamp_open)
+        # Album stays on the entry month even for exit screenshots.
+        album_name = immich_client.month_album_name(immich_client.open_moment(trade))
         album_id = await immich_client.resolve_monthly_album(album_name)
         await immich_client.add_assets_to_album(album_id, [asset_id], album_name)
     except (httpx.HTTPError, RuntimeError) as exc:
@@ -56,7 +75,15 @@ async def upload_screenshot(
             pass
         raise HTTPException(status_code=502, detail=f"Immich album attach failed: {exc}")
 
-    shot = Screenshot(trade_id=trade.id, immich_asset_id=asset_id, label=label)
+    shot = Screenshot(
+        trade_id=trade.id,
+        immich_asset_id=asset_id,
+        label=label,
+        original_filename=original[:255],
+        stored_filename=stored,
+        sha256=digest,
+        byte_size=len(data),
+    )
     session.add(shot)
     session.commit()
     session.refresh(shot)
