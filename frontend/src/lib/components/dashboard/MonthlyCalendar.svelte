@@ -103,6 +103,28 @@
 
 	let donut = $state<HTMLCanvasElement | null>(null);
 	let chart: Chart | null = null;
+	let yearDonut = $state<HTMLCanvasElement | null>(null);
+	let yearChart: Chart | null = null;
+
+	// Yearly outcome summary (Year tab): day-level wins/losses/BE derived from
+	// yearDays with the shared BE rule (|net| <= 0.01 → BE). Mirrors the monthly
+	// outcome donut so Month ↔ Year stay consistent.
+	const BE_TOL = 0.01;
+	const yearOutcome = $derived.by(() => {
+		let wins = 0,
+			losses = 0,
+			be = 0,
+			net = 0;
+		for (const d of yearDays) {
+			if ((d.trade_count ?? 0) === 0) continue;
+			net += d.net_pnl ?? 0;
+			if ((d.net_pnl ?? 0) > BE_TOL) wins++;
+			else if ((d.net_pnl ?? 0) < -BE_TOL) losses++;
+			else be++;
+		}
+		const days = wins + losses + be;
+		return { wins, losses, breakeven: be, days, net, winRate: days ? (wins / days) * 100 : 0 };
+	});
 
 	function renderDonut(): void {
 		if (!donut) return;
@@ -159,9 +181,12 @@
 
 	onMount(() => {
 		renderDonut();
+		renderYearDonut();
 		return () => {
 			chart?.destroy();
 			chart = null;
+			yearChart?.destroy();
+			yearChart = null;
 		};
 	});
 
@@ -171,9 +196,71 @@
 		if (donut) renderDonut();
 	});
 
+	$effect(() => {
+		[yearOutcome.wins, yearOutcome.losses, yearOutcome.breakeven].join(',');
+		void $theme;
+		tab;
+		if (yearDonut) renderYearDonut();
+	});
+
+	function renderYearDonut(): void {
+		if (!yearDonut) return;
+		const p = palette();
+		Chart.defaults.color = p.axis;
+		Chart.defaults.borderColor = p.grid;
+		Chart.defaults.font.family = 'Geist, ui-sans-serif, sans-serif';
+		yearChart?.destroy();
+		yearChart = new Chart(yearDonut, {
+			type: 'doughnut',
+			data: {
+				labels: ['Winning days', 'Losing days', 'Breakeven'],
+				datasets: [
+					{
+						data: [yearOutcome.wins, yearOutcome.losses, yearOutcome.breakeven],
+						backgroundColor: [p.win, p.loss, p.flat],
+						borderColor: p.panel,
+						borderWidth: 3,
+						hoverOffset: 8
+					}
+				]
+			},
+			options: {
+				responsive: true,
+				maintainAspectRatio: false,
+				cutout: '70%',
+				animation: { duration: 850, easing: 'easeOutQuart', animateRotate: true },
+				plugins: {
+					legend: {
+						position: 'bottom',
+						labels: {
+							color: p.axis,
+							usePointStyle: true,
+							pointStyle: 'circle',
+							boxWidth: 8,
+							padding: 12,
+							font: { family: 'Geist', size: 11 }
+						}
+					},
+					tooltip: {
+						backgroundColor: p.panel,
+						titleColor: p.axis,
+						bodyColor: p.fg,
+						borderColor: p.grid,
+						borderWidth: 1,
+						padding: 10,
+						cornerRadius: 10,
+						displayColors: false
+					}
+				}
+			}
+		});
+	}
+
 	onDestroy(() => {
 		chart?.destroy();
 		chart = null;
+		yearChart?.destroy();
+		yearChart = null;
 	});
 
 	const navBtn =
@@ -205,7 +292,40 @@
 	</div>
 
 	{#if tab === 'year'}
-		<CalendarHeatmap days={yearDays} year={data.year} />
+		<div class="grid grid-cols-1 gap-5 xl:grid-cols-4">
+			<div class="min-w-0 xl:col-span-3">
+				<CalendarHeatmap days={yearDays} year={data.year} />
+			</div>
+			<aside class="flex min-w-0 flex-col gap-3" aria-label="Year summary">
+				<div class="h-44"><canvas bind:this={yearDonut}></canvas></div>
+				<div class="grid grid-cols-2 gap-2">
+					<div class="rounded-xl border border-line bg-raised/50 p-3">
+						<p class="text-[11px] text-dim">Trading days</p>
+						<p class="num text-lg font-bold text-fg">{yearOutcome.days}</p>
+					</div>
+					<div class="rounded-xl border border-line bg-raised/50 p-3">
+						<p class="text-[11px] text-dim">Day win rate</p>
+						<p class="num text-lg font-bold text-fg">{yearOutcome.winRate.toFixed(1)}%</p>
+					</div>
+					<div class="rounded-xl border border-line bg-raised/50 p-3">
+						<p class="text-[11px] text-dim">Year net</p>
+						<p class="num text-lg font-bold {valueClass(yearOutcome.net, yearOutcome.days)}">{fmtMoney(yearOutcome.net)}</p>
+					</div>
+					<div class="rounded-xl border border-line bg-raised/50 p-3">
+						<p class="text-[11px] text-dim">Breakeven days</p>
+						<p class="num text-lg font-bold text-flat">{yearOutcome.breakeven}</p>
+					</div>
+					<div class="rounded-xl border border-win/25 bg-win/8 p-3">
+						<p class="text-[11px] text-dim">Winning days</p>
+						<p class="num text-lg font-bold text-win">{yearOutcome.wins}</p>
+					</div>
+					<div class="rounded-xl border border-loss/25 bg-loss/8 p-3">
+						<p class="text-[11px] text-dim">Losing days</p>
+						<p class="num text-lg font-bold text-loss">{yearOutcome.losses}</p>
+					</div>
+				</div>
+			</aside>
+		</div>
 	{:else}
 		<div class="grid grid-cols-1 gap-5 xl:grid-cols-4">
 			<div class="min-w-0 xl:col-span-3">
