@@ -3,6 +3,8 @@ import { errMsg, type ScreenshotDto, type TradeDto, api } from '$lib/api';
 import { toasts } from './toast';
 
 export const trades = writable<TradeDto[]>([]);
+/** Full server-side count from listAllTrades — masthead uses this, not items.length. */
+export const tradesTotal = writable<number>(0);
 export const tradesLoading = writable(true);
 export const tradesError = writable<string | null>(null);
 export const syncing = writable(false);
@@ -92,7 +94,9 @@ export async function loadTrades(quiet = false): Promise<boolean> {
 		tradesError.set(null);
 	}
 	try {
-		trades.set(await api.listTrades());
+		const { items, total } = await api.listAllTrades();
+		trades.set(items);
+		tradesTotal.set(total);
 		if (quiet) tradesError.set(null);
 		return true;
 	} catch (e) {

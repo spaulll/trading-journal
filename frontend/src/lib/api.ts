@@ -220,8 +220,25 @@ export const api = {
 		const data = await req<TradeDto[] | PagedTrades>(`/api/trades${params ?? ''}`);
 		return Array.isArray(data) ? data : data.items;
 	},
+	/** Fetch every trade regardless of server pagination — loops until items.length === total. */
+	listAllTrades: async (baseParams?: string): Promise<{ items: TradeDto[]; total: number }> => {
+		let page = 1;
+		const pageSize = 500;
+		let all: TradeDto[] = [];
+		let total = 0;
+		for (let i = 0; i < 20; i++) {
+			const joiner = baseParams?.includes('?') ? '&' : '?';
+			const qs = `${baseParams ?? ''}${joiner}page=${page}&page_size=${pageSize}`;
+			const data = await req<PagedTrades>(`/api/trades${qs}`);
+			if (page === 1) total = data.total;
+			all = all.concat(data.items);
+			if (all.length >= data.total || data.items.length === 0) break;
+			page += 1;
+		}
+		return { items: all, total };
+	},
 	listTradesPaged: (params?: string) =>
-		req<PagedTrades>(`/api/trades${params ?? '?page=1&page_size=50'}`),
+		req<PagedTrades>(`/api/trades${params ?? '?page=1&page_size=500'}`),
 	getTrade: (id: number) => req<TradeDto>(`/api/trades/${id}`),
 	openTrade: (payload: Record<string, unknown>) =>
 		req<TradeDto>('/api/trades/open', json({ method: 'POST', body: JSON.stringify(payload) })),
