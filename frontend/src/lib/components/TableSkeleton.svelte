@@ -2,10 +2,10 @@
 	const { rows = 5 }: { rows?: number } = $props();
 </script>
 
-<div class="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-card dark:border-white/[0.07] dark:bg-surface-900" aria-hidden="true">
+<div class="card overflow-hidden" aria-hidden="true">
 	{#each Array(rows) as _, i}
 		<div
-			class="h-12 animate-pulse border-b border-slate-100 bg-gradient-to-r from-slate-100 via-slate-50 to-slate-100 last:border-0 dark:border-white/[0.05] dark:from-surface-900 dark:via-white/[0.04] dark:to-surface-900"
+			class="skeleton mx-4 my-3 h-9 rounded-lg last:mb-4"
 			style="animation-delay: {i * 90}ms"
 		></div>
 	{/each}

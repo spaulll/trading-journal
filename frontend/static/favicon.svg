@@ -1,6 +1,17 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
-  <rect width="32" height="32" rx="7" fill="#060709"/>
-  <rect x="1" y="1" width="30" height="30" rx="6" fill="none" stroke="#ffffff" stroke-opacity="0.08"/>
-  <path d="M9 22.5 14.5 9.5h2.6L11.6 22.5H9Z" fill="#10b981"/>
-  <path d="M17.5 22.5v-9.3h2.4v9.3h-2.4Zm0-10.8V9.5h2.4v2.2h-2.4Z" fill="#e2e8f0"/>
+  <defs>
+    <linearGradient id="tj" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#191C24"/>
+      <stop offset="1" stop-color="#0A0B0F"/>
+    </linearGradient>
+    <linearGradient id="b" x1="0" y1="1" x2="1" y2="0">
+      <stop offset="0" stop-color="#B8873A"/>
+      <stop offset="0.55" stop-color="#DCB964"/>
+      <stop offset="1" stop-color="#F5E2AC"/>
+    </linearGradient>
+  </defs>
+  <rect width="32" height="32" rx="9" fill="url(#tj)"/>
+  <rect x="0.6" y="0.6" width="30.8" height="30.8" rx="8.4" fill="none" stroke="#DCB964" stroke-opacity="0.38"/>
+  <path d="M9 19.5 13.6 14.9l3.1 2.9L23 11.2" fill="none" stroke="url(#b)" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="23" cy="11.2" r="2.2" fill="url(#b)"/>
 </svg>

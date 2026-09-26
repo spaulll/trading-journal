@@ -5,14 +5,25 @@
 	import type { EquityPoint } from '$lib/api';
 	import { fmtDate, fmtMoney, pnlTone } from '$lib/utils/format';
 	import { tooltipPlugin } from '$lib/components/charts/uplotTooltip';
+	import { palette } from '$lib/utils/palette';
+	import { theme } from '$lib/stores/theme';
 
 	const { points }: { points: EquityPoint[] } = $props();
+
+	const AXIS_FONT = '11px Geist, ui-sans-serif, sans-serif';
+
+	/** Rebuild `rgb(r g b)` (with or without alpha) at an explicit alpha. */
+	function alpha(color: string, a: number): string {
+		const inner = color.startsWith('rgb(') ? color.slice(4, -1) : color;
+		return `rgb(${inner.split('/')[0].trim()} / ${a})`;
+	}
 
 	let wrap: HTMLDivElement | null = null;
 	let plot: uPlot | null = null;
 
 	function build(): void {
 		if (!wrap || points.length === 0) return;
+		const pal = palette();
 		plot?.destroy();
 		const xs = points.map((p) => new Date(p.timestamp).getTime() / 1000);
 		const ys = points.map((p) => p.drawdown);
@@ -32,8 +43,9 @@
 				],
 				axes: [
 					{
-						stroke: '#64748b',
-						grid: { stroke: 'rgba(148,163,184,0.12)', width: 1 },
+						font: AXIS_FONT,
+						stroke: pal.axis,
+						grid: { stroke: pal.grid, width: 1 },
 						values: (_u, vals) =>
 							vals.map((v) => {
 								const d = new Date(v * 1000);
@@ -41,20 +53,21 @@
 							})
 					},
 					{
-						stroke: '#64748b',
-						grid: { stroke: 'rgba(148,163,184,0.12)', width: 1 }
+						font: AXIS_FONT,
+						stroke: pal.axis,
+						grid: { stroke: pal.grid, width: 1 }
 					}
 				],
 				series: [
 					{},
 					{
 						label: 'Drawdown',
-						stroke: '#ef4444',
+						stroke: pal.loss,
 						width: 2,
 						fill: (u, _si) => {
 							const g = u.ctx.createLinearGradient(0, 0, 0, u.bbox.height);
-							g.addColorStop(0, 'rgba(239,68,68,0)');
-							g.addColorStop(1, 'rgba(239,68,68,0.35)');
+							g.addColorStop(0, alpha(pal.loss, 0));
+							g.addColorStop(1, alpha(pal.loss, 0.35));
 							return g;
 						},
 						points: { show: false }
@@ -80,6 +93,7 @@
 	});
 
 	$effect(() => {
+		$theme;
 		points.length;
 		if (wrap) build();
 	});

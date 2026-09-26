@@ -1,8 +1,8 @@
 <script lang="ts">
 	import { ChevronDown, Search } from 'lucide-svelte';
 	import { slide } from 'svelte/transition';
-	import { trades, openTrade, requestClose } from '$lib/stores/trades';
-	import { fmtDateTime, fmtMoney, fmtR, pnlTone, toneText } from '$lib/utils/format';
+	import { openTrade, requestClose, trades } from '$lib/stores/trades';
+	import { fmtDateTime, fmtMoney, fmtR, pnlTone, toneBg, toneText } from '$lib/utils/format';
 	import type { TradeDto } from '$lib/api';
 
 	type StatusFilter = 'ALL' | 'OPEN' | 'CLOSED';
@@ -18,7 +18,8 @@
 	function onGlobalKey(e: KeyboardEvent): void {
 		const target = e.target as HTMLElement | null;
 		const typing =
-			target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT');
+			target &&
+			(target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT');
 		if (e.key === '/' && !typing) {
 			e.preventDefault();
 			searchEl?.focus();
@@ -69,63 +70,69 @@
 	}
 
 	function tagChip(name: string, category: string): string {
-		const base = 'rounded-md px-1.5 py-0.5 font-mono text-[11px] tabular-nums';
-		return category === 'mistake'
-			? `${base} bg-rose-500/10 text-rose-600 dark:text-rose-400`
-			: `${base} bg-emerald-500/10 text-emerald-600 dark:text-emerald-400`;
+		return `rounded-md px-1.5 py-0.5 font-mono text-[10.5px] ${
+			category === 'mistake' ? 'tag-mistake' : 'tag-setup'
+		}`;
 	}
 
-	function dirBadge(t: TradeDto): string {
-		return (t.direction ?? '').toLowerCase() === 'sell'
-			? 'text-rose-600 dark:text-rose-400'
-			: 'text-emerald-600 dark:text-emerald-400';
-	}
+	const th =
+		'px-3 py-2.5 text-left font-mono text-[10px] font-medium tracking-[0.16em] uppercase text-dim';
 </script>
 
 <svelte:window onkeydown={onGlobalKey} />
 
-<section aria-label="Trade history" class="mt-8">
+<section aria-label="Trade history" class="rise mt-9" style="animation-delay: 140ms">
 	<div class="mb-3 flex flex-wrap items-center gap-2">
-		<div class="flex rounded-lg border border-slate-200 bg-white p-0.5 shadow-card dark:border-white/[0.07] dark:bg-surface-900" role="tablist" aria-label="Status filter">
+		<div
+			class="flex rounded-xl border border-line bg-raised/50 p-1"
+			role="tablist"
+			aria-label="Status filter"
+		>
 			{#each (['ALL', 'OPEN', 'CLOSED'] as StatusFilter[]) as s}
 				<button
 					type="button"
 					role="tab"
 					aria-selected={status === s}
 					onclick={() => (status = s)}
-					class="rounded-md px-3 py-1.5 font-mono text-xs tabular-nums transition-all duration-150 focus-visible:outline-emerald-500 {status === s
-						? 'bg-slate-900 font-semibold text-white dark:bg-white dark:text-slate-900'
-						: 'text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'}"
+					class="chip px-3 py-1.5 font-mono text-xs tabular-nums {status === s ? 'font-semibold' : ''}"
+					data-active={status === s}
 				>
 					{s === 'ALL' ? 'All' : s === 'OPEN' ? 'Open' : 'Closed'}
 					<span class="ml-1 opacity-60 tabular-nums">{counts[s]}</span>
 				</button>
 			{/each}
 		</div>
+
 		<label class="relative ml-auto flex-1 sm:max-w-56">
-			<Search size={14} strokeWidth={1.8} aria-hidden="true" class="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-slate-400" />
+			<Search
+				size={14}
+				strokeWidth={1.8}
+				aria-hidden="true"
+				class="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-dim"
+			/>
 			<input
 				type="search"
 				bind:this={searchEl}
 				bind:value={query}
 				placeholder="Symbol or ID…  ( / )"
-				class="h-9 w-full rounded-lg border border-slate-200 bg-white pr-2 pl-8 text-sm shadow-card outline-none placeholder:text-slate-400 focus:border-emerald-500 focus-visible:outline-emerald-500 dark:border-white/[0.07] dark:bg-surface-900"
+				class="field h-9 pl-8 text-[13px]"
 			/>
 		</label>
+
 		<label class="relative flex-1 sm:max-w-44">
-			<span class="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 font-mono text-xs text-slate-400" aria-hidden="true">#</span>
-			<input
-				type="search"
-				bind:value={tagQuery}
-				placeholder="Tag…"
-				class="h-9 w-full rounded-lg border border-slate-200 bg-white pr-2 pl-7 font-mono text-sm shadow-card outline-none placeholder:text-slate-400 focus:border-emerald-500 focus-visible:outline-emerald-500 dark:border-white/[0.07] dark:bg-surface-900"
-			/>
+			<span
+				class="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 font-mono text-xs text-dim"
+				aria-hidden="true">#</span>
+			<input type="search" bind:value={tagQuery} placeholder="Tag…" class="field h-9 pl-7 font-mono text-[13px]" />
 		</label>
-		<label class="relative flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 text-sm text-slate-500 shadow-card dark:border-white/[0.07] dark:bg-surface-900 dark:text-slate-400">
-			<span class="font-mono text-[11px] tracking-wider uppercase">Sort</span>
+
+		<label
+			class="relative flex h-9 items-center gap-1.5 rounded-xl border border-line bg-raised/70 px-2.5 text-sm text-dim"
+		>
+			<span class="font-mono text-[10px] tracking-[0.16em] uppercase">Sort</span>
 			<select
 				bind:value={sort}
-				class="h-full appearance-none border-0 bg-none bg-transparent py-0 pr-6 text-sm text-slate-700 outline-none dark:bg-transparent dark:text-slate-200 dark:[color-scheme:dark] [&>option]:bg-white [&>option]:text-slate-900 dark:[&>option]:bg-surface-900 dark:[&>option]:text-slate-200"
+				class="h-full appearance-none border-0 bg-none bg-transparent py-0 pr-6 text-[13px] text-fg outline-none [color-scheme:inherit] [&>option]:bg-panel [&>option]:text-fg"
 				aria-label="Sort trades"
 			>
 				<option value="newest">Newest</option>
@@ -134,36 +141,41 @@
 				<option value="net-asc">Net ↑</option>
 				<option value="r-desc">R ↓</option>
 			</select>
-			<ChevronDown size={14} strokeWidth={2} aria-hidden="true" class="pointer-events-none absolute right-2 text-slate-400" />
+			<ChevronDown
+				size={14}
+				strokeWidth={2}
+				aria-hidden="true"
+				class="pointer-events-none absolute right-2 text-dim"
+			/>
 		</label>
 	</div>
 
 	{#if filtered.length === 0}
-		<div class="rounded-xl border border-dashed border-slate-300 bg-white/60 px-6 py-10 text-center shadow-card dark:border-white/10 dark:bg-surface-900/60">
-			<p class="text-sm font-semibold tracking-tight">No trades match these filters</p>
-			<p class="mt-1 text-sm text-slate-500 dark:text-slate-400">Try a different symbol, tag, or status.</p>
+		<div class="card border-dashed px-6 py-12 text-center">
+			<p class="display text-lg text-fg">No trades match these filters</p>
+			<p class="mt-1.5 text-sm text-mut">Try a different symbol, tag, or status.</p>
 		</div>
 	{:else}
 		<!-- Desktop table -->
-		<div class="hidden overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-card md:block dark:border-white/[0.07] dark:bg-surface-900">
-			<table class="w-full min-w-[760px] border-collapse text-sm">
+		<div class="card hidden overflow-x-auto md:block">
+			<table class="w-full min-w-[820px] border-collapse text-sm">
 				<thead>
-					<tr class="border-b border-slate-200 text-left font-mono text-[11px] tracking-wider text-slate-400 uppercase dark:border-white/[0.07] dark:text-slate-500">
-						<th class="w-8 px-3 py-2.5"></th>
-						<th class="px-3 py-2.5">Opened</th>
-						<th class="px-3 py-2.5">Symbol</th>
-						<th class="px-3 py-2.5 text-right">Entry → Exit</th>
-						<th class="px-3 py-2.5 text-right">Net</th>
-						<th class="px-3 py-2.5 text-right">R</th>
-						<th class="px-3 py-2.5">Tags</th>
-						<th class="px-3 py-2.5 text-right">Action</th>
+					<tr class="border-b border-line">
+						<th class="{th} w-8"></th>
+						<th class={th}>Opened</th>
+						<th class={th}>Symbol</th>
+						<th class="{th} text-right">Entry → Exit</th>
+						<th class="{th} text-right">Net</th>
+						<th class="{th} text-right">R</th>
+						<th class={th}>Tags</th>
+						<th class="{th} text-right">Action</th>
 					</tr>
 				</thead>
 				<tbody>
 					{#each filtered as t (t.id)}
 						<tr
 							onclick={() => openTrade(t.id)}
-							class="cursor-pointer border-b border-slate-100 transition-all duration-150 last:border-0 hover:-translate-y-px hover:bg-slate-50 focus-visible:outline-emerald-500 dark:border-white/[0.05] dark:hover:bg-white/[0.03]"
+							class="trow cursor-pointer row-line transition-colors duration-200 hover:bg-raised/50 focus-visible:outline-none"
 						>
 							<td class="px-3 py-2.5">
 								<button
@@ -171,29 +183,44 @@
 									onclick={(e) => toggleExpand(t.id, e)}
 									aria-label="Preview"
 									aria-expanded={expanded.has(t.id)}
-									class="grid h-6 w-6 place-items-center rounded text-slate-400 transition-transform duration-150 hover:text-slate-700 focus-visible:outline-emerald-500 {expanded.has(t.id)
-										? 'rotate-180'
-										: ''} dark:hover:text-slate-200"
+									class="grid h-6 w-6 place-items-center rounded-md text-dim transition-all duration-300 ease-spring hover:bg-raised hover:text-fg focus-visible:outline-none {expanded.has(
+										t.id
+									)
+										? 'rotate-180 text-accent'
+										: ''}"
 								>
 									<ChevronDown size={15} strokeWidth={1.8} aria-hidden="true" />
 								</button>
 							</td>
-							<td class="px-3 py-2.5 whitespace-nowrap text-slate-500 dark:text-slate-400">
+							<td class="px-3 py-2.5 whitespace-nowrap font-mono text-[12.5px] text-mut">
 								{fmtDateTime(t.timestamp_open)}
 							</td>
 							<td class="px-3 py-2.5">
-								<span class="font-mono font-medium uppercase">{t.symbol ?? '—'}</span>
-								<span class="ml-1.5 font-mono text-[11px] font-medium uppercase {dirBadge(t)}">
+								<span class="num text-[13px] font-semibold text-fg uppercase">{t.symbol ?? '—'}</span>
+								<span
+									class="ml-1.5 font-mono text-[10px] font-bold tracking-[0.12em] uppercase {(t.direction ?? '').toLowerCase() ===
+									'sell'
+										? 'text-loss'
+										: 'text-win'}"
+								>
 									{t.direction ?? ''}
 								</span>
 							</td>
-							<td class="px-3 py-2.5 text-right font-mono tabular-nums">
-								{t.entry_price?.toFixed(2) ?? '—'} → {t.exit_price?.toFixed(2) ?? '—'}
+							<td class="px-3 py-2.5 text-right font-mono text-[12.5px] tabular-nums text-mut">
+								<span class="text-fg">{t.entry_price?.toFixed(2) ?? '—'}</span>
+								<span class="px-1 text-dim">→</span>
+								<span class="text-fg">{t.exit_price?.toFixed(2) ?? '—'}</span>
 							</td>
-							<td class="px-3 py-2.5 text-right font-mono font-medium tabular-nums {toneText[pnlTone(t.net_pnl)]}">
-								{fmtMoney(t.net_pnl)}
+							<td class="px-3 py-2.5 text-right">
+								<span
+									class="num inline-block rounded-md px-1.5 py-0.5 text-[12.5px] font-semibold {toneBg[
+										pnlTone(t.net_pnl)
+									]} {toneText[pnlTone(t.net_pnl)]}"
+								>
+									{fmtMoney(t.net_pnl)}
+								</span>
 							</td>
-							<td class="px-3 py-2.5 text-right font-mono tabular-nums {toneText[pnlTone(t.r_multiple)]}">
+							<td class="px-3 py-2.5 text-right font-mono text-[12.5px] tabular-nums {toneText[pnlTone(t.r_multiple)]}">
 								{fmtR(t.r_multiple)}
 							</td>
 							<td class="px-3 py-2.5">
@@ -213,7 +240,7 @@
 											e.stopPropagation();
 											requestClose(t.id);
 										}}
-										class="h-7 rounded-lg bg-rose-500/10 px-2.5 font-mono text-[11px] font-bold uppercase tracking-wide text-rose-600 transition-all duration-150 hover:bg-rose-500 hover:text-white focus-visible:outline-rose-500 active:scale-95 dark:text-rose-400"
+										class="rounded-lg border border-line px-2.5 py-1 font-mono text-[10px] font-bold tracking-[0.12em] uppercase text-loss transition-all duration-200 hover:border-loss/50 hover:bg-loss/12 focus-visible:outline-none active:scale-95"
 									>
 										Close
 									</button>
@@ -221,13 +248,22 @@
 							</td>
 						</tr>
 						{#if expanded.has(t.id)}
-							<tr class="border-b border-slate-100 dark:border-white/[0.05]">
+							<tr class="row-line">
 								<td></td>
 								<td colspan={7} class="px-3 pt-0 pb-3">
-									<div transition:slide={{ duration: 180 }} class="text-[13px] leading-relaxed text-slate-500 dark:text-slate-400">
-										{#if t.thesis}<p><span class="font-semibold text-slate-700 dark:text-slate-300">Thesis:</span> {t.thesis}</p>{/if}
-										{#if t.review_notes}<p class="mt-1"><span class="font-semibold text-slate-700 dark:text-slate-300">Review:</span> {t.review_notes}</p>{/if}
-										{#if !t.thesis && !t.review_notes}<p>No notes yet — open the trade to add a thesis.</p>{/if}
+									<div
+										transition:slide={{ duration: 220 }}
+										class="border-l-2 border-accent/40 pl-3 text-[13px] leading-relaxed text-mut"
+									>
+										{#if t.thesis}
+											<p><span class="font-semibold text-fg">Thesis:</span> {t.thesis}</p>
+										{/if}
+										{#if t.review_notes}
+											<p class="mt-1"><span class="font-semibold text-fg">Review:</span> {t.review_notes}</p>
+										{/if}
+										{#if !t.thesis && !t.review_notes}
+											<p>No notes yet — open the trade to add a thesis.</p>
+										{/if}
 									</div>
 								</td>
 							</tr>
@@ -245,12 +281,20 @@
 					tabindex={0}
 					onclick={() => openTrade(t.id)}
 					onkeydown={(e) => e.key === 'Enter' && openTrade(t.id)}
-					class="rounded-xl border border-slate-200 bg-white p-3.5 text-left shadow-card transition-all duration-150 focus-visible:outline-emerald-500 active:scale-[0.99] dark:border-white/[0.07] dark:bg-surface-900"
+					class="card card-hover relative overflow-hidden p-3.5 text-left focus-visible:outline-none active:scale-[0.99]"
 				>
-					<div class="flex items-center justify-between gap-2">
-						<span class="font-mono text-sm font-semibold uppercase">{t.symbol ?? '—'}</span>
+					<span
+						class="absolute inset-y-0 left-0 w-[3px] {pnlTone(t.net_pnl) === 'loss'
+							? 'bg-loss/70'
+							: pnlTone(t.net_pnl) === 'win'
+								? 'bg-win/70'
+								: 'bg-flat/50'}"
+						aria-hidden="true"
+					></span>
+					<div class="flex items-center justify-between gap-2 pl-1.5">
+						<span class="num text-sm font-semibold text-fg uppercase">{t.symbol ?? '—'}</span>
 						<span class="flex items-center gap-2">
-							<span class="font-mono text-sm font-medium tabular-nums {toneText[pnlTone(t.net_pnl)]}">
+							<span class="num text-sm font-semibold {toneText[pnlTone(t.net_pnl)]}">
 								{fmtMoney(t.net_pnl)}
 							</span>
 							{#if t.status === 'OPEN'}
@@ -261,19 +305,19 @@
 										requestClose(t.id);
 									}}
 									aria-label="Close trade"
-									class="h-7 rounded-lg bg-rose-500/10 px-2.5 font-mono text-[11px] font-bold uppercase tracking-wide text-rose-600 transition-all active:scale-95 dark:text-rose-400"
+									class="rounded-lg border border-line px-2.5 py-1 font-mono text-[10px] font-bold tracking-[0.12em] uppercase text-loss transition-all active:scale-95"
 								>
 									Close
 								</button>
 							{/if}
 						</span>
 					</div>
-					<div class="mt-1.5 flex items-center justify-between text-xs">
-						<span class="text-slate-500 dark:text-slate-400">{fmtDateTime(t.timestamp_open)}</span>
+					<div class="mt-1.5 flex items-center justify-between pl-1.5 text-xs">
+						<span class="text-dim">{fmtDateTime(t.timestamp_open)}</span>
 						<span class="font-mono tabular-nums {toneText[pnlTone(t.r_multiple)]}">{fmtR(t.r_multiple)}</span>
 					</div>
 					{#if t.tags.length > 0}
-						<span class="mt-2 flex flex-wrap gap-1">
+						<span class="mt-2 flex flex-wrap gap-1 pl-1.5">
 							{#each t.tags as tag (tag.id)}
 								<span class={tagChip(tag.name, tag.category)}>
 									{tag.category === 'mistake' ? '!' : '#'}{tag.name}

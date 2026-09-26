@@ -3,11 +3,11 @@
 	import { Chart, registerables } from 'chart.js';
 	import type { KpiDashboard } from '$lib/api';
 	import { fmtMoney, fmtR, pnlTone, toneText } from '$lib/utils/format';
+	import { countup } from '$lib/utils/motion';
+	import { palette } from '$lib/utils/palette';
+	import { theme } from '$lib/stores/theme';
 
 	Chart.register(...registerables);
-	Chart.defaults.color = '#94a3b8';
-	Chart.defaults.borderColor = 'rgba(148,163,184,0.12)';
-	Chart.defaults.font.family = 'Inter, sans-serif';
 
 	const { kpi }: { kpi: KpiDashboard } = $props();
 
@@ -44,6 +44,10 @@
 
 	function renderGauge(): void {
 		if (!gauge) return;
+		const p = palette();
+		Chart.defaults.color = p.axis;
+		Chart.defaults.borderColor = p.grid;
+		Chart.defaults.font.family = 'Geist, ui-sans-serif, sans-serif';
 		chart?.destroy();
 		const pf = kpi.profit_factor ?? 0;
 		const filled = Math.min(GAUGE_MAX, Math.max(0, pf));
@@ -53,7 +57,7 @@
 				datasets: [
 					{
 						data: [filled, GAUGE_MAX - filled],
-						backgroundColor: [pf >= 1.5 ? '#10b981' : pf >= 1 ? '#f59e0b' : '#ef4444', 'rgba(148,163,184,0.15)'],
+						backgroundColor: [pf >= 1.5 ? p.win : pf >= 1 ? p.accent : p.loss, p.grid],
 						borderWidth: 0
 					}
 				]
@@ -63,7 +67,8 @@
 				maintainAspectRatio: false,
 				rotation: -90,
 				circumference: 180,
-				cutout: '80%',
+				cutout: '82%',
+				animation: { duration: 900, easing: 'easeOutQuart' },
 				plugins: { legend: { display: false }, tooltip: { enabled: false } }
 			}
 		});
@@ -79,6 +84,7 @@
 
 	$effect(() => {
 		void kpi.profit_factor;
+		void $theme;
 		if (gauge) renderGauge();
 	});
 
@@ -87,105 +93,142 @@
 		chart = null;
 	});
 
-	const card =
-		'rounded-xl border border-slate-200 bg-white p-4 shadow-card dark:border-white/[0.07] dark:bg-surface-900';
+	const cells = $derived([
+		{
+			label: 'Average realized R:R',
+			value: fmtR(kpi.avg_realized_rr.current),
+			raw: kpi.avg_realized_rr.current,
+			format: (v: number) => fmtR(v),
+			tone: 'text-fg'
+		},
+		{
+			label: 'Win rate',
+			value: kpi.win_rate.rate,
+			raw: kpi.win_rate.rate,
+			format: (v: number) => `${v.toFixed(1)}%`,
+			tone: 'text-fg'
+		},
+		{
+			label: 'Profit factor',
+			value: kpi.profit_factor ?? 0,
+			raw: kpi.profit_factor ?? 0,
+			format: (v: number) => (kpi.profit_factor === null ? '—' : v.toFixed(2)),
+			tone: (kpi.profit_factor ?? 0) >= 1.5 ? 'text-win' : (kpi.profit_factor ?? 0) >= 1 ? 'text-accent' : 'text-loss'
+		}
+	]);
 </script>
 
-<section class="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4" aria-label="Key performance indicators">
-	<div class={card}>
-		<p class="text-xs font-medium tracking-wide text-slate-500 dark:text-slate-400">Net P&amp;L</p>
-		<div class="mt-1 flex items-baseline justify-between gap-2">
-			<p class="font-mono text-2xl font-bold tracking-tight tabular-nums {toneText[tone]}">
-				{fmtMoney(kpi.net_pnl)}
-			</p>
+<section
+	class="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5"
+	aria-label="Key performance indicators"
+>
+	<!-- Hero: net P&L -->
+	<div class="card relative overflow-hidden p-5 sm:col-span-2 xl:col-span-2">
+		<span
+			class="pointer-events-none absolute inset-0 {up ? 'kpi-glow-win' : 'kpi-glow-loss'}"
+			aria-hidden="true"
+		></span>
+		<div class="relative flex flex-wrap items-start justify-between gap-x-3 gap-y-2">
+			<div class="min-w-0">
+				<p class="eyebrow">Net P&amp;L · 30d</p>
+				<p
+					class="display mt-2 text-[2rem] leading-none wrap-break-word tabular-nums sm:text-[2.4rem] xl:text-[2.6rem] {toneText[tone]} {tone === 'win'
+						? 'text-glow-win'
+						: tone === 'loss'
+							? 'text-glow-loss'
+							: ''}"
+					use:countup={{ value: kpi.net_pnl, format: (v) => fmtMoney(v) }}
+				>
+					{fmtMoney(kpi.net_pnl)}
+				</p>
+			</div>
 			<span
-				class="rounded-full px-2 py-0.5 font-mono text-[11px] tabular-nums {kpi.net_pnl_change_pct === null
-					? 'bg-slate-500/10 text-slate-500 dark:text-slate-400'
+				class="shrink-0 rounded-full border border-line bg-raised/70 px-2.5 py-1 font-mono text-[11px] tabular-nums {kpi.net_pnl_change_pct ===
+				null
+					? 'text-dim'
 					: (kpi.net_pnl_change_pct ?? 0) >= 0
-						? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
-						: 'bg-rose-500/10 text-rose-600 dark:text-rose-400'}"
+						? 'text-win'
+						: 'text-loss'}"
 			>
 				{deltaTxt}
 			</span>
 		</div>
+
 		{#if spark.length >= 2}
-			<svg viewBox="0 0 200 48" class="mt-2 h-12 w-full" aria-hidden="true" preserveAspectRatio="none">
+			<svg viewBox="0 0 200 48" class="relative mt-3 h-14 w-full" aria-hidden="true" preserveAspectRatio="none">
 				<defs>
 					<linearGradient id={sparkId} x1="0" y1="0" x2="0" y2="1">
-						<stop offset="0%" stop-color={up ? '#10b981' : '#ef4444'} stop-opacity="0.35" />
-						<stop offset="100%" stop-color={up ? '#10b981' : '#ef4444'} stop-opacity="0" />
+						<stop offset="0%" stop-color={up ? 'rgb(var(--c-win))' : 'rgb(var(--c-loss))'} stop-opacity="0.38" />
+						<stop offset="100%" stop-color={up ? 'rgb(var(--c-win))' : 'rgb(var(--c-loss))'} stop-opacity="0" />
 					</linearGradient>
 				</defs>
 				<polygon points="0,48 {sparkPath} 200,48" fill="url(#{sparkId})" />
 				<polyline
 					points={sparkPath}
 					fill="none"
-					stroke={up ? '#10b981' : '#ef4444'}
+					stroke={up ? 'rgb(var(--c-win))' : 'rgb(var(--c-loss))'}
 					stroke-width="2"
+					pathLength="1"
 					stroke-linejoin="round"
 					stroke-linecap="round"
-					style="filter: drop-shadow(0 0 4px {up ? 'rgba(16,185,129,0.6)' : 'rgba(239,68,68,0.6)'})"
+					style="stroke-dasharray: 1; stroke-dashoffset: 1; animation: draw 1.3s cubic-bezier(0.22, 1, 0.36, 1) 0.25s forwards;"
 				/>
 			</svg>
 		{:else}
-			<p class="mt-2 py-3 text-center text-xs text-slate-500">Not enough data for sparkline.</p>
+			<p class="mt-3 py-4 text-center text-xs text-dim">Not enough data for sparkline.</p>
 		{/if}
 	</div>
 
-	<div class={card}>
-		<p class="text-xs font-medium tracking-wide text-slate-500 dark:text-slate-400">Average Realized R:R</p>
-		<p class="mt-1 font-mono text-2xl font-bold tracking-tight tabular-nums">
-			{fmtR(kpi.avg_realized_rr.current)}
-			<span class="text-sm font-medium text-slate-500 dark:text-slate-400">/ {kpi.avg_realized_rr.target.toFixed(1)}R target</span>
-		</p>
-		<div class="mt-4 px-0.5">
-			<div class="relative h-1.5 rounded-full bg-slate-200 dark:bg-white/10">
-				<div
-					class="absolute top-1/2 h-4 w-1 -translate-y-1/2 rounded-full bg-emerald-500 shadow"
-					style="left: calc({(rrPos * 100).toFixed(1)}% - 2px)"
-					title="Current {fmtR(kpi.avg_realized_rr.current)}"
-				></div>
-				<div
-					class="absolute top-1/2 h-4 w-1 -translate-y-1/2 rounded-full bg-slate-400 dark:bg-slate-500"
-					style="left: calc({(rrTarget * 100).toFixed(1)}% - 2px)"
-					title="Target {kpi.avg_realized_rr.target.toFixed(1)}R"
-				></div>
-			</div>
-			<div class="mt-1.5 flex justify-between font-mono text-[10px] text-slate-500 tabular-nums dark:text-slate-500">
-				{#each rrMarks as m}
-					<span>{m}{m === 5 ? '+' : ''}</span>
-				{/each}
-			</div>
-			<div class="mt-1 flex items-center gap-3 text-[11px]">
-				<span class="flex items-center gap-1 text-slate-500 dark:text-slate-400">
-					<span class="inline-block h-2 w-2 rounded-full bg-emerald-500"></span> Current
-				</span>
-				<span class="flex items-center gap-1 text-slate-500 dark:text-slate-400">
-					<span class="inline-block h-2 w-2 rounded-full bg-slate-400 dark:bg-slate-500"></span> Target
-				</span>
-			</div>
-		</div>
-	</div>
-
-	<div class={card}>
-		<p class="text-xs font-medium tracking-wide text-slate-500 dark:text-slate-400">Win Rate</p>
-		<p class="mt-1 font-mono text-2xl font-bold tracking-tight tabular-nums">
-			{kpi.win_rate.rate.toFixed(1)}%
-		</p>
-		<div class="mt-3 flex items-stretch gap-1.5" aria-label="{kpi.win_rate.wins} wins, {kpi.win_rate.losses} losses, {kpi.win_rate.breakeven} breakeven">
-			<span class="flex-1 rounded-lg bg-emerald-500/15 py-2 text-center font-mono text-sm font-bold text-emerald-600 tabular-nums dark:text-emerald-400" title="Wins">W {kpi.win_rate.wins}</span>
-			<span class="flex-1 rounded-lg bg-rose-500/15 py-2 text-center font-mono text-sm font-bold text-rose-600 tabular-nums dark:text-rose-400" title="Losses">L {kpi.win_rate.losses}</span>
-			<span class="flex-1 rounded-lg bg-slate-500/15 py-2 text-center font-mono text-sm font-bold text-slate-500 tabular-nums dark:text-slate-400" title="Breakeven">BE {kpi.win_rate.breakeven}</span>
-		</div>
-	</div>
-
-	<div class={card}>
-		<p class="text-xs font-medium tracking-wide text-slate-500 dark:text-slate-400">Profit Factor</p>
-		<div class="relative mx-auto mt-1 h-28 max-w-56">
-			<canvas bind:this={gauge}></canvas>
-			<p class="pointer-events-none absolute inset-x-0 bottom-0 text-center font-mono text-2xl font-bold tabular-nums">
-				{kpi.profit_factor === null ? '—' : kpi.profit_factor.toFixed(2)}
+	{#each cells as cell (cell.label)}
+		<div class="card p-5">
+			<p class="eyebrow">{cell.label}</p>
+			<p
+				class="display mt-2 text-[2.1rem] leading-none tabular-nums {cell.tone}"
+				use:countup={{ value: cell.raw, format: cell.format }}
+			>
+				{cell.format(cell.raw)}
 			</p>
+
+			{#if cell.label === 'Average realized R:R'}
+				<div class="mt-5">
+					<div class="relative h-1.5 rounded-full bg-raised">
+						<div
+							class="absolute top-1/2 h-4 w-1 -translate-y-1/2 rounded-full bg-accent shadow-[0_0_10px_rgb(var(--c-accent)/0.8)]"
+							style="left: calc({(rrPos * 100).toFixed(1)}% - 2px)"
+							title="Current {fmtR(kpi.avg_realized_rr.current)}"
+						></div>
+						<div
+							class="absolute top-1/2 h-4 w-1 -translate-y-1/2 rounded-full bg-flat/70"
+							style="left: calc({(rrTarget * 100).toFixed(1)}% - 2px)"
+							title="Target {kpi.avg_realized_rr.target.toFixed(1)}R"
+						></div>
+					</div>
+					<div class="num mt-1.5 flex justify-between text-[10px] text-dim">
+						{#each rrMarks as m}
+							<span>{m}{m === 5 ? '+' : ''}</span>
+						{/each}
+					</div>
+					<p class="mt-2 text-[11px] text-dim">
+						target <span class="num text-mut">{kpi.avg_realized_rr.target.toFixed(1)}R</span>
+					</p>
+				</div>
+			{:else if cell.label === 'Win rate'}
+				<div
+					class="mt-4 flex items-stretch gap-1.5"
+					aria-label="{kpi.win_rate.wins} wins, {kpi.win_rate.losses} losses, {kpi.win_rate.breakeven} breakeven"
+				>
+					<span class="flex-1 rounded-lg bg-win/12 py-2 text-center font-mono text-sm font-bold text-win tabular-nums" title="Wins">W {kpi.win_rate.wins}</span>
+					<span class="flex-1 rounded-lg bg-loss/12 py-2 text-center font-mono text-sm font-bold text-loss tabular-nums" title="Losses">L {kpi.win_rate.losses}</span>
+					<span class="flex-1 rounded-lg bg-flat/12 py-2 text-center font-mono text-sm font-bold text-dim tabular-nums" title="Breakeven">BE {kpi.win_rate.breakeven}</span>
+				</div>
+			{:else}
+				<div class="relative mx-auto mt-2 h-24 w-full max-w-52">
+					<canvas bind:this={gauge}></canvas>
+					<p class="pointer-events-none absolute inset-x-0 bottom-0 text-center text-[11px] tracking-[0.16em] text-dim uppercase">
+						scale 0–5
+					</p>
+				</div>
+			{/if}
 		</div>
-	</div>
+	{/each}
 </section>

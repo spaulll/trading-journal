@@ -3,11 +3,10 @@
 	import { Chart, registerables } from 'chart.js';
 	import type { ActivityStreaks, DirectionStats } from '$lib/api';
 	import { fmtMoney } from '$lib/utils/format';
+	import { palette } from '$lib/utils/palette';
+	import { theme } from '$lib/stores/theme';
 
 	Chart.register(...registerables);
-	Chart.defaults.color = '#94a3b8';
-	Chart.defaults.borderColor = 'rgba(148,163,184,0.12)';
-	Chart.defaults.font.family = 'Inter, sans-serif';
 
 	const {
 		longShort,
@@ -57,35 +56,35 @@
 	}
 
 	const winRows = $derived([
-		{ label: 'Total Winners', value: `${sel.wins}` },
-		{ label: 'Best Win', value: sel.best ? `${sel.best.ticket} · ${fmtMoney(sel.best.net_pnl)}` : '—' },
-		{ label: 'Average Win', value: fmtMoney(sel.avg_win) },
-		{ label: 'Avg Win Duration', value: fmtDur(sel.avg_win_duration_min) },
-		{ label: 'Max Win Streak', value: `${sel.max_win_streak}` }
+		{ label: 'Total winners', value: `${sel.wins}` },
+		{ label: 'Best win', value: sel.best ? `${sel.best.ticket} · ${fmtMoney(sel.best.net_pnl)}` : '—' },
+		{ label: 'Average win', value: fmtMoney(sel.avg_win) },
+		{ label: 'Avg win duration', value: fmtDur(sel.avg_win_duration_min) },
+		{ label: 'Max win streak', value: `${sel.max_win_streak}` }
 	]);
 	const lossRows = $derived([
-		{ label: 'Total Losers', value: `${sel.losses}` },
-		{ label: 'Worst Loss', value: sel.worst ? `${sel.worst.ticket} · ${fmtMoney(sel.worst.net_pnl)}` : '—' },
-		{ label: 'Average Loss', value: fmtMoney(sel.avg_loss) },
-		{ label: 'Avg Loss Duration', value: fmtDur(sel.avg_loss_duration_min) },
-		{ label: 'Max Loss Streak', value: `${activity.max_loss_streak}` }
+		{ label: 'Total losers', value: `${sel.losses}` },
+		{ label: 'Worst loss', value: sel.worst ? `${sel.worst.ticket} · ${fmtMoney(sel.worst.net_pnl)}` : '—' },
+		{ label: 'Average loss', value: fmtMoney(sel.avg_loss) },
+		{ label: 'Avg loss duration', value: fmtDur(sel.avg_loss_duration_min) },
+		{ label: 'Max loss streak', value: `${activity.max_loss_streak}` }
 	]);
 
 	const overview = $derived([
-		{ label: 'Average Win', value: fmtMoney(sel.avg_win), tone: 'text-accent-win' },
-		{ label: 'Average Loss', value: fmtMoney(sel.avg_loss), tone: 'text-accent-loss' },
+		{ label: 'Average win', value: fmtMoney(sel.avg_win), tone: 'text-win' },
+		{ label: 'Average loss', value: fmtMoney(sel.avg_loss), tone: 'text-loss' },
 		{
-			label: 'Best Trade',
+			label: 'Best trade',
 			value: activity.best_trade ? `${activity.best_trade.ticket} · ${fmtMoney(activity.best_trade.net_pnl)}` : '—',
-			tone: 'text-accent-win'
+			tone: 'text-win'
 		},
 		{
-			label: 'Worst Trade',
+			label: 'Worst trade',
 			value: activity.worst_trade ? `${activity.worst_trade.ticket} · ${fmtMoney(activity.worst_trade.net_pnl)}` : '—',
-			tone: 'text-accent-loss'
+			tone: 'text-loss'
 		},
-		{ label: 'Max Win Streak', value: `${activity.max_win_streak}` },
-		{ label: 'Max Loss Streak', value: `${activity.max_loss_streak}` }
+		{ label: 'Max win streak', value: `${activity.max_win_streak}`, tone: 'text-fg' },
+		{ label: 'Max loss streak', value: `${activity.max_loss_streak}`, tone: 'text-fg' }
 	]);
 
 	let canvas: HTMLCanvasElement | null = null;
@@ -93,6 +92,10 @@
 
 	function render(): void {
 		if (!canvas) return;
+		const p = palette();
+		Chart.defaults.color = p.axis;
+		Chart.defaults.borderColor = p.grid;
+		Chart.defaults.font.family = 'Geist, ui-sans-serif, sans-serif';
 		chart?.destroy();
 		chart = new Chart(canvas, {
 			type: 'doughnut',
@@ -101,17 +104,41 @@
 				datasets: [
 					{
 						data: [sel.wins, sel.losses, sel.breakeven],
-						backgroundColor: ['#10b981', '#ef4444', '#64748b'],
-						borderWidth: 0,
-						hoverOffset: 6
+						backgroundColor: [p.win, p.loss, p.flat],
+						borderColor: p.panel,
+						borderWidth: 3,
+						hoverOffset: 8
 					}
 				]
 			},
 			options: {
 				responsive: true,
 				maintainAspectRatio: false,
-				cutout: '68%',
-				plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, padding: 12 } } }
+				cutout: '70%',
+				animation: { duration: 850, easing: 'easeOutQuart', animateRotate: true },
+				plugins: {
+					legend: {
+						position: 'bottom',
+						labels: {
+							color: p.axis,
+							usePointStyle: true,
+							pointStyle: 'circle',
+							boxWidth: 8,
+							padding: 14,
+							font: { family: 'Geist', size: 11 }
+						}
+					},
+					tooltip: {
+						backgroundColor: p.panel,
+						titleColor: p.axis,
+						bodyColor: p.fg,
+						borderColor: p.grid,
+						borderWidth: 1,
+						padding: 10,
+						cornerRadius: 10,
+						displayColors: false
+					}
+				}
 			}
 		});
 	}
@@ -126,6 +153,7 @@
 
 	$effect(() => {
 		[sel.wins, sel.losses, sel.breakeven].join(',');
+		void $theme;
 		if (canvas) render();
 	});
 
@@ -134,60 +162,63 @@
 		chart = null;
 	});
 
-	const card =
-		'rounded-xl border border-slate-200 bg-white p-4 shadow-card dark:border-white/[0.07] dark:bg-surface-900';
-	const pill = (active: boolean): string =>
-		`rounded-lg px-4 py-1.5 text-sm font-semibold transition-all duration-150 focus-visible:outline-emerald-500 active:scale-95 ${active ? 'bg-emerald-500 text-white shadow-lift' : 'text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'}`;
 	const row =
-		'flex items-baseline justify-between gap-3 border-b border-zinc-200/70 py-1.5 font-mono text-[13px] tabular-nums last:border-0 dark:border-zinc-800/80';
+		'flex items-baseline justify-between gap-3 border-b border-line py-1.5 last:border-0';
 </script>
 
-<section class={card} aria-label="Long short analysis">
-	<div class="mb-3 flex flex-wrap items-center gap-2">
-		<h2 class="text-[13px] font-semibold tracking-tight">Long / Short Analysis</h2>
-		<div class="ml-auto flex rounded-xl border border-slate-200 p-1 dark:border-white/10" role="group" aria-label="Direction filter">
-			<button type="button" class={pill(side === 'all')} onclick={() => (side = 'all')}>All</button>
-			<button type="button" class={pill(side === 'long')} onclick={() => (side = 'long')}>Long</button>
-			<button type="button" class={pill(side === 'short')} onclick={() => (side = 'short')}>Short</button>
+<section class="card p-5" aria-label="Long short analysis">
+	<div class="mb-4 flex flex-wrap items-center gap-2">
+		<h2 class="text-[13.5px] font-semibold tracking-[-0.01em] text-fg">Long / short analysis</h2>
+		<div class="ml-auto flex rounded-xl border border-line bg-raised/50 p-1" role="group" aria-label="Direction filter">
+			{#each (['all', 'long', 'short'] as const) as s}
+				<button
+					type="button"
+					class="chip px-4 py-1.5 text-[13px] font-semibold"
+					data-active={side === s}
+					onclick={() => (side = s)}
+				>
+					{s === 'all' ? 'All' : s === 'long' ? 'Long' : 'Short'}
+				</button>
+			{/each}
 		</div>
 	</div>
 
-	<div class="grid grid-cols-1 gap-4 md:grid-cols-3">
-		<div class="h-64"><canvas bind:this={canvas}></canvas></div>
-		<div>
-			<h3 class="mb-1 text-xs font-semibold tracking-wide text-emerald-600 uppercase dark:text-emerald-400">Win Statistics</h3>
+	<div class="grid grid-cols-1 gap-5 md:grid-cols-3">
+		<div class="h-60 min-w-0"><canvas bind:this={canvas}></canvas></div>
+		<div class="min-w-0">
+			<h3 class="eyebrow mb-1 text-win">Win statistics</h3>
 			<dl>
 				{#each winRows as r}
 					<div class={row}>
-						<dt class="font-sans text-xs text-slate-500 dark:text-slate-400">{r.label}</dt>
-						<dd class="font-semibold">{r.value}</dd>
+						<dt class="text-xs text-mut">{r.label}</dt>
+						<dd class="num text-[13px] font-semibold text-fg">{r.value}</dd>
 					</div>
 				{/each}
 			</dl>
 		</div>
-		<div>
-			<h3 class="mb-1 text-xs font-semibold tracking-wide text-rose-600 uppercase dark:text-rose-400">Loss Statistics</h3>
+		<div class="min-w-0">
+			<h3 class="eyebrow mb-1 text-loss">Loss statistics</h3>
 			<dl>
 				{#each lossRows as r}
 					<div class={row}>
-						<dt class="font-sans text-xs text-slate-500 dark:text-slate-400">{r.label}</dt>
-						<dd class="font-semibold">{r.value}</dd>
+						<dt class="text-xs text-mut">{r.label}</dt>
+						<dd class="num text-[13px] font-semibold text-fg">{r.value}</dd>
 					</div>
 				{/each}
 			</dl>
 		</div>
 	</div>
 
-	<h3 class="mt-4 mb-2 text-[13px] font-semibold tracking-tight">Performance Overview</h3>
+	<h3 class="eyebrow mt-5 mb-2">Performance overview</h3>
 	<div class="grid grid-cols-2 gap-2 sm:grid-cols-3">
 		{#each overview as o}
-			<div class="rounded-lg border border-slate-200 p-2.5 dark:border-white/[0.07] dark:bg-white/[0.02]">
-				<p class="text-[11px] text-slate-500 dark:text-slate-400">{o.label}</p>
-				<p class="font-mono text-sm font-bold tabular-nums {o.tone ?? ''}">{o.value}</p>
+			<div class="rounded-xl border border-line bg-raised/50 p-3">
+				<p class="text-[11px] text-dim">{o.label}</p>
+				<p class="num mt-0.5 text-sm leading-tight font-bold wrap-break-word {o.tone}">{o.value}</p>
 			</div>
 		{/each}
 	</div>
-	<p class="mt-2 font-mono text-[11px] text-slate-500 tabular-nums dark:text-slate-500">
+	<p class="num mt-3 text-[11.5px] text-dim">
 		{sel.trades} trades · {sel.win_rate.toFixed(1)}% win rate
 	</p>
 </section>

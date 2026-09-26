@@ -11,26 +11,21 @@
 </svelte:head>
 
 <div
-	class="flex flex-col items-center gap-2 rounded-xl border border-dashed border-slate-300 bg-white/60 px-6 py-12 text-center shadow-card dark:border-white/10 dark:bg-surface-900/60"
+	class="rise mx-auto flex max-w-md flex-col items-center gap-3 rounded-2xl border border-line bg-panel px-6 py-14 text-center shadow-card"
 >
 	<span
-		class="grid h-11 w-11 place-items-center rounded-xl bg-emerald-500/10 font-mono text-sm font-bold text-emerald-600 dark:text-emerald-400"
+		class="display grid h-14 w-14 place-items-center rounded-2xl border border-accent/30 bg-accent/10 text-xl text-accent"
 		aria-hidden="true"
 	>
 		{status}
 	</span>
-	<p class="text-sm font-semibold tracking-tight text-balance">
+	<p class="display mt-1 text-2xl text-fg">
 		{is404 ? 'Page not found' : 'Something went wrong'}
 	</p>
-	<p class="max-w-sm text-sm leading-relaxed text-slate-500 dark:text-slate-400">
+	<p class="max-w-sm text-sm leading-relaxed text-mut">
 		{is404
 			? 'This view does not exist. Check the URL or head back to your trades.'
 			: 'The app hit an unexpected error. Go back and try again.'}
 	</p>
-	<a
-		href="/"
-		class="mt-2 inline-flex h-9 items-center rounded-lg bg-emerald-500 px-4 text-sm font-semibold text-white shadow-lift transition-all duration-150 hover:bg-emerald-600 focus-visible:outline-emerald-500 active:scale-[0.98]"
-	>
-		Back to trades
-	</a>
+	<a href="/" class="btn-primary mt-3 h-10 px-5 text-sm">Back to trades</a>
 </div>

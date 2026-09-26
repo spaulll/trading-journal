@@ -7,9 +7,9 @@ export interface TipContent {
 }
 
 const TONE_TEXT: Record<TipContent['tone'], string> = {
-	win: 'text-emerald-400',
-	loss: 'text-rose-400',
-	be: 'text-slate-300'
+	win: 'text-win',
+	loss: 'text-loss',
+	be: 'text-dim'
 };
 
 /** Floating value tooltip that follows the uPlot cursor on hover. */
@@ -22,7 +22,7 @@ export function tooltipPlugin(format: (idx: number) => TipContent | null): uPlot
 				u.root.style.position = 'relative';
 				tip = document.createElement('div');
 				tip.className =
-					'pointer-events-none absolute z-10 hidden rounded-lg border border-slate-200 bg-white/95 px-2.5 py-1.5 text-xs shadow-pop backdrop-blur-sm dark:border-white/10 dark:bg-surface-900/95';
+					'pointer-events-none absolute z-10 hidden rounded-xl border border-line bg-panel/95 px-2.5 py-1.5 shadow-pop backdrop-blur-sm';
 				tip.style.transform = 'translate(-50%, -115%)';
 				tip.style.whiteSpace = 'nowrap';
 				u.root.appendChild(tip);
@@ -40,7 +40,7 @@ export function tooltipPlugin(format: (idx: number) => TipContent | null): uPlot
 					return;
 				}
 				tip.innerHTML =
-					`<div class="font-mono text-[10px] tracking-wide text-slate-500 dark:text-slate-400">${content.title}</div>` +
+					`<div class="font-mono text-[10px] tracking-wide text-dim">${content.title}</div>` +
 					`<div class="font-mono text-sm font-bold tabular-nums ${TONE_TEXT[content.tone]}">${content.value}</div>`;
 				const x = (u.bbox.left ?? 0) + (u.cursor.left ?? 0);
 				const y = (u.bbox.top ?? 0) + (u.cursor.top ?? 0);

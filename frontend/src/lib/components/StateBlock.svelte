@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { Inbox, AlertTriangle } from 'lucide-svelte';
+	import { AlertTriangle, Inbox } from 'lucide-svelte';
 
 	const {
 		kind = 'empty',
@@ -19,24 +19,20 @@
 </script>
 
 <div
-	class="flex flex-col items-center gap-2 rounded-xl border border-dashed border-slate-300 bg-white/60 px-6 py-12 text-center shadow-card dark:border-white/10 dark:bg-surface-900/60"
+	class="card fade-in flex flex-col items-center gap-2.5 border-dashed px-6 py-14 text-center"
 >
 	<span
-		class="grid h-11 w-11 place-items-center rounded-xl {kind === 'error'
-			? 'bg-rose-500/10 text-rose-500'
-			: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'}"
+		class="grid h-12 w-12 place-items-center rounded-2xl {kind === 'error'
+			? 'bg-loss/12 text-loss'
+			: 'bg-accent/12 text-accent'}"
 		aria-hidden="true"
 	>
-		<Icon size={20} strokeWidth={1.8} />
+		<Icon size={21} strokeWidth={1.7} />
 	</span>
-	<p class="text-sm font-semibold tracking-tight text-balance">{title}</p>
-	<p class="max-w-sm text-sm leading-relaxed text-slate-500 dark:text-slate-400">{body}</p>
+	<p class="display text-xl text-fg text-balance">{title}</p>
+	<p class="max-w-sm text-sm leading-relaxed text-mut">{body}</p>
 	{#if actionLabel && onAction}
-		<button
-			type="button"
-			onclick={onAction}
-			class="mt-2 h-9 rounded-lg bg-emerald-500 px-4 text-sm font-semibold text-white shadow-lift transition-all duration-150 hover:bg-emerald-600 focus-visible:outline-emerald-500 active:scale-[0.98]"
-		>
+		<button type="button" onclick={onAction} class="btn btn-primary mt-2 h-10 px-5 text-sm">
 			{actionLabel}
 		</button>
 	{/if}

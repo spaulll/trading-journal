@@ -3,6 +3,7 @@
 	import { fade } from 'svelte/transition';
 	import EquityChart from '$lib/components/charts/EquityChart.svelte';
 	import OutcomeDonut from '$lib/components/charts/OutcomeDonut.svelte';
+	import RDistributionChart from '$lib/components/charts/RDistributionChart.svelte';
 	import TagPerformanceBar from '$lib/components/charts/TagPerformanceBar.svelte';
 	import UnderwaterChart from '$lib/components/charts/UnderwaterChart.svelte';
 	import KpiStrip from '$lib/components/dashboard/KpiStrip.svelte';
@@ -11,6 +12,7 @@
 	import RadarAnalytics from '$lib/components/dashboard/RadarAnalytics.svelte';
 	import SessionGrid from '$lib/components/dashboard/SessionGrid.svelte';
 	import StatPanels from '$lib/components/dashboard/StatPanels.svelte';
+	import PageHead from '$lib/components/PageHead.svelte';
 	import StateBlock from '$lib/components/StateBlock.svelte';
 	import {
 		api,
@@ -22,6 +24,7 @@
 		type KpiDashboard,
 		type MonthlyCalendarDto,
 		type RadarProfiles,
+		type RBucket,
 		type SummaryDto,
 		type TagPerf
 	} from '$lib/api';
@@ -33,6 +36,7 @@
 	let tags = $state<TagPerf[]>([]);
 	let days = $state<CalendarDay[]>([]);
 	let year = $state(new Date().getFullYear());
+	let rBuckets = $state<RBucket[]>([]);
 	// PLAN-v2 Phase 4 widgets.
 	let kpi = $state<KpiDashboard | null>(null);
 	let monthData = $state<MonthlyCalendarDto | null>(null);
@@ -55,7 +59,7 @@
 		loading = true;
 		error = null;
 		try {
-			const [s, e, t, c, k, mc, a, ls, rd] = await Promise.all([
+			const [s, e, t, c, k, mc, a, ls, rd, rb] = await Promise.all([
 				api.summary(),
 				api.equityCurve(),
 				api.tagPerformance(),
@@ -64,7 +68,8 @@
 				api.monthlyCalendar(monthCursor.y, monthCursor.m),
 				api.activity(),
 				api.longShort(),
-				api.radar()
+				api.radar(),
+				api.rDistribution()
 			]);
 			summary = s;
 			points = e.points;
@@ -77,6 +82,7 @@
 			activity = a;
 			longShort = ls;
 			radarData = rd;
+			rBuckets = rb.buckets;
 		} catch (e) {
 			error = errMsg(e);
 		} finally {
@@ -115,18 +121,16 @@
 
 {#if loading}
 	<div class="flex flex-col gap-4" aria-hidden="true">
+		<div class="skeleton h-24 w-full"></div>
 		<div class="grid grid-cols-2 gap-4 lg:grid-cols-4">
 			{#each Array(4) as _, i}
-				<div
-					class="h-28 animate-pulse rounded-xl border border-slate-200 bg-gradient-to-r from-slate-100 via-slate-50 to-slate-100 shadow-card dark:border-white/[0.07] dark:from-surface-900 dark:via-white/[0.04] dark:to-surface-900"
-					style="animation-delay: {i * 80}ms"
-				></div>
+				<div class="skeleton h-28" style="animation-delay: {i * 80}ms"></div>
 			{/each}
 		</div>
-		<div class="h-72 animate-pulse rounded-xl border border-slate-200 shadow-card dark:border-white/[0.07] dark:bg-surface-900"></div>
+		<div class="skeleton h-72 w-full"></div>
 		<div class="grid grid-cols-1 gap-4 md:grid-cols-2">
 			{#each Array(2) as _}
-				<div class="h-72 animate-pulse rounded-xl border border-slate-200 shadow-card dark:border-white/[0.07] dark:bg-surface-900"></div>
+				<div class="skeleton h-72 w-full"></div>
 			{/each}
 		</div>
 	</div>
@@ -147,25 +151,31 @@
 	/>
 {:else}
 	<div class="flex flex-col gap-4" transition:fade={{ duration: 150 }}>
+		<PageHead
+			eyebrow="Performance"
+			title="Analytics"
+			meta="{summary.total_trades} closed trades · {year} · expectancy, risk &amp; distribution"
+		/>
+
 		{#if kpi}
 			<KpiStrip {kpi} />
 		{/if}
 
-		<section class="grid grid-cols-1 gap-4 xl:grid-cols-5">
-			<div class="rounded-xl border border-slate-200 bg-white p-4 shadow-card xl:col-span-3 dark:border-white/[0.07] dark:bg-surface-900">
-				<h2 class="mb-2 text-[13px] font-semibold tracking-tight text-balance">Equity curve</h2>
+		<section class="grid grid-cols-1 gap-4 xl:grid-cols-12">
+			<div class="card p-5 xl:col-span-8">
+				<h2 class="eyebrow mb-3">Equity curve</h2>
 				{#if points.length > 0}
 					<EquityChart {points} />
 				{:else}
-					<p class="py-10 text-center text-sm text-slate-500">Not enough data.</p>
+					<p class="py-10 text-center text-sm text-mut">Not enough data.</p>
 				{/if}
 			</div>
-			<div class="rounded-xl border border-slate-200 bg-white p-4 shadow-card xl:col-span-2 dark:border-white/[0.07] dark:bg-surface-900">
-				<h2 class="mb-2 text-[13px] font-semibold tracking-tight text-balance">Drawdown</h2>
+			<div class="card p-5 xl:col-span-4">
+				<h2 class="eyebrow mb-3">Drawdown</h2>
 				{#if points.length > 0}
 					<UnderwaterChart {points} />
 				{:else}
-					<p class="py-10 text-center text-sm text-slate-500">Not enough data.</p>
+					<p class="py-10 text-center text-sm text-mut">Not enough data.</p>
 				{/if}
 			</div>
 		</section>
@@ -179,31 +189,41 @@
 			/>
 		{/if}
 
-		{#if kpi}
-			<SessionGrid {kpi} />
-		{/if}
-
-		{#if longShort && activity}
-			<LongShortOverview {longShort} {activity} />
-		{/if}
-
-		{#if activity}
-			<StatPanels {activity} />
-		{/if}
-
-		<section class="grid grid-cols-1 gap-4 md:grid-cols-2">
-			<div class="rounded-xl border border-slate-200 bg-white p-4 shadow-card dark:border-white/[0.07] dark:bg-surface-900">
-				<h2 class="mb-2 text-[13px] font-semibold tracking-tight text-balance">Win / loss / breakeven</h2>
+		<section class="grid grid-cols-1 gap-4 lg:grid-cols-3">
+			<div class="card p-5">
+				<h2 class="eyebrow mb-3">Win / loss / breakeven</h2>
 				<OutcomeDonut {summary} />
 			</div>
-			<div class="rounded-xl border border-slate-200 bg-white p-4 shadow-card dark:border-white/[0.07] dark:bg-surface-900">
-				<h2 class="mb-2 text-[13px] font-semibold tracking-tight text-balance">Tag performance</h2>
+			<div class="card p-5 lg:col-span-2">
+				<h2 class="eyebrow mb-3">Tag performance</h2>
 				<TagPerformanceBar {tags} />
 			</div>
 		</section>
 
+		<section class="grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
+			<div class="card p-5">
+				<h2 class="eyebrow mb-3">R multiple distribution</h2>
+				{#if rBuckets.length > 0}
+					<RDistributionChart buckets={rBuckets} />
+				{:else}
+					<p class="py-10 text-center text-sm text-mut">Not enough data.</p>
+				{/if}
+			</div>
+			{#if longShort && activity}
+				<LongShortOverview {longShort} {activity} />
+			{/if}
+		</section>
+
+		{#if kpi}
+			<SessionGrid {kpi} />
+		{/if}
+
 		{#if radarData}
 			<RadarAnalytics radar={radarData} />
+		{/if}
+
+		{#if activity}
+			<StatPanels {activity} />
 		{/if}
 	</div>
 {/if}

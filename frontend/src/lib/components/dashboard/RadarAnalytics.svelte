@@ -3,16 +3,12 @@
 	import { Chart, registerables } from 'chart.js';
 	import type { RadarProfiles } from '$lib/api';
 	import { fmtMoney } from '$lib/utils/format';
+	import { palette } from '$lib/utils/palette';
+	import { theme } from '$lib/stores/theme';
 
 	Chart.register(...registerables);
-	Chart.defaults.color = '#94a3b8';
-	Chart.defaults.borderColor = 'rgba(148,163,184,0.12)';
-	Chart.defaults.font.family = 'Inter, sans-serif';
 
 	const { radar }: { radar: RadarProfiles } = $props();
-
-	const gridColor = 'rgba(148,163,184,0.18)';
-	const angleColor = '#94a3b8';
 
 	const bestDay = $derived.by(() => {
 		const ranked = [...radar.weekday].sort((a, b) => b.win_rate - a.win_rate);
@@ -32,25 +28,46 @@
 	let dayChart: Chart | null = null;
 	let sessChart: Chart | null = null;
 
-	function radarOptions(max: number): object {
+	function radarOptions(max: number, p: ReturnType<typeof palette>): object {
 		return {
 			responsive: true,
 			maintainAspectRatio: false,
+			animation: { duration: 900, easing: 'easeOutQuart' },
 			scales: {
 				r: {
 					min: 0,
 					max,
-					ticks: { display: false },
-					grid: { color: gridColor },
-					angleLines: { color: gridColor },
-					pointLabels: { color: angleColor, font: { size: 11 } }
+					ticks: { display: false, backdropColor: 'transparent' },
+					grid: { color: p.grid },
+					angleLines: { color: p.grid },
+					pointLabels: {
+						color: p.axis,
+						font: { family: 'Geist Mono', size: 10 }
+					}
 				}
 			},
-			plugins: { legend: { display: false } }
+			plugins: {
+				legend: { display: false },
+				tooltip: {
+					backgroundColor: p.panel,
+					titleColor: p.axis,
+					bodyColor: p.fg,
+					borderColor: p.grid,
+					borderWidth: 1,
+					padding: 10,
+					cornerRadius: 10,
+					displayColors: false
+				}
+			}
 		};
 	}
 
 	function render(): void {
+		const p = palette();
+		Chart.defaults.color = p.axis;
+		Chart.defaults.borderColor = p.grid;
+		Chart.defaults.font.family = 'Geist, ui-sans-serif, sans-serif';
+
 		if (dayCanvas) {
 			dayChart?.destroy();
 			dayChart = new Chart(dayCanvas, {
@@ -61,15 +78,17 @@
 						{
 							label: 'Win rate %',
 							data: radar.weekday.map((d) => d.win_rate),
-							backgroundColor: 'rgba(16,185,129,0.18)',
-							borderColor: '#10b981',
-							pointBackgroundColor: '#10b981',
+							backgroundColor: p.accentSoft,
+							borderColor: p.accent,
+							pointBackgroundColor: p.accent,
+							pointBorderColor: p.panel,
 							pointRadius: 3,
+							pointHoverRadius: 5,
 							borderWidth: 2
 						}
 					]
 				},
-				options: radarOptions(100)
+				options: radarOptions(100, p)
 			});
 		}
 		if (sessCanvas) {
@@ -84,15 +103,17 @@
 						{
 							label: 'Net PnL (shifted)',
 							data: nets.map((n) => n - shift),
-							backgroundColor: 'rgba(16,185,129,0.18)',
-							borderColor: '#10b981',
-							pointBackgroundColor: '#10b981',
+							backgroundColor: p.winSoft,
+							borderColor: p.win,
+							pointBackgroundColor: p.win,
+							pointBorderColor: p.panel,
 							pointRadius: 3,
+							pointHoverRadius: 5,
 							borderWidth: 2
 						}
 					]
 				},
-				options: radarOptions(Math.max(1, Math.max(...nets.map((n) => n - shift)) * 1.15))
+				options: radarOptions(Math.max(1, Math.max(...nets.map((n) => n - shift)) * 1.15), p)
 			});
 		}
 	}
@@ -108,6 +129,7 @@
 
 	$effect(() => {
 		[radar.weekday.map((d) => d.win_rate).join(','), radar.sessions.map((s) => s.net_pnl).join(',')].join('|');
+		void $theme;
 		if (dayCanvas || sessCanvas) render();
 	});
 
@@ -116,34 +138,41 @@
 		sessChart?.destroy();
 		dayChart = sessChart = null;
 	});
-
-	const card =
-		'rounded-xl border border-slate-200 bg-white p-4 shadow-card dark:border-white/[0.07] dark:bg-surface-900';
-	const callout = 'font-mono text-[11px] tabular-nums text-slate-500 dark:text-slate-400';
 </script>
 
-<section class="grid grid-cols-1 gap-4 md:grid-cols-2" aria-label="Radar profilers">
-	<div class={card}>
-		<h3 class="text-[13px] font-semibold tracking-tight">Weekday Distribution</h3>
+<section class="grid grid-cols-1 gap-3 md:grid-cols-2" aria-label="Radar profiles">
+	<div class="card p-5">
+		<div class="flex items-baseline justify-between gap-3">
+			<h3 class="text-[13.5px] font-semibold text-fg">Weekday distribution</h3>
+			<span class="eyebrow">win rate %</span>
+		</div>
 		{#if bestDay}
-			<p class={callout}>
-				Best: <span class="font-bold text-emerald-600 dark:text-emerald-400">{bestDay.day} ({bestDay.win_rate.toFixed(0)}% WR, {fmtMoney(bestDay.net_pnl)})</span>
+			<p class="num mt-1.5 flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-[11.5px] text-dim">
+				<span>
+					Best: <span class="font-bold text-win">{bestDay.day} ({bestDay.win_rate.toFixed(0)}% WR, {fmtMoney(bestDay.net_pnl)})</span>
+				</span>
 				{#if worstDay && worstDay.day !== bestDay.day}
-					· Worst: <span class="font-bold text-rose-600 dark:text-rose-400">{worstDay.day} ({worstDay.win_rate.toFixed(0)}% WR)</span>
+					<span>
+						· Worst: <span class="font-bold text-loss">{worstDay.day} ({worstDay.win_rate.toFixed(0)}% WR)</span>
+					</span>
 				{/if}
 			</p>
 		{/if}
-		<div class="mt-1 h-64"><canvas bind:this={dayCanvas}></canvas></div>
+		<div class="mt-2 h-64 min-w-0"><canvas bind:this={dayCanvas}></canvas></div>
 	</div>
-	<div class={card}>
-		<h3 class="text-[13px] font-semibold tracking-tight">Session Killzones</h3>
+
+	<div class="card p-5">
+		<div class="flex items-baseline justify-between gap-3">
+			<h3 class="text-[13.5px] font-semibold text-fg">Session killzones</h3>
+			<span class="eyebrow">net P&amp;L</span>
+		</div>
 		{#if bestSession}
-			<p class={callout}>
-				Edge: <span class="font-bold text-emerald-600 dark:text-emerald-400">
+			<p class="num mt-1.5 text-[11.5px] text-dim">
+				Edge: <span class="font-bold text-win">
 					{bestSession.session.replace('_', ' ').toUpperCase()} ({fmtMoney(bestSession.net_pnl)}, {bestSession.win_rate.toFixed(0)}% WR)
 				</span>
 			</p>
 		{/if}
-		<div class="mt-1 h-64"><canvas bind:this={sessCanvas}></canvas></div>
+		<div class="mt-2 h-64 min-w-0"><canvas bind:this={sessCanvas}></canvas></div>
 	</div>
 </section>

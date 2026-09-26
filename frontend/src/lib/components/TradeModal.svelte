@@ -143,6 +143,15 @@
 			toasts.push('error', `Delete failed — ${err instanceof Error ? err.message : 'unknown error'}`);
 		}
 	}
+
+	const METRICS = [
+		{ label: 'Entry', get: (t: NonNullable<typeof trade>) => fmtNum(t.entry_price) },
+		{ label: 'Exit', get: (t: NonNullable<typeof trade>) => fmtNum(t.exit_price) },
+		{ label: 'Stop', get: (t: NonNullable<typeof trade>) => fmtNum(t.current_sl ?? t.initial_sl) },
+		{ label: 'Target', get: (t: NonNullable<typeof trade>) => fmtNum(t.tp) },
+		{ label: 'Size', get: (t: NonNullable<typeof trade>) => (t.size === null ? '—' : String(t.size)) },
+		{ label: 'Fees', get: (t: NonNullable<typeof trade>) => fmtMoney(t.fees) }
+	] as const;
 </script>
 
 <svelte:window onkeydown={onBackdropKey} />
@@ -153,93 +162,101 @@
 		onclick={onBackdrop}
 		onkeydown={onBackdropKey}
 		tabindex={-1}
-		class="fixed inset-0 z-50 bg-surface-950/70 backdrop-blur-sm"
+		class="fixed inset-0 z-50 bg-base/75 backdrop-blur-[3px]"
 		role="dialog"
 		aria-modal="true"
 		aria-label="Trade detail"
 	>
 		<div
 			transition:fly={DRAWER}
-			class="absolute top-0 right-0 flex h-full w-full max-w-md flex-col border-l border-slate-200 bg-white shadow-pop dark:border-white/[0.08] dark:bg-surface-900"
+			class="absolute inset-y-0 right-0 flex w-full max-w-md flex-col border-l border-line bg-panel shadow-pop"
 		>
 			<!-- Header -->
-			<div class="flex shrink-0 items-center gap-2.5 border-b border-slate-200 px-5 py-4 dark:border-white/[0.07]">
-				<span class="font-mono text-base font-semibold tracking-tight uppercase">{trade.symbol ?? '—'}</span>
+			<div class="flex shrink-0 items-center gap-2 border-b border-line px-5 py-4">
+				<span class="num text-lg font-semibold text-fg uppercase">{trade.symbol ?? '—'}</span>
 				<span
-					class="rounded-md px-2 py-0.5 font-mono text-[11px] font-semibold tracking-wide uppercase {(trade.direction ?? '').toLowerCase() === 'sell'
-						? 'bg-rose-500/10 text-rose-600 dark:text-rose-400'
-						: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'}"
+					class="rounded-lg px-2 py-0.5 font-mono text-[10px] font-semibold tracking-[0.14em] uppercase {(trade.direction ?? '').toLowerCase() ===
+					'sell'
+						? 'bg-loss/12 text-loss'
+						: 'bg-win/12 text-win'}"
 				>
 					{trade.direction ?? '—'}
 				</span>
 				<span
-					class="rounded-md px-2 py-0.5 font-mono text-[11px] font-semibold tracking-wide uppercase {trade.status === 'OPEN'
-						? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
-						: 'bg-slate-500/10 text-slate-500 dark:text-slate-400'}"
+					class="rounded-lg px-2 py-0.5 font-mono text-[10px] font-semibold tracking-[0.14em] uppercase {trade.status ===
+					'OPEN'
+						? 'bg-accent/12 text-accent'
+						: 'bg-flat/12 text-dim'}"
 				>
 					{trade.status}
 				</span>
-				{#if trade.status === 'OPEN'}
+
+				<span class="ml-auto flex shrink-0 items-center gap-2">
+					{#if trade.status === 'OPEN'}
+						<button type="button" onclick={() => requestClose(trade.id)} class="btn btn-danger h-8 px-3 text-[13px]">
+							Close trade
+						</button>
+					{/if}
 					<button
 						type="button"
-						onclick={() => requestClose(trade.id)}
-						class="ml-auto h-8 shrink-0 rounded-lg bg-rose-500 px-3 text-[13px] font-semibold text-white shadow-pop transition-all duration-150 hover:bg-rose-600 focus-visible:outline-rose-500 active:scale-[0.98]"
+						onclick={closeTrade}
+						aria-label="Close"
+						class="btn-icon h-8 w-8"
 					>
-						Close trade
+						<X size={17} strokeWidth={1.8} aria-hidden="true" />
 					</button>
-				{/if}
-				<button
-					type="button"
-					onclick={closeTrade}
-					aria-label="Close"
-					class="{trade.status === 'OPEN' ? '' : 'ml-auto '}grid h-8 w-8 shrink-0 place-items-center rounded-lg text-slate-400 transition-all hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-emerald-500 active:scale-95 dark:hover:bg-white/[0.06] dark:hover:text-slate-200"
-				>
-					<X size={17} strokeWidth={1.8} aria-hidden="true" />
-				</button>
+				</span>
 			</div>
 
-			<div class="no-scrollbar min-h-0 flex-1 overflow-y-auto px-5 py-4">
+			<div class="no-scrollbar min-h-0 flex-1 overflow-y-auto px-5 py-5">
 				<!-- Metrics -->
-				<dl class="grid grid-cols-2 gap-x-4 gap-y-3 font-mono text-sm tabular-nums sm:grid-cols-4">
-					<div><dt class="text-[11px] tracking-wider text-slate-400 uppercase">Entry</dt><dd>{fmtNum(trade.entry_price)}</dd></div>
-					<div><dt class="text-[11px] tracking-wider text-slate-400 uppercase">Exit</dt><dd>{fmtNum(trade.exit_price)}</dd></div>
-					<div><dt class="text-[11px] tracking-wider text-slate-400 uppercase">Stop</dt><dd>{fmtNum(trade.current_sl ?? trade.initial_sl)}</dd></div>
-					<div><dt class="text-[11px] tracking-wider text-slate-400 uppercase">TP</dt><dd>{fmtNum(trade.tp)}</dd></div>
-					<div><dt class="text-[11px] tracking-wider text-slate-400 uppercase">Size</dt><dd>{trade.size ?? '—'}</dd></div>
-					<div><dt class="text-[11px] tracking-wider text-slate-400 uppercase">Fees</dt><dd>{fmtMoney(trade.fees)}</dd></div>
+				<dl class="grid grid-cols-3 gap-x-4 gap-y-4 sm:grid-cols-3">
+					{#each METRICS as m}
+						<div class="min-w-0">
+							<dt class="eyebrow">{m.label}</dt>
+							<dd class="num mt-1 truncate text-sm text-fg">{m.get(trade)}</dd>
+						</div>
+					{/each}
 					<div>
-						<dt class="text-[11px] tracking-wider text-slate-400 uppercase">Net</dt>
-						<dd class="font-semibold {toneText[pnlTone(trade.net_pnl)]}">{fmtMoney(trade.net_pnl)}</dd>
+						<dt class="eyebrow">Net</dt>
+						<dd class="num mt-1 text-sm font-semibold {toneText[pnlTone(trade.net_pnl)]}">
+							{fmtMoney(trade.net_pnl)}
+						</dd>
 					</div>
 					<div>
-						<dt class="text-[11px] tracking-wider text-slate-400 uppercase">R</dt>
-						<dd class="font-semibold {toneText[pnlTone(trade.r_multiple)]}">{fmtR(trade.r_multiple)}</dd>
+						<dt class="eyebrow">R</dt>
+						<dd class="num mt-1 text-sm font-semibold {toneText[pnlTone(trade.r_multiple)]}">
+							{fmtR(trade.r_multiple)}
+						</dd>
+					</div>
+					<div class="min-w-0">
+						<dt class="eyebrow">Ticket</dt>
+						<dd class="num mt-1 truncate text-sm text-mut">{trade.trade_id}</dd>
 					</div>
 				</dl>
-				<p class="mt-3 font-mono text-[11px] text-slate-400 tabular-nums">
+				<p class="num mt-4 border-t border-line pt-3 text-[11px] text-dim">
 					Opened {fmtDateTime(trade.timestamp_open)}
 					{#if trade.timestamp_close} · Closed {fmtDateTime(trade.timestamp_close)}{/if}
-					· <span class="opacity-80">{trade.trade_id}</span>
 				</p>
 
 				<!-- Editors -->
 				<div class="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2">
 					<label class="flex flex-col gap-1.5">
-						<span class="text-xs font-semibold tracking-tight text-slate-500 dark:text-slate-400">Thesis</span>
+						<span class="eyebrow">Thesis</span>
 						<textarea
 							bind:value={thesis}
 							rows={4}
 							placeholder="Why did you take this trade?"
-							class="resize-y rounded-lg border border-slate-200 bg-transparent p-2.5 text-sm leading-relaxed outline-none placeholder:text-slate-400 focus:border-emerald-500 focus-visible:outline-emerald-500 dark:border-white/10"
+							class="field resize-y text-[13px]"
 						></textarea>
 					</label>
 					<label class="flex flex-col gap-1.5">
-						<span class="text-xs font-semibold tracking-tight text-slate-500 dark:text-slate-400">Review notes</span>
+						<span class="eyebrow">Review notes</span>
 						<textarea
 							bind:value={notes}
 							rows={4}
 							placeholder="What worked, what didn't?"
-							class="resize-y rounded-lg border border-slate-200 bg-transparent p-2.5 text-sm leading-relaxed outline-none placeholder:text-slate-400 focus:border-emerald-500 focus-visible:outline-emerald-500 dark:border-white/10"
+							class="field resize-y text-[13px]"
 						></textarea>
 					</label>
 				</div>
@@ -248,26 +265,26 @@
 						type="button"
 						onclick={() => void saveNotes()}
 						disabled={!dirty || saving}
-						class="h-8 rounded-lg bg-emerald-500 px-3.5 text-[13px] font-semibold text-white shadow-lift transition-all duration-150 hover:bg-emerald-600 focus-visible:outline-emerald-500 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
+						class="btn btn-primary h-8 px-3.5 text-[13px]"
 					>
 						{saving ? 'Saving…' : 'Save notes'}
 					</button>
 				</div>
 
-				<label class="mt-3 flex flex-col gap-1.5">
-					<span class="text-xs font-semibold tracking-tight text-slate-500 dark:text-slate-400">Tags — <span class="font-mono font-medium">#setup !mistake</span></span>
+				<label class="mt-4 flex flex-col gap-1.5">
+					<span class="eyebrow">Tags — <span class="normal-case text-mut">#setup !mistake</span></span>
 					<span class="flex gap-2">
 						<input
 							type="text"
 							bind:value={tagInput}
 							placeholder="#fvg !early"
-							class="h-9 flex-1 rounded-lg border border-slate-200 bg-transparent px-2.5 font-mono text-sm outline-none placeholder:text-slate-400 focus:border-emerald-500 focus-visible:outline-emerald-500 dark:border-white/10"
+							class="field h-9 flex-1 font-mono text-[13px]"
 						/>
 						<button
 							type="button"
 							onclick={() => void saveTags()}
 							disabled={!tagsDirty || saving}
-							class="h-9 shrink-0 rounded-lg border border-slate-200 px-3.5 text-[13px] font-semibold transition-all duration-150 hover:border-emerald-500 hover:text-emerald-600 focus-visible:outline-emerald-500 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40 dark:border-white/10 dark:hover:text-emerald-400"
+							class="btn btn-ghost h-9 shrink-0 px-3.5 text-[13px]"
 						>
 							Apply
 						</button>
@@ -277,12 +294,12 @@
 				<!-- Upload zone -->
 				<div class="mt-5">
 					<div class="mb-2 flex items-center justify-between">
-						<span class="text-xs font-semibold tracking-tight text-slate-500 dark:text-slate-400">Screenshots</span>
-						<label class="flex items-center gap-1.5 font-mono text-[11px] tabular-nums text-slate-400">
+						<span class="eyebrow">Screenshots</span>
+						<label class="flex items-center gap-1.5 font-mono text-[11px] tabular-nums text-dim">
 							label
 							<select
 								bind:value={uploadLabel}
-								class="rounded-md border border-slate-200 bg-transparent px-1.5 py-1 outline-none focus-visible:outline-emerald-500 dark:border-white/10 dark:bg-surface-900"
+								class="rounded-lg border border-line bg-raised px-1.5 py-1 text-[11px] text-fg outline-none"
 							>
 								{#each LABELS as l}<option value={l}>{l}</option>{/each}
 							</select>
@@ -302,13 +319,19 @@
 						onkeydown={(e) => {
 							if (e.key === 'Enter') document.getElementById('shot-file')?.click();
 						}}
-						class="flex cursor-pointer flex-col items-center gap-1.5 rounded-xl border border-dashed px-6 py-7 text-center transition-all duration-150 focus-visible:outline-emerald-500 {dragOver
-							? 'border-emerald-500 bg-emerald-500/5'
-							: 'border-slate-300 hover:border-slate-400 dark:border-white/10 dark:hover:border-white/25'}"
+						class="flex cursor-pointer flex-col items-center gap-2 rounded-2xl border border-dashed px-6 py-7 text-center transition-all duration-200 {dragOver
+							? 'border-accent/60 bg-accent/8 shadow-glow'
+							: 'border-line hover:border-edge hover:bg-raised/40'}"
 						onclick={() => document.getElementById('shot-file')?.click()}
 					>
-						<ImagePlus size={20} strokeWidth={1.8} aria-hidden="true" class="text-slate-400" />
-						<p class="text-sm leading-relaxed text-slate-500 dark:text-slate-400">
+						<span
+							class="grid h-10 w-10 place-items-center rounded-xl bg-accent/12 text-accent {dragOver
+								? 'scale-110'
+								: ''} transition-transform duration-300 ease-spring"
+						>
+							<ImagePlus size={19} strokeWidth={1.7} aria-hidden="true" />
+						</span>
+						<p class="text-[13px] leading-relaxed text-mut">
 							{uploading ? 'Uploading…' : 'Drop images, paste from clipboard, or click to browse'}
 						</p>
 						<input
@@ -331,20 +354,31 @@
 								<button
 									type="button"
 									onclick={() => (zoomShot = shot)}
-									class="group relative aspect-video overflow-hidden rounded-lg border border-slate-200 bg-slate-100 focus-visible:outline-emerald-500 dark:border-white/[0.07] dark:bg-white/[0.03]"
+									class="group relative aspect-video overflow-hidden rounded-xl border border-line bg-raised focus-visible:outline-none"
 								>
-									<span class="absolute inset-0 animate-pulse bg-gradient-to-r from-slate-200 via-slate-100 to-slate-200 dark:from-white/[0.03] dark:via-white/[0.06] dark:to-white/[0.03]" aria-hidden="true"></span>
+									<span class="skeleton absolute inset-0" aria-hidden="true"></span>
 									<img
 										src={api.thumbUrl(shot.immich_asset_id)}
 										alt="{shot.label} screenshot"
 										loading="lazy"
 										onload={(e) => (e.currentTarget.previousElementSibling as HTMLElement)?.remove()}
-										class="absolute inset-0 h-full w-full object-cover transition-transform duration-200 group-hover:scale-[1.03]"
+										class="absolute inset-0 h-full w-full object-cover transition-transform duration-300 ease-spring group-hover:scale-[1.04]"
 									/>
-									<span class="absolute bottom-1.5 left-1.5 rounded-md bg-surface-950/70 px-1.5 py-0.5 font-mono text-[10px] font-medium tracking-wide text-white">
+									<span
+										class="absolute bottom-1.5 left-1.5 rounded-md bg-base/80 px-1.5 py-0.5 font-mono text-[10px] font-medium tracking-wide text-fg backdrop-blur-sm"
+									>
 										{shot.label}
 									</span>
-									<ZoomIn size={15} strokeWidth={1.8} aria-hidden="true" class="absolute right-1.5 bottom-1.5 text-white opacity-0 drop-shadow transition-opacity group-hover:opacity-100" />
+									<span
+										class="absolute inset-0 bg-base/40 opacity-0 transition-opacity duration-200 group-hover:opacity-100"
+										aria-hidden="true"
+									></span>
+									<ZoomIn
+										size={15}
+										strokeWidth={1.8}
+										aria-hidden="true"
+										class="absolute right-1.5 bottom-1.5 z-10 text-accent opacity-0 transition-opacity duration-200 group-hover:opacity-100"
+									/>
 								</button>
 							{/each}
 						</div>
@@ -352,13 +386,13 @@
 				</div>
 
 				<!-- Delete -->
-				<div class="mt-6 flex justify-end border-t border-slate-200 pt-4 dark:border-white/[0.07]">
+				<div class="mt-6 flex justify-end border-t border-line pt-4">
 					<button
 						type="button"
 						onclick={() => void doDelete()}
-						class="flex h-8 items-center gap-1.5 rounded-lg px-3 text-[13px] font-semibold transition-all duration-150 focus-visible:outline-emerald-500 active:scale-[0.98] {confirmDelete
-							? 'bg-rose-500 text-white shadow-pop hover:bg-rose-600'
-							: 'text-rose-600 hover:bg-rose-500/10 dark:text-rose-400'}"
+						class="btn h-8 gap-1.5 px-3 text-[13px] {confirmDelete
+							? 'btn-danger shadow-pop'
+							: 'text-loss hover:bg-loss/10'}"
 					>
 						<Trash2 size={14} strokeWidth={1.8} aria-hidden="true" />
 						{confirmDelete ? 'Confirm delete?' : 'Delete trade'}
@@ -372,7 +406,7 @@
 {#if zoomShot}
 	<div
 		transition:fade={FADE}
-		class="fixed inset-0 z-[60] grid place-items-center bg-surface-950/85 p-4 backdrop-blur-sm"
+		class="fixed inset-0 z-[60] grid place-items-center bg-base/90 p-4 backdrop-blur-sm"
 		role="dialog"
 		tabindex={-1}
 		aria-modal="true"
@@ -384,14 +418,14 @@
 			type="button"
 			onclick={() => (zoomShot = null)}
 			aria-label="Close zoom"
-			class="absolute top-4 right-4 grid h-9 w-9 place-items-center rounded-full bg-white/10 text-white transition-all hover:bg-white/20 focus-visible:outline-emerald-500 active:scale-95"
+			class="btn-icon absolute top-4 right-4 h-9 w-9 border-edge bg-raised/80 text-fg"
 		>
 			<X size={18} strokeWidth={1.8} aria-hidden="true" />
 		</button>
 		<img
 			src={zoomShot ? api.fullUrl(zoomShot.immich_asset_id) : ''}
 			alt="Full resolution screenshot"
-			class="max-h-[90dvh] max-w-full rounded-lg object-contain shadow-2xl"
+			class="max-h-[90dvh] max-w-full rounded-xl object-contain shadow-pop"
 		/>
 	</div>
 {/if}

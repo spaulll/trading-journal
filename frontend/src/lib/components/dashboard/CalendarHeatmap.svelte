@@ -50,31 +50,31 @@
 
 	function cellClass(cell: Cell): string {
 		if (!cell.inYear) return 'bg-transparent';
-		if (cell.count === 0) return 'bg-slate-100 dark:bg-white/[0.06]';
-		if (cell.pnl === 0) return 'bg-slate-300 dark:bg-slate-600';
+		if (cell.count === 0) return 'bg-raised';
+		if (cell.pnl === 0) return 'bg-flat/40';
 		const level = Math.min(4, Math.ceil((Math.abs(cell.pnl) / maxAbs) * 4));
 		if (cell.pnl > 0) {
 			return (
-				['', 'bg-emerald-500/25', 'bg-emerald-500/50', 'bg-emerald-500/75', 'bg-emerald-500'][level] +
-				' hover:ring-2 hover:ring-emerald-400'
+				['', 'bg-win/25', 'bg-win/45', 'bg-win/70', 'bg-win'][level] +
+				' hover:ring-2 hover:ring-accent/60'
 			);
 		}
 		return (
-			['', 'bg-rose-500/25', 'bg-rose-500/50', 'bg-rose-500/75', 'bg-rose-500'][level] +
-			' hover:ring-2 hover:ring-rose-400'
+			['', 'bg-loss/25', 'bg-loss/45', 'bg-loss/70', 'bg-loss'][level] +
+			' hover:ring-2 hover:ring-accent/60'
 		);
 	}
 </script>
 
-<div class="overflow-x-auto">
+<div class="overflow-x-auto pb-1">
 	<div class="w-max">
-		<div class="mb-1 flex justify-between pl-8 font-mono text-[10px] text-slate-400" aria-hidden="true">
+		<div class="mb-1.5 flex justify-between pl-8 font-mono text-[10px] text-dim" aria-hidden="true">
 			{#each MONTHS as month}
 				<span>{month}</span>
 			{/each}
 		</div>
 		<div class="flex gap-1">
-			<div class="grid shrink-0 grid-rows-7 gap-1 pr-1 font-mono text-[10px] leading-3 tabular-nums text-slate-400">
+			<div class="grid shrink-0 grid-rows-7 gap-1 pr-1 font-mono text-[10px] leading-3 tabular-nums text-dim">
 				<span class="h-3">M</span><span class="h-3"></span><span class="h-3">W</span><span class="h-3"></span><span class="h-3">F</span><span class="h-3"></span><span class="h-3"></span>
 			</div>
 			<div class="grid grid-flow-col gap-1" style="grid-template-rows: repeat(7, minmax(0, 1fr));">
@@ -83,20 +83,20 @@
 						{#if cell.inYear}
 							<div class="group relative">
 								<div
-									class="h-3 w-3 rounded-[3px] transition-all duration-150 {cellClass(cell)}"
+									class="h-3 w-3 rounded-[3px] transition-all duration-200 {cellClass(cell)}"
 									role="img"
 									aria-label="{cell.key} · {fmtMoney(cell.pnl)} · {cell.count} trade{cell.count === 1 ? '' : 's'}"
 									title="{cell.key} · {fmtMoney(cell.pnl)} · {cell.count} trade{cell.count === 1 ? '' : 's'}"
 								></div>
 								<div
-									class="pointer-events-none absolute bottom-4 left-1/2 z-10 hidden -translate-x-1/2 rounded-md border border-slate-200 bg-white px-2 py-1 font-mono text-[11px] whitespace-nowrap tabular-nums shadow-pop group-hover:block dark:border-white/10 dark:bg-surface-900"
+									class="pointer-events-none absolute bottom-4 left-1/2 z-10 hidden -translate-x-1/2 rounded-lg border border-line bg-panel px-2 py-1 font-mono text-[11px] whitespace-nowrap tabular-nums shadow-pop backdrop-blur-sm group-hover:block"
 									aria-hidden="true"
 								>
-									<span class="text-slate-500 dark:text-slate-400">{cell.key}</span>
-									<span class={cell.pnl > 0 ? 'text-accent-win' : cell.pnl < 0 ? 'text-accent-loss' : 'text-accent-be'}>
+									<span class="text-dim">{cell.key}</span>
+									<span class={cell.pnl > 0 ? 'text-win' : cell.pnl < 0 ? 'text-loss' : 'text-flat'}>
 										{fmtMoney(cell.pnl)}
 									</span>
-									<span class="text-slate-400">· {cell.count} trade{cell.count === 1 ? '' : 's'}</span>
+									<span class="text-dim"> · {cell.count} trade{cell.count === 1 ? '' : 's'}</span>
 								</div>
 							</div>
 						{:else}

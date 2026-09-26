@@ -2,11 +2,10 @@
 	import { onDestroy, onMount } from 'svelte';
 	import { Chart, registerables } from 'chart.js';
 	import type { TagPerf } from '$lib/api';
+	import { palette } from '$lib/utils/palette';
+	import { theme } from '$lib/stores/theme';
 
 	Chart.register(...registerables);
-	Chart.defaults.color = '#94a3b8';
-	Chart.defaults.borderColor = 'rgba(148,163,184,0.12)';
-	Chart.defaults.font.family = 'Inter, sans-serif';
 
 	const { tags }: { tags: TagPerf[] } = $props();
 
@@ -17,6 +16,10 @@
 
 	function render(list: TagPerf[]): void {
 		if (!canvas) return;
+		const p = palette();
+		Chart.defaults.color = p.axis;
+		Chart.defaults.borderColor = p.grid;
+		Chart.defaults.font.family = 'Geist, ui-sans-serif, sans-serif';
 		chart?.destroy();
 		chart = new Chart(canvas, {
 			type: 'bar',
@@ -25,7 +28,7 @@
 				datasets: [
 					{
 						data: list.map((t) => t.net_pnl),
-						backgroundColor: list.map((t) => (t.net_pnl >= 0 ? '#10b981' : '#ef4444')),
+						backgroundColor: list.map((t) => (t.net_pnl >= 0 ? p.win : p.loss)),
 						borderRadius: 6,
 						borderSkipped: false
 					}
@@ -35,10 +38,29 @@
 				responsive: true,
 				maintainAspectRatio: false,
 				indexAxis: 'y',
-				plugins: { legend: { display: false } },
+				animation: { duration: 800, easing: 'easeOutQuart' },
+				plugins: {
+					legend: { display: false },
+					tooltip: {
+						backgroundColor: p.panel,
+						titleColor: p.axis,
+						bodyColor: p.fg,
+						borderColor: p.grid,
+						borderWidth: 1,
+						padding: 10,
+						cornerRadius: 10,
+						displayColors: false
+					}
+				},
 				scales: {
-					x: { ticks: { callback: (v) => `$${v}` } },
-					y: { grid: { display: false }, ticks: { font: { size: 11 } } }
+					x: {
+						grid: { color: p.grid },
+						ticks: { callback: (v) => `$${v}`, color: p.axis, font: { family: 'Geist Mono', size: 11 } }
+					},
+					y: {
+						grid: { display: false, color: p.grid },
+						ticks: { color: p.axis, font: { family: 'Geist Mono', size: 11 } }
+					}
 				}
 			}
 		});
@@ -53,6 +75,7 @@
 	});
 
 	$effect(() => {
+		$theme;
 		render(top);
 	});
 

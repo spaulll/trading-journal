@@ -81,32 +81,39 @@ export async function submitBackfill(record: Record<string, unknown>): Promise<b
 	}
 }
 
-export async function loadTrades(quiet = false): Promise<void> {
-	if (!quiet) tradesLoading.set(true);
-	tradesError.set(null);
+/**
+ * Returns `false` when the API could not be reached, so callers can surface it.
+ * Quiet (background) refreshes never clobber the visible list on failure — the
+ * previous data stays on screen and the caller reports the miss instead.
+ */
+export async function loadTrades(quiet = false): Promise<boolean> {
+	if (!quiet) {
+		tradesLoading.set(true);
+		tradesError.set(null);
+	}
 	try {
 		trades.set(await api.listTrades());
+		if (quiet) tradesError.set(null);
+		return true;
 	} catch (e) {
-		tradesError.set(errMsg(e));
+		if (!quiet) tradesError.set(errMsg(e));
+		return false;
 	} finally {
-		tradesLoading.set(false);
+		if (!quiet) tradesLoading.set(false);
 	}
 }
 
 /** Reload trades from the API (v1 bot CSV sync retired in PLAN-v2). */
-export async function refreshTrades(): Promise<void> {	if (get(syncing)) return;
+export async function refreshTrades(): Promise<void> {
+	if (get(syncing)) return;
 	syncing.set(true);
 	try {
-		await loadTrades(true);
-	} catch (e) {
-		toasts.push('error', `Refresh failed — ${errMsg(e)}`);
+		const ok = await loadTrades(true);
+		if (!ok) toasts.push('error', `Refresh failed — ${get(tradesError) ?? 'API unreachable'}`);
 	} finally {
 		syncing.set(false);
 	}
 }
-
-/** Deprecated v1 alias — kept for Header/empty-state compat until Phase 5. */
-export const syncFromBot = refreshTrades;
 
 export function upsertTrade(trade: TradeDto): void {
 	trades.update((list) => {

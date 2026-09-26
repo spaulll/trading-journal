@@ -174,9 +174,8 @@
 		});
 	}
 
-	const field =
-		'h-10 w-full rounded-lg border border-slate-200 bg-transparent px-3 font-mono text-sm tabular-nums outline-none placeholder:text-slate-400 focus:border-emerald-500 dark:border-white/10';
-	const label = 'flex flex-col gap-1.5 text-xs font-semibold tracking-tight text-slate-500 dark:text-slate-400';
+	const field = 'field font-mono text-[13px]';
+	const label = 'flex flex-col gap-1.5 text-[11px] font-medium tracking-[0.14em] uppercase text-dim';
 </script>
 
 <svelte:window onkeydown={(e) => e.key === 'Escape' && dismissLifecycle()} />
@@ -186,48 +185,49 @@
 	onclick={onBackdrop}
 	onkeydown={(e) => e.key === 'Escape' && dismissLifecycle()}
 	tabindex={-1}
-	class="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-surface-950/70 p-4 backdrop-blur-sm"
+	class="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-base/75 p-4 backdrop-blur-[3px]"
 	role="dialog"
 	aria-modal="true"
 	aria-label="Open trade"
 >
-	<div transition:scale={MODAL} class="w-full max-w-lg rounded-2xl border border-slate-200 bg-white shadow-pop dark:border-white/[0.08] dark:bg-surface-900">
-		<div class="flex items-center gap-2 border-b border-slate-200 px-5 py-4 dark:border-white/[0.07]">
-			<Plus size={17} strokeWidth={2} aria-hidden="true" class="text-emerald-500" />
-			<h2 class="text-sm font-semibold tracking-tight">Open trade</h2>
+	<div transition:scale={MODAL} class="card w-full max-w-lg overflow-hidden p-0 shadow-pop">
+		<div class="flex items-center gap-2.5 border-b border-line px-5 py-4">
+			<span class="grid h-8 w-8 place-items-center rounded-lg bg-accent/12 text-accent">
+				<Plus size={17} strokeWidth={2} aria-hidden="true" />
+			</span>
+			<h2 class="display text-xl text-fg">Open trade</h2>
 			<button
 				type="button"
 				onclick={() => dismissLifecycle()}
 				aria-label="Close"
-				class="ml-auto grid h-8 w-8 place-items-center rounded-lg text-slate-400 transition-all hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-emerald-500 active:scale-95 dark:hover:bg-white/[0.06] dark:hover:text-slate-200"
+				class="btn-icon ml-auto h-8 w-8"
 			>
 				<X size={17} strokeWidth={1.8} aria-hidden="true" />
 			</button>
 		</div>
 
 		<form class="px-5 py-4" onsubmit={submit}>
-			<div class="mb-3 grid grid-cols-2 gap-1 rounded-lg border border-slate-200 p-1 dark:border-white/10" role="group" aria-label="Entry mode">
+			<div class="mb-4 grid grid-cols-2 gap-1 rounded-xl border border-line bg-raised/50 p-1" role="group" aria-label="Entry mode">
 				<button
 					type="button"
 					onclick={() => (mode = 'live')}
 					aria-pressed={mode === 'live'}
-					class="rounded-md py-1.5 text-sm font-semibold transition-all duration-150 focus-visible:outline-emerald-500 {mode === 'live'
-						? 'bg-emerald-500 text-white shadow'
-						: 'text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'}"
+					class="chip py-1.5 text-[13px] font-semibold"
+					data-active={mode === 'live'}
 				>
-					Live Trade
+					Live trade
 				</button>
 				<button
 					type="button"
 					onclick={() => (mode = 'backfill')}
 					aria-pressed={mode === 'backfill'}
-					class="rounded-md py-1.5 text-sm font-semibold transition-all duration-150 focus-visible:outline-emerald-500 {mode === 'backfill'
-						? 'bg-emerald-500 text-white shadow'
-						: 'text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'}"
+					class="chip py-1.5 text-[13px] font-semibold"
+					data-active={mode === 'backfill'}
 				>
-					Historical / Backfill
+					Historical / backfill
 				</button>
 			</div>
+
 			<div class="grid grid-cols-2 gap-3">
 				<label class={label}>
 					Symbol
@@ -235,17 +235,18 @@
 				</label>
 				<span class={label}>
 					Direction
-					<span class="grid h-10 grid-cols-2 gap-1 rounded-lg border border-slate-200 p-1 dark:border-white/10">
+					<span class="grid h-10 grid-cols-2 gap-1 rounded-xl border border-line bg-raised/50 p-1">
 						{#each (['buy', 'sell'] as const) as d}
 							<button
 								type="button"
 								onclick={() => (direction = d)}
 								aria-pressed={direction === d}
-								class="rounded-md font-mono text-sm font-bold uppercase transition-all duration-150 focus-visible:outline-emerald-500 {direction === d
+								class="rounded-lg font-mono text-[13px] font-bold tracking-wide uppercase transition-all duration-200 ease-spring focus-visible:outline-none {direction ===
+								d
 									? d === 'buy'
-										? 'bg-emerald-500 text-white shadow'
-										: 'bg-rose-500 text-white shadow'
-									: 'text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'}"
+										? 'bg-win/15 text-win inset-win'
+										: 'bg-loss/15 text-loss inset-loss'
+									: 'text-mut hover:text-fg'}"
 							>
 								{d === 'buy' ? 'Buy' : 'Sell'}
 							</button>
@@ -265,25 +266,26 @@
 					<input type="number" value={sl} oninput={(e) => (sl = e.currentTarget.value)} step="any" placeholder="4298.00" class={field} />
 				</label>
 				<label class={label}>
-					Take profit <span class="font-normal opacity-70">(optional)</span>
+					Take profit <span class="normal-case tracking-normal text-dim">(optional)</span>
 					<input type="number" value={tp} oninput={(e) => (tp = e.currentTarget.value)} step="any" placeholder="4325.00" class={field} />
 				</label>
 			</div>
+
 			<label class="{label} mt-3">
-				Setup tags <span class="font-mono font-normal">#fvg #bos</span>
-				<input type="text" bind:value={tags} placeholder="#breakout" autocomplete="off" class="{field} font-sans" />
+				Setup tags <span class="normal-case tracking-normal text-mut">#fvg #bos</span>
+				<input type="text" bind:value={tags} placeholder="#breakout" autocomplete="off" class="field font-sans text-[13px]" />
 			</label>
 
 			{#if mode === 'live'}
 				<label class="{label} mt-3">
-					Entry time (UTC) <span class="font-normal opacity-70">empty = now</span>
+					Entry time (UTC) <span class="normal-case tracking-normal text-dim">empty = now</span>
 					<input type="datetime-local" value={liveEntryAt} oninput={(e) => (liveEntryAt = e.currentTarget.value)} class={field} />
 				</label>
 			{/if}
 
 			{#if mode === 'backfill'}
-				<fieldset class="mt-3 rounded-xl border border-slate-200 p-3 dark:border-white/10">
-					<legend class="px-1 font-mono text-[11px] tracking-wider text-slate-400 uppercase">Historical exit (UTC)</legend>
+				<fieldset class="mt-3 rounded-xl border border-line p-3">
+					<legend class="px-1 font-mono text-[10px] tracking-[0.16em] text-dim uppercase">Historical exit (UTC)</legend>
 					<div class="grid grid-cols-2 gap-3">
 						<label class={label}>
 							Entry date/time
@@ -298,61 +300,55 @@
 							<input type="number" value={exitPrice} oninput={(e) => (exitPrice = e.currentTarget.value)} step="any" class={field} />
 						</label>
 						<label class={label}>
-							Net PnL <span class="font-normal opacity-70">(optional)</span>
+							Net PnL <span class="normal-case tracking-normal text-dim">(optional)</span>
 							<input type="number" value={netPnl} oninput={(e) => (netPnl = e.currentTarget.value)} step="any" class={field} />
 						</label>
 					</div>
-					<p class="mt-2 font-mono text-[11px] tabular-nums text-slate-500 dark:text-slate-400" aria-live="polite">
-						Session: <span class="font-bold">{backfillSession ?? '— pick entry time —'}</span>
+					<p class="num mt-2 text-[11px] text-dim" aria-live="polite">
+						Session: <span class="font-bold text-accent">{backfillSession ?? '— pick entry time —'}</span>
 					</p>
 				</fieldset>
 			{/if}
 
-			<div class="mt-4 rounded-xl border border-slate-200 bg-slate-50/70 px-3.5 py-3 dark:border-white/[0.07] dark:bg-white/[0.02]" aria-live="polite">
-				<p class="font-mono text-[11px] tracking-wider text-slate-400 uppercase">
-					{mode === 'live' ? 'Risk preview' : 'Backfill preview'} <span class="normal-case">(estimate)</span>
+			<div class="mt-4 rounded-xl border border-line bg-raised/60 px-3.5 py-3" aria-live="polite">
+				<p class="eyebrow">
+					{mode === 'live' ? 'Risk preview' : 'Backfill preview'}
+					<span class="normal-case tracking-normal text-dim">(estimate)</span>
 				</p>
 				{#if mode === 'live'}
-					<p class="mt-1 font-mono text-[11px] tabular-nums text-slate-500 dark:text-slate-400">
-						Entry {liveEntryAt.trim() ? `${liveEntryAt.trim().replace('T', ' ')} UTC` : 'now'} · Session: <span class="font-bold text-slate-700 dark:text-slate-200">{liveSession}</span> (auto)
+					<p class="num mt-1.5 text-[11.5px] text-mut">
+						Entry {liveEntryAt.trim() ? `${liveEntryAt.trim().replace('T', ' ')} UTC` : 'now'} · Session:
+						<span class="font-bold text-fg">{liveSession}</span> (auto)
 					</p>
 				{/if}
 				{#if riskEst !== null && riskDist !== null}
-					<p class="mt-1 font-mono text-sm tabular-nums">
-						Risk <span class="font-bold text-rose-600 dark:text-rose-400">{fmtMoney(riskEst)}</span>
-						<span class="text-slate-500 dark:text-slate-400">· {riskDist} pts</span>
+					<p class="num mt-1.5 text-sm">
+						Risk <span class="font-bold text-loss">{fmtMoney(riskEst)}</span>
+						<span class="text-dim">· {riskDist} pts</span>
 						{#if rewardEst !== null}
-							<span class="text-slate-500 dark:text-slate-400"> · Reward {fmtMoney(rewardEst)}</span>
+							<span class="text-dim"> · Reward {fmtMoney(rewardEst)}</span>
 						{/if}
 						{#if rr !== null}
-							<span class="font-bold text-emerald-600 dark:text-emerald-400"> · {rr.toFixed(2)}R</span>
+							<span class="font-bold text-win"> · {rr.toFixed(2)}R</span>
 						{/if}
 					</p>
 				{:else}
-					<p class="mt-1 text-sm text-slate-500 dark:text-slate-400">Type entry, stop and size to preview risk.</p>
+					<p class="mt-1.5 text-[13px] text-dim">Type entry, stop and size to preview risk.</p>
 				{/if}
 				{#if !slSideOk}
-					<p class="mt-1 text-[13px] font-medium text-rose-600 dark:text-rose-400">Stop is on the wrong side of entry for a {direction}.</p>
+					<p class="mt-1.5 text-[13px] font-medium text-loss">Stop is on the wrong side of entry for a {direction}.</p>
 				{/if}
 			</div>
 
 			{#if formError}
-				<p class="mt-3 text-[13px] font-medium text-rose-600 dark:text-rose-400" role="alert">{formError}</p>
+				<p class="mt-3 text-[13px] font-medium text-loss" role="alert">{formError}</p>
 			{/if}
 
-			<div class="mt-4 flex justify-end gap-2">
-				<button
-					type="button"
-					onclick={() => dismissLifecycle()}
-					class="h-10 rounded-lg border border-slate-200 px-4 text-sm font-semibold transition-all hover:border-slate-300 focus-visible:outline-emerald-500 active:scale-[0.98] dark:border-white/10"
-				>
+			<div class="mt-5 flex justify-end gap-2 border-t border-line pt-4">
+				<button type="button" onclick={() => dismissLifecycle()} class="btn btn-ghost h-10 px-4 text-sm">
 					Cancel
 				</button>
-				<button
-					type="submit"
-					disabled={$lifecycleBusy}
-					class="h-10 rounded-lg bg-emerald-500 px-5 text-sm font-semibold text-white shadow-lift transition-all duration-150 hover:bg-emerald-600 focus-visible:outline-emerald-500 active:scale-[0.98] disabled:cursor-wait disabled:opacity-70"
-				>
+				<button type="submit" disabled={$lifecycleBusy} class="btn btn-primary h-10 px-5 text-sm">
 					{$lifecycleBusy ? (mode === 'live' ? 'Opening…' : 'Saving…') : mode === 'live' ? 'Open trade' : 'Backfill trade'}
 				</button>
 			</div>

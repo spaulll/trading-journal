@@ -1,6 +1,5 @@
 <script lang="ts">
 	import { fade } from 'svelte/transition';
-	import { Crosshair, Shield, Target } from 'lucide-svelte';
 	import { openTrades, openTrade, requestClose } from '$lib/stores/trades';
 	import { fmtMoney, fmtNum, pnlTone, toneText } from '$lib/utils/format';
 	import { FADE } from '$lib/utils/transitions';
@@ -12,65 +11,78 @@
 			return null;
 		return Math.abs(t.entry_price - stop);
 	}
+
+	const LADDER = [
+		{ key: 'entry', label: 'Entry', get: (t: TradeDto) => t.entry_price },
+		{ key: 'stop', label: 'Stop', get: (t: TradeDto) => t.current_sl ?? t.initial_sl },
+		{ key: 'target', label: 'Target', get: (t: TradeDto) => t.tp }
+	] as const;
 </script>
 
-<section aria-label="Open positions">
-	<div class="mb-3 flex items-baseline justify-between">
-		<h2 class="text-sm font-semibold tracking-tight text-balance">Open positions</h2>
-		<span class="font-mono text-xs tabular-nums text-slate-400 dark:text-slate-500">
-			{$openTrades.length} open
-		</span>
-	</div>
+<section aria-label="Open positions" class="rise" style="animation-delay: 60ms">
+	<header class="mb-3 flex items-baseline justify-between gap-3">
+		<div class="flex items-center gap-2.5">
+			<span class="h-1.5 w-1.5 rounded-full bg-win dot-live" aria-hidden="true"></span>
+			<h2 class="text-[13.5px] font-semibold tracking-[-0.01em] text-fg">Live positions</h2>
+		</div>
+		<span class="num text-xs text-mut">{$openTrades.length} open</span>
+	</header>
 
 	{#if $openTrades.length === 0}
 		<div
-			class="rounded-xl border border-slate-200 bg-white/60 px-5 py-4 text-sm leading-relaxed text-slate-500 shadow-card dark:border-white/[0.07] dark:bg-surface-900/60 dark:text-slate-400"
+			class="card border-dashed px-5 py-6 text-center text-sm leading-relaxed text-mut"
 		>
-			No open positions. New bot or web entries appear here live.
+			No open positions — new bot or web entries land here live.
 		</div>
 	{:else}
 		<div class="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3" transition:fade={FADE}>
 			{#each $openTrades as t, i (t.id)}
+				{@const isShort = (t.direction ?? '').toLowerCase() === 'sell'}
 				<div
 					role="button"
 					tabindex={0}
 					onclick={() => openTrade(t.id)}
 					onkeydown={(e) => e.key === 'Enter' && openTrade(t.id)}
-					style="animation-delay: {Math.min(i, 8) * 40}ms"
-					class="group rounded-xl border border-slate-200 bg-white p-4 text-left shadow-card transition-all duration-150 hover:-translate-y-0.5 hover:shadow-pop focus-visible:outline-emerald-500 active:translate-y-0 active:scale-[0.99] dark:border-white/[0.07] dark:bg-surface-900 dark:hover:shadow-black/40"
+					class="card card-hover group relative overflow-hidden p-4 text-left focus-visible:outline-none"
+					style="animation: rise 0.6s cubic-bezier(0.22, 1, 0.36, 1) {Math.min(i, 8) * 70}ms both;"
 				>
-					<div class="flex items-center justify-between gap-2">
-						<span class="font-mono text-sm font-semibold tracking-tight uppercase">
+					<span
+						class="absolute inset-y-0 left-0 w-[3px] {isShort ? 'bg-loss/70' : 'bg-win/70'}"
+						aria-hidden="true"
+					></span>
+
+					<div class="flex items-center justify-between gap-2 pl-1.5">
+						<span class="num text-[15px] font-semibold tracking-tight text-fg uppercase">
 							{t.symbol ?? '—'}
 						</span>
 						<span
-							class="rounded-md px-2 py-0.5 font-mono text-[11px] font-semibold tracking-wide uppercase {(t.direction ?? '').toLowerCase() === 'sell'
-								? 'bg-rose-500/10 text-rose-600 dark:text-rose-400'
-								: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'}"
+							class="rounded-lg px-2 py-0.5 font-mono text-[10px] font-semibold tracking-[0.14em] uppercase {isShort
+								? 'bg-loss/12 text-loss'
+								: 'bg-win/12 text-win'}"
 						>
 							{t.direction ?? '—'}
 						</span>
 					</div>
-					<div class="mt-3 grid grid-cols-3 gap-2 font-mono text-xs tabular-nums">
-						<span class="flex items-center gap-1.5 text-slate-500 dark:text-slate-400">
-							<Crosshair size={13} strokeWidth={1.8} aria-hidden="true" class="shrink-0" />
-							{fmtNum(t.entry_price, 2)}
+
+					<dl class="mt-3.5 grid grid-cols-3 gap-2 pl-1.5">
+						{#each LADDER as col}
+							<div class="min-w-0">
+								<dt class="eyebrow">{col.label}</dt>
+								<dd class="num mt-1 truncate text-[13px] text-fg">
+									{fmtNum(col.get(t), 2)}
+								</dd>
+							</div>
+						{/each}
+					</dl>
+
+					<div
+						class="mt-3.5 flex items-center justify-between gap-2 border-t border-line pt-3 pl-1.5"
+					>
+						<span class="num truncate text-[11.5px] text-dim">
+							{t.size ?? '—'} lots · risk {fmtNum(riskDist(t), 2)}
 						</span>
-						<span class="flex items-center gap-1.5 text-slate-500 dark:text-slate-400">
-							<Shield size={13} strokeWidth={1.8} aria-hidden="true" class="shrink-0" />
-							{fmtNum(t.current_sl ?? t.initial_sl, 2)}
-						</span>
-						<span class="flex items-center gap-1.5 text-slate-500 dark:text-slate-400">
-							<Target size={13} strokeWidth={1.8} aria-hidden="true" class="shrink-0" />
-							{fmtNum(t.tp, 2)}
-						</span>
-					</div>
-					<div class="mt-3 flex items-center justify-between border-t border-slate-100 pt-3 text-xs dark:border-white/[0.07]">
-						<span class="text-slate-500 dark:text-slate-400">
-							{t.size ?? '—'} lots · risk dist {fmtNum(riskDist(t), 2)}
-						</span>
-						<span class="flex items-center gap-2">
-							<span class="font-mono font-medium tabular-nums {toneText[pnlTone(t.net_pnl)]}">
+						<span class="flex shrink-0 items-center gap-2">
+							<span class="num text-[13px] font-semibold {toneText[pnlTone(t.net_pnl)]}">
 								{fmtMoney(t.net_pnl)}
 							</span>
 							<button
@@ -79,7 +91,7 @@
 									e.stopPropagation();
 									requestClose(t.id);
 								}}
-								class="h-7 rounded-lg bg-rose-500/10 px-2.5 font-mono text-[11px] font-bold uppercase tracking-wide text-rose-600 transition-all duration-150 hover:bg-rose-500 hover:text-white focus-visible:outline-rose-500 active:scale-95 dark:text-rose-400"
+								class="rounded-lg border border-line px-2.5 py-1 font-mono text-[10px] font-bold tracking-[0.12em] uppercase text-loss transition-all duration-200 hover:border-loss/50 hover:bg-loss/12 focus-visible:outline-none active:scale-95"
 							>
 								Close
 							</button>

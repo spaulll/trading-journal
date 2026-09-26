@@ -2,11 +2,10 @@
 	import { onDestroy, onMount } from 'svelte';
 	import { Chart, registerables } from 'chart.js';
 	import type { SummaryDto } from '$lib/api';
+	import { palette } from '$lib/utils/palette';
+	import { theme } from '$lib/stores/theme';
 
 	Chart.register(...registerables);
-	Chart.defaults.color = '#94a3b8';
-	Chart.defaults.borderColor = 'rgba(148,163,184,0.12)';
-	Chart.defaults.font.family = 'Inter, sans-serif';
 
 	const { summary }: { summary: SummaryDto } = $props();
 
@@ -15,6 +14,10 @@
 
 	function render(): void {
 		if (!canvas) return;
+		const p = palette();
+		Chart.defaults.color = p.axis;
+		Chart.defaults.borderColor = p.grid;
+		Chart.defaults.font.family = 'Geist, ui-sans-serif, sans-serif';
 		chart?.destroy();
 		chart = new Chart(canvas, {
 			type: 'doughnut',
@@ -23,7 +26,7 @@
 				datasets: [
 					{
 						data: [summary.wins, summary.losses, summary.breakeven],
-						backgroundColor: ['#10b981', '#ef4444', '#64748b'],
+						backgroundColor: [p.win, p.loss, p.flat],
 						borderWidth: 0,
 						hoverOffset: 6
 					}
@@ -33,7 +36,29 @@
 				responsive: true,
 				maintainAspectRatio: false,
 				cutout: '68%',
-				plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, padding: 14 } } }
+				animation: { duration: 800, easing: 'easeOutQuart', animateRotate: true },
+				plugins: {
+					legend: {
+						position: 'bottom',
+						labels: {
+							color: p.axis,
+							font: { family: 'Geist', size: 11 },
+							boxWidth: 10,
+							padding: 14,
+							usePointStyle: true
+						}
+					},
+					tooltip: {
+						backgroundColor: p.panel,
+						titleColor: p.axis,
+						bodyColor: p.fg,
+						borderColor: p.grid,
+						borderWidth: 1,
+						padding: 10,
+						cornerRadius: 10,
+						displayColors: false
+					}
+				}
 			}
 		});
 	}
@@ -47,6 +72,7 @@
 	});
 
 	$effect(() => {
+		$theme;
 		[summary.wins, summary.losses, summary.breakeven].join(',');
 		if (canvas) render();
 	});

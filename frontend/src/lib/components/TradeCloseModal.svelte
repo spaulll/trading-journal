@@ -2,7 +2,7 @@
 	import { Flag, X } from 'lucide-svelte';
 	import { fade, scale } from 'svelte/transition';
 	import { dismissLifecycle, lifecycleBusy, submitClose, trades } from '$lib/stores/trades';
-	import { fmtMoney, fmtR } from '$lib/utils/format';
+	import { fmtMoney, fmtR, pnlTone, toneText } from '$lib/utils/format';
 	import { FADE, MODAL } from '$lib/utils/transitions';
 
 	const { tradeId }: { tradeId: number } = $props();
@@ -73,9 +73,8 @@
 		});
 	}
 
-	const field =
-		'h-10 w-full rounded-lg border border-slate-200 bg-transparent px-3 font-mono text-sm tabular-nums outline-none placeholder:text-slate-400 focus:border-emerald-500 dark:border-white/10';
-	const label = 'flex flex-col gap-1.5 text-xs font-semibold tracking-tight text-slate-500 dark:text-slate-400';
+	const field = 'field font-mono text-[13px]';
+	const label = 'flex flex-col gap-1.5 text-[11px] font-medium tracking-[0.14em] uppercase text-dim';
 </script>
 
 <svelte:window onkeydown={(e) => e.key === 'Escape' && dismissLifecycle()} />
@@ -85,37 +84,43 @@
 	onclick={onBackdrop}
 	onkeydown={(e) => e.key === 'Escape' && dismissLifecycle()}
 	tabindex={-1}
-	class="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-surface-950/70 p-4 backdrop-blur-sm"
+	class="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-base/75 p-4 backdrop-blur-[3px]"
 	role="dialog"
 	aria-modal="true"
 	aria-label="Close trade"
 >
-	<div transition:scale={MODAL} class="w-full max-w-lg rounded-2xl border border-slate-200 bg-white shadow-pop dark:border-white/[0.08] dark:bg-surface-900">
-		<div class="flex items-center gap-2 border-b border-slate-200 px-5 py-4 dark:border-white/[0.07]">
-			<Flag size={16} strokeWidth={2} aria-hidden="true" class="text-rose-500" />
-			<h2 class="text-sm font-semibold tracking-tight">
+	<div transition:scale={MODAL} class="card w-full max-w-lg overflow-hidden shadow-pop">
+		<div class="flex items-center gap-2.5 border-b border-line px-5 py-4">
+			<span class="grid h-8 w-8 place-items-center rounded-lg bg-loss/12 text-loss">
+				<Flag size={16} strokeWidth={2} aria-hidden="true" />
+			</span>
+			<h2 class="display text-xl text-fg">
 				Close {trade ? `${(trade.direction ?? '').toUpperCase()} ${trade.symbol ?? ''}` : 'trade'}
 			</h2>
 			<button
 				type="button"
 				onclick={() => dismissLifecycle()}
 				aria-label="Close"
-				class="ml-auto grid h-8 w-8 place-items-center rounded-lg text-slate-400 transition-all hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-emerald-500 active:scale-95 dark:hover:bg-white/[0.06] dark:hover:text-slate-200"
+				class="btn-icon ml-auto h-8 w-8"
 			>
 				<X size={17} strokeWidth={1.8} aria-hidden="true" />
 			</button>
 		</div>
 
 		{#if !trade}
-			<p class="px-5 py-8 text-center text-sm text-slate-500">Trade not found — it may have been deleted.</p>
+			<p class="px-5 py-10 text-center text-sm text-mut">Trade not found — it may have been deleted.</p>
 		{:else if trade.status !== 'OPEN'}
-			<p class="px-5 py-8 text-center text-sm text-slate-500">
+			<p class="px-5 py-10 text-center text-sm text-mut">
 				This trade is already {trade.status.toLowerCase()}.
 			</p>
 		{:else}
 			<form class="px-5 py-4" onsubmit={submit}>
-				<p class="mb-3 font-mono text-xs tabular-nums text-slate-500 dark:text-slate-400">
-					Entry {trade.entry_price ?? '—'} · SL {trade.initial_sl ?? '—'} · {trade.ticket}
+				<p class="num mb-4 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11.5px] text-dim">
+					<span>Entry <span class="text-fg">{trade.entry_price ?? '—'}</span></span>
+					<span class="text-dim/60">·</span>
+					<span>SL <span class="text-fg">{trade.initial_sl ?? '—'}</span></span>
+					<span class="text-dim/60">·</span>
+					<span>{trade.ticket}</span>
 				</p>
 				<div class="grid grid-cols-2 gap-3 sm:grid-cols-3">
 					<label class={label}>
@@ -123,21 +128,21 @@
 						<input type="number" value={exit} oninput={(e) => (exit = e.currentTarget.value)} step="any" class={field} />
 					</label>
 					<label class={label}>
-						Gross PnL <span class="font-normal opacity-70">(optional)</span>
+						Gross PnL <span class="normal-case tracking-normal text-dim">(optional)</span>
 						<input type="number" value={gross} oninput={(e) => (gross = e.currentTarget.value)} step="any" placeholder="+135" class={field} />
 					</label>
 					<label class={label}>
 						Broker fees
 						<input type="number" value={fees} oninput={(e) => (fees = e.currentTarget.value)} min="0" step="any" class={field} />
 					</label>
-					<label class={label}>
-						Exit time (UTC) <span class="font-normal opacity-70">empty = now</span>
+					<label class="{label} col-span-2 sm:col-span-1">
+						Exit time (UTC) <span class="normal-case tracking-normal text-dim">empty = now</span>
 						<input type="datetime-local" value={exitAt} oninput={(e) => (exitAt = e.currentTarget.value)} class={field} />
 					</label>
 				</div>
 				<label class="{label} mt-3">
-					Mistake tags <span class="font-mono font-normal">!early !fomo</span>
-					<input type="text" bind:value={mistakes} placeholder="!early" autocomplete="off" class="{field} font-sans" />
+					Mistake tags <span class="normal-case tracking-normal text-mut">!early !fomo</span>
+					<input type="text" bind:value={mistakes} placeholder="!early" autocomplete="off" class="field font-sans text-[13px]" />
 				</label>
 				<label class="{label} mt-3">
 					Reflection notes
@@ -145,38 +150,40 @@
 						bind:value={notes}
 						rows={3}
 						placeholder="What did you learn?"
-						class="resize-y rounded-lg border border-slate-200 bg-transparent p-2.5 text-sm leading-relaxed outline-none placeholder:text-slate-400 focus:border-emerald-500 dark:border-white/10"
+						class="field resize-y text-[13px]"
 					></textarea>
 				</label>
 
-				<div class="mt-4 rounded-xl border border-slate-200 bg-slate-50/70 px-3.5 py-3 dark:border-white/[0.07] dark:bg-white/[0.02]" aria-live="polite">
-					<p class="font-mono text-[11px] tracking-wider text-slate-400 uppercase">Close preview</p>
-					<p class="mt-1 font-mono text-sm tabular-nums">
-						Net <span class="font-bold">{netPreview === null ? '—' : fmtMoney(netPreview)}</span>
-						<span class="text-slate-500 dark:text-slate-400"> · </span>R <span class="font-bold">{rPreview === null ? '—' : fmtR(rPreview)}</span>
+				<div class="mt-4 rounded-xl border border-line bg-raised/60 px-3.5 py-3" aria-live="polite">
+					<p class="eyebrow">Close preview</p>
+					<p class="num mt-1.5 flex flex-wrap items-baseline gap-x-3 text-sm">
+						<span>
+							<span class="text-dim">Net</span>
+							<span class="ml-1.5 font-bold {toneText[pnlTone(netPreview)]}">
+								{netPreview === null ? '—' : fmtMoney(netPreview)}
+							</span>
+						</span>
+						<span>
+							<span class="text-dim">R</span>
+							<span class="ml-1.5 font-bold {toneText[pnlTone(rPreview)]}">
+								{rPreview === null ? '—' : fmtR(rPreview)}
+							</span>
+						</span>
 					</p>
-					<p class="mt-0.5 text-[11px] text-slate-500 dark:text-slate-400">
+					<p class="mt-1.5 text-[11px] leading-relaxed text-dim">
 						Preview only — the server computes the stored values. Invalid exit/SL data clears R.
 					</p>
 				</div>
 
 				{#if formError}
-					<p class="mt-3 text-[13px] font-medium text-rose-600 dark:text-rose-400" role="alert">{formError}</p>
+					<p class="mt-3 text-[13px] font-medium text-loss" role="alert">{formError}</p>
 				{/if}
 
-				<div class="mt-4 flex justify-end gap-2">
-					<button
-						type="button"
-						onclick={() => dismissLifecycle()}
-						class="h-10 rounded-lg border border-slate-200 px-4 text-sm font-semibold transition-all hover:border-slate-300 focus-visible:outline-emerald-500 active:scale-[0.98] dark:border-white/10"
-					>
+				<div class="mt-5 flex justify-end gap-2 border-t border-line pt-4">
+					<button type="button" onclick={() => dismissLifecycle()} class="btn btn-ghost h-10 px-4 text-sm">
 						Cancel
 					</button>
-					<button
-						type="submit"
-						disabled={$lifecycleBusy}
-						class="h-10 rounded-lg bg-rose-500 px-5 text-sm font-semibold text-white shadow-pop transition-all duration-150 hover:bg-rose-600 focus-visible:outline-rose-500 active:scale-[0.98] disabled:cursor-wait disabled:opacity-70"
-					>
+					<button type="submit" disabled={$lifecycleBusy} class="btn btn-danger h-10 px-5 text-sm">
 						{$lifecycleBusy ? 'Closing…' : 'Close trade'}
 					</button>
 				</div>
