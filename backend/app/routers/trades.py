@@ -361,7 +361,11 @@ def list_trades(
     date_from: Optional[datetime] = None,
     date_to: Optional[datetime] = None,
     page: int = Query(default=1, ge=1),
-    page_size: int = Query(default=50, ge=1, le=200),
+    # Large default so first-page clients (Trades page, bots) see the full
+    # ledger without paginating; total is always the full filtered count
+    # independent of page/page_size — clients that need every row should
+    # still paginate until items.length == total (see listAllTrades).
+    page_size: int = Query(default=500, ge=1, le=5000),
     session: Session = Depends(get_session),
 ):
     statement = select(Trade).order_by(Trade.created_at.desc())
