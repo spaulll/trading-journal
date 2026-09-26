@@ -13,13 +13,19 @@
 #   -h, --help        show this help
 #
 # Env (all optional, sane defaults per AGENTS.md):
-#   BACKEND_HOST      default 127.0.0.1
+#   BACKEND_HOST      default 0.0.0.0 (loopback-only breaks laptop/LAN browsers:
+#                     the browser fetches the API directly, so the backend must
+#                     listen on a browser-reachable interface)
 #   BACKEND_PORT      default: $PORT from backend/.env, else 8000
 #   FRONTEND_PORT     default 3000
-#   ORIGIN            default http://127.0.0.1:<FRONTEND_PORT>
-#   PUBLIC_API_BASE   backend URL the *browser* uses (frontend build-time env).
-#                     The script does NOT rewrite frontend/.env; rebuild the
-#                     frontend after changing it.
+#   ORIGIN            default http://127.0.0.1:<FRONTEND_PORT> (set to the URL
+#                     you open in the browser when on LAN, e.g.
+#                     ORIGIN=http://10.10.10.162:3000)
+#   PUBLIC_API_BASE   backend URL the *browser* calls (explicit env wins, then
+#                     frontend/.env, then http://127.0.0.1:<BACKEND_PORT>).
+#                     Exported so the SvelteKit server uses it at runtime.
+#                     Browsing via a LAN IP also needs that page origin in
+#                     backend/.env CORS_ORIGINS.
 #
 # Paths resolve from this script's directory — no hardcoded /opt or /root.
 
@@ -61,11 +67,17 @@ env_port_from_file() {
   fi
 }
 
-BACKEND_HOST="${BACKEND_HOST:-127.0.0.1}"
+BACKEND_HOST="${BACKEND_HOST:-0.0.0.0}"
 BACKEND_PORT="${BACKEND_PORT:-${PORT:-$(env_port_from_file)}}"
 BACKEND_PORT="${BACKEND_PORT:-8000}"
 FRONTEND_PORT="${FRONTEND_PORT:-3000}"
 ORIGIN="${ORIGIN:-http://127.0.0.1:${FRONTEND_PORT}}"
+
+# Health checks always hit loopback even when bound to 0.0.0.0.
+HEALTH_HOST="$BACKEND_HOST"
+if [[ "$HEALTH_HOST" == "0.0.0.0" || "$HEALTH_HOST" == "::" ]]; then
+  HEALTH_HOST="127.0.0.1"
+fi
 
 PIDS=()
 cleanup() {
@@ -122,6 +134,55 @@ if [[ "$RUN_FRONTEND" == 1 ]]; then
   [[ -f "$FRONTEND_DIR/.env" ]] || log "warning: frontend/.env missing — PUBLIC_API_BASE unset for the browser"
 fi
 
+url_host() {
+  # Extract host from a URL (drops scheme, port, path).
+  local u="${1#*://}"
+  u="${u%%/*}"
+  printf '%s' "${u%%:*}"
+}
+
+is_loopback() {
+  case "$1" in
+    127.*|localhost|::1) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+resolve_api_base() {
+  # API URL the browser calls: explicit env wins, then frontend/.env,
+  # then a loopback fallback. Exported so the SvelteKit server
+  # ($env/dynamic/public) uses it at runtime.
+  if [[ -z "${PUBLIC_API_BASE:-}" && -f "$FRONTEND_DIR/.env" ]]; then
+    PUBLIC_API_BASE="$(grep -E '^[[:space:]]*PUBLIC_API_BASE=' "$FRONTEND_DIR/.env" | tail -n1 | cut -d= -f2- | tr -d '[:space:]' || true)"
+  fi
+  PUBLIC_API_BASE="${PUBLIC_API_BASE:-http://127.0.0.1:${BACKEND_PORT}}"
+  export PUBLIC_API_BASE
+}
+
+preflight() {
+  # Warn about the two classic "Backend unreachable" causes: backend bound
+  # to loopback while the browser uses a LAN URL, and a LAN page origin
+  # missing from backend CORS_ORIGINS.
+  local api_host origin_host cors
+  api_host="$(url_host "$PUBLIC_API_BASE")"
+  origin_host="$(url_host "$ORIGIN")"
+  if ! is_loopback "$api_host" && is_loopback "$BACKEND_HOST"; then
+    log "WARNING: browsers call the API at ${PUBLIC_API_BASE}, but the backend binds ${BACKEND_HOST} (loopback-only)."
+    log "WARNING: start with BACKEND_HOST=0.0.0.0 so the API is reachable on the LAN."
+  fi
+  if ! is_loopback "$origin_host"; then
+    cors="$(grep -E '^[[:space:]]*CORS_ORIGINS=' "$BACKEND_DIR/.env" 2>/dev/null | tail -n1 | cut -d= -f2- | tr -d '[:space:]' || true)"
+    if [[ "$cors" != *"$ORIGIN"* ]]; then
+      log "WARNING: opening the frontend at ${ORIGIN} needs that origin in backend/.env CORS_ORIGINS"
+      log "WARNING: (backend only allows localhost/127.0.0.1 :3000/:5173 by default)."
+    fi
+  fi
+  log "browser → API: ${PUBLIC_API_BASE} (backend ${BACKEND_HOST}:${BACKEND_PORT})"
+}
+
+resolve_api_base
+preflight
+
 if [[ "$RUN_BACKEND" == 1 ]]; then
   log "starting backend: ${BACKEND_HOST}:${BACKEND_PORT} (app.main:app)"
   (cd "$BACKEND_DIR" && ./venv/bin/uvicorn app.main:app --host "$BACKEND_HOST" --port "$BACKEND_PORT") &
@@ -141,12 +202,12 @@ if [[ "$RUN_BACKEND" == 1 ]]; then
     if python3 -c "
 import sys, urllib.request
 try:
-    r = urllib.request.urlopen('http://${BACKEND_HOST}:${BACKEND_PORT}/api/health', timeout=2)
+    r = urllib.request.urlopen('http://${HEALTH_HOST}:${BACKEND_PORT}/api/health', timeout=2)
     sys.exit(0 if r.status == 200 else 1)
 except Exception:
     sys.exit(1)
 " 2>/dev/null; then
-      log "backend up: http://${BACKEND_HOST}:${BACKEND_PORT}/api/health"
+      log "backend up: http://${HEALTH_HOST}:${BACKEND_PORT}/api/health"
       break
     fi
     sleep 1
