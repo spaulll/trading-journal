@@ -471,7 +471,7 @@ def _direction_stats(trades: list[Trade]) -> dict:
     nets = [t.net_pnl if t.net_pnl is not None else 0.0 for t in trades]
     wins, losses, be = _win_loss_counts(nets)
     signs = [_sign(n) for n in nets]
-    win_runs, _ = _streak_runs(signs)
+    win_runs, loss_runs = _streak_runs(signs)
     win_nets = [n for n in nets if _is_win(n)]
     loss_nets = [n for n in nets if _is_loss(n)]
 
@@ -501,6 +501,7 @@ def _direction_stats(trades: list[Trade]) -> dict:
         "avg_win_duration_min": avg_dur(lambda t: _is_win(t.net_pnl or 0.0)),
         "avg_loss_duration_min": avg_dur(lambda t: _is_loss(t.net_pnl or 0.0)),
         "max_win_streak": max(win_runs, default=0),
+        "max_loss_streak": max(loss_runs, default=0),
     }
 
 
@@ -509,7 +510,11 @@ def long_short_stats(session: Session = Depends(get_session)):
     trades = _closed_trades(session)
     buys = [t for t in trades if _normalize_direction(t.direction) == "buy"]
     sells = [t for t in trades if _normalize_direction(t.direction) == "sell"]
-    return {"buy": _direction_stats(buys), "sell": _direction_stats(sells)}
+    return {
+        "buy": _direction_stats(buys),
+        "sell": _direction_stats(sells),
+        "all": _direction_stats(trades),
+    }
 
 
 @router.get("/radar-profiles")

@@ -12,15 +12,18 @@
 		longShort,
 		activity
 	}: {
-		longShort: { buy: DirectionStats; sell: DirectionStats };
+		longShort: { buy: DirectionStats; sell: DirectionStats; all?: DirectionStats };
 		activity: ActivityStreaks;
 	} = $props();
 
 	let side = $state<'all' | 'long' | 'short'>('all');
 
+	// Long ↔ buy, Short ↔ sell. `all` comes from the server (correct durations
+	// + side-aware streaks); the manual fallback only runs for stale payloads.
 	const sel = $derived.by((): DirectionStats => {
 		if (side === 'long') return longShort.buy;
 		if (side === 'short') return longShort.sell;
+		if (longShort.all) return longShort.all;
 		const b = longShort.buy;
 		const s = longShort.sell;
 		const wins = b.wins + s.wins;
@@ -31,6 +34,14 @@
 			(b.best?.net_pnl ?? -Infinity) >= (s.best?.net_pnl ?? -Infinity) ? b.best : s.best;
 		const worst =
 			(b.worst?.net_pnl ?? Infinity) <= (s.worst?.net_pnl ?? Infinity) ? b.worst : s.worst;
+		const avgWinDur =
+			wins && b.avg_win_duration_min !== null && s.avg_win_duration_min !== null
+				? (b.avg_win_duration_min * b.wins + s.avg_win_duration_min * s.wins) / wins
+				: (b.avg_win_duration_min ?? s.avg_win_duration_min);
+		const avgLossDur =
+			losses && b.avg_loss_duration_min !== null && s.avg_loss_duration_min !== null
+				? (b.avg_loss_duration_min * b.losses + s.avg_loss_duration_min * s.losses) / losses
+				: (b.avg_loss_duration_min ?? s.avg_loss_duration_min);
 		return {
 			trades: b.trades + s.trades,
 			wins,
@@ -41,9 +52,10 @@
 			avg_loss: losses ? (b.avg_loss * b.losses + s.avg_loss * s.losses) / losses : 0,
 			best,
 			worst,
-			avg_win_duration_min: null,
-			avg_loss_duration_min: null,
-			max_win_streak: Math.max(b.max_win_streak, s.max_win_streak)
+			avg_win_duration_min: avgWinDur ?? null,
+			avg_loss_duration_min: avgLossDur ?? null,
+			max_win_streak: Math.max(b.max_win_streak, s.max_win_streak),
+			max_loss_streak: Math.max(b.max_loss_streak ?? 0, s.max_loss_streak ?? 0)
 		};
 	});
 
@@ -67,7 +79,7 @@
 		{ label: 'Worst loss', value: sel.worst ? `${sel.worst.ticket} · ${fmtMoney(sel.worst.net_pnl)}` : '—' },
 		{ label: 'Average loss', value: fmtMoney(sel.avg_loss) },
 		{ label: 'Avg loss duration', value: fmtDur(sel.avg_loss_duration_min) },
-		{ label: 'Max loss streak', value: `${activity.max_loss_streak}` }
+		{ label: 'Max loss streak', value: `${sel.max_loss_streak ?? activity.max_loss_streak}` }
 	]);
 
 	const overview = $derived([

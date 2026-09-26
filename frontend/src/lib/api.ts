@@ -174,6 +174,7 @@ export interface DirectionStats {
 	avg_win_duration_min: number | null;
 	avg_loss_duration_min: number | null;
 	max_win_streak: number;
+	max_loss_streak: number;
 }
 
 export interface RadarProfiles {
@@ -265,7 +266,10 @@ export const api = {
 	monthlyCalendar: (year: number, month: number) =>
 		req<MonthlyCalendarDto>(`/api/analytics/monthly-calendar?year=${year}&month=${month}`),
 	activity: () => req<ActivityStreaks>('/api/analytics/activity-and-streaks'),
-	longShort: () => req<{ buy: DirectionStats; sell: DirectionStats }>('/api/analytics/long-short-stats'),
+	longShort: () =>
+		req<{ buy: DirectionStats; sell: DirectionStats; all?: DirectionStats }>(
+			'/api/analytics/long-short-stats'
+		),
 	radar: () => req<RadarProfiles>('/api/analytics/radar-profiles'),
 	uploadScreenshot: async (id: number, file: File, label: string): Promise<ScreenshotDto> => {
 		const form = new FormData();

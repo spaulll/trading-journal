@@ -42,7 +42,7 @@
 	let monthData = $state<MonthlyCalendarDto | null>(null);
 	let monthCursor = $state({ y: new Date().getFullYear(), m: new Date().getMonth() + 1 });
 	let activity = $state<ActivityStreaks | null>(null);
-	let longShort = $state<{ buy: DirectionStats; sell: DirectionStats } | null>(null);
+	let longShort = $state<{ buy: DirectionStats; sell: DirectionStats; all?: DirectionStats } | null>(null);
 	let radarData = $state<RadarProfiles | null>(null);
 
 	async function loadYearDays(y: number): Promise<void> {
