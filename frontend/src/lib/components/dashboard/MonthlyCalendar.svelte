@@ -29,6 +29,9 @@
 	let unit = $state<'usd' | 'pct'>('usd');
 	let tab = $state<'month' | 'year'>('month');
 
+	// Shared BE rule with backend BE_TOLERANCE (|net| <= 0.01 → breakeven).
+	const BE_TOL = 0.01;
+
 	const monthNet = $derived(data.weeks.reduce((a, w) => a + w.net_pnl, 0));
 	const todayKey = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}-${String(new Date().getDate()).padStart(2, '0')}`;
 
@@ -95,9 +98,9 @@
 	const valueClass = (net: number, count: number): string =>
 		count === 0
 			? 'text-dim'
-			: net > 0
+			: net > BE_TOL
 				? 'text-win'
-				: net < 0
+				: net < -BE_TOL
 					? 'text-loss'
 					: 'text-flat';
 
@@ -107,9 +110,8 @@
 	let yearChart: Chart | null = null;
 
 	// Yearly outcome summary (Year tab): day-level wins/losses/BE derived from
-	// yearDays with the shared BE rule (|net| <= 0.01 → BE). Mirrors the monthly
-	// outcome donut so Month ↔ Year stay consistent.
-	const BE_TOL = 0.01;
+	// yearDays with the shared BE rule. Mirrors the monthly outcome donut so
+	// Month ↔ Year stay consistent.
 	const yearOutcome = $derived.by(() => {
 		let wins = 0,
 			losses = 0,
