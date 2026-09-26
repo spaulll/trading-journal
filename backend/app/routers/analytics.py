@@ -94,6 +94,17 @@ def _sign(net: float) -> int:
     return 0
 
 
+def _normalize_direction(raw: object) -> str | None:
+    """Map stored direction to long/short buckets. UI Long ↔ `buy`, Short ↔ `sell`.
+    Accepts `long`/`short` aliases; unknown/empty values return None and are ignored."""
+    s = str(raw or "").strip().lower()
+    if s in ("buy", "long"):
+        return "buy"
+    if s in ("sell", "short"):
+        return "sell"
+    return None
+
+
 def _win_loss_counts(nets: list[float]) -> tuple[int, int, int]:
     wins = sum(1 for n in nets if _is_win(n))
     losses = sum(1 for n in nets if _is_loss(n))
@@ -496,8 +507,8 @@ def _direction_stats(trades: list[Trade]) -> dict:
 @router.get("/long-short-stats")
 def long_short_stats(session: Session = Depends(get_session)):
     trades = _closed_trades(session)
-    buys = [t for t in trades if (t.direction or "").lower() == "buy"]
-    sells = [t for t in trades if (t.direction or "").lower() == "sell"]
+    buys = [t for t in trades if _normalize_direction(t.direction) == "buy"]
+    sells = [t for t in trades if _normalize_direction(t.direction) == "sell"]
     return {"buy": _direction_stats(buys), "sell": _direction_stats(sells)}
 
 
