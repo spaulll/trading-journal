@@ -14,6 +14,7 @@ immich_client (never touch local disk), then recorded in screenshots.
 """
 
 import asyncio
+import html
 import logging
 import os
 import re
@@ -28,6 +29,11 @@ from app.models import Screenshot, Trade
 from app.services.timeutils import as_naive_utc
 
 log = logging.getLogger("telegram_bot")
+
+
+def esc(value: Any) -> str:
+    """Escape user/exception-derived text for HTML parse_mode messages."""
+    return html.escape(str(value), quote=False)
 
 API_BASE = "https://api.telegram.org"
 FILE_BASE = "https://api.telegram.org/file"
@@ -74,7 +80,7 @@ def _to_float(token: str, what: str) -> float:
     try:
         return float(token.strip().lstrip("+"))
     except ValueError:
-        raise BotParseError(f"Bad {what}: {token!r}") from None
+        raise BotParseError(f"Bad {what}: <code>{esc(token.strip())}</code>") from None
 
 
 def _parse_explicit_time(tail: str) -> tuple[Optional[datetime], str]:
@@ -97,9 +103,9 @@ def _parse_explicit_time(tail: str) -> tuple[Optional[datetime], str]:
             entry = now.replace(hour=int(hh), minute=int(mm), second=0, microsecond=0,
                                 tzinfo=None)
     except ValueError:
-        raise BotParseError(f"Bad time value: {raw!r} (use HH:MM or YYYY-MM-DD HH:MM)")
+        raise BotParseError(f"Bad time value: <code>{esc(raw)}</code> (use HH:MM or YYYY-MM-DD HH:MM)")
     if not (0 <= entry.hour <= 23 and 0 <= entry.minute <= 59):
-        raise BotParseError(f"Bad time value: {raw!r}")
+        raise BotParseError(f"Bad time value: <code>{esc(raw)}</code>")
     return entry, (tail[: m.start()] + tail[m.end():]).strip(" ,")
 
 
@@ -107,7 +113,7 @@ def parse_open(text: str) -> dict:
     """`buy gold, 0.1, 4000, 3990, 4020, #fvg ...` (+ optional `time:` flag)."""
     m = re.match(r"(?i)^\s*(buy|sell)\s+([a-z0-9\-/.]+)\s*,(.*)$", text.strip(), re.DOTALL)
     if not m:
-        raise BotParseError("Open syntax: `buy SYMBOL, SIZE, ENTRY, SL, [TP], [#tags]`")
+        raise BotParseError("Open syntax: <code>buy SYMBOL, SIZE, ENTRY, SL, [TP], [#tags]</code>")
     direction, symbol, rest = m.group(1).lower(), m.group(2).upper(), m.group(3)
     entry_time, rest = _parse_explicit_time(rest)
     parts = _split_args(rest)
@@ -142,7 +148,7 @@ def parse_past(text: str) -> dict:
     m = re.match(r"(?i)^\s*past\s+(buy|sell)\s+([a-z0-9\-/.]+)\s*,(.*)$", text.strip(), re.DOTALL)
     if not m:
         raise BotParseError(
-            "Backfill syntax: `past buy SYMBOL, SIZE, ENTRY, SL, TP, exit: EXIT, pnl: PNL, date: YYYY-MM-DD HH:MM`"
+            "Backfill syntax: <code>past buy SYMBOL, SIZE, ENTRY, SL, TP, exit: EXIT, pnl: PNL, date: YYYY-MM-DD HH:MM</code>"
         )
     direction, symbol, rest = m.group(1).lower(), m.group(2).upper(), m.group(3)
 
@@ -153,11 +159,11 @@ def parse_past(text: str) -> dict:
     exit_raw, pnl_raw, date_raw = grab("exit"), grab("pnl"), grab("date")
     fee_raw = grab("fee")
     if exit_raw is None or pnl_raw is None or date_raw is None:
-        raise BotParseError("Backfill needs `exit:`, `pnl:` and `date: YYYY-MM-DD HH:MM`")
+        raise BotParseError("Backfill needs <code>exit:</code>, <code>pnl:</code> and <code>date: YYYY-MM-DD HH:MM</code>")
     try:
         entry_time = datetime.strptime(date_raw.strip(), "%Y-%m-%d %H:%M")
     except ValueError:
-        raise BotParseError(f"Bad date: {date_raw!r} (use YYYY-MM-DD HH:MM)") from None
+        raise BotParseError(f"Bad date: <code>{esc(date_raw.strip())}</code> (use YYYY-MM-DD HH:MM)") from None
 
     cleaned = re.sub(r"(?i)\b(exit|pnl|fee|date)\s*:\s*[^\s,][^,]*", "", rest)
     parts = _split_args(cleaned)
@@ -189,7 +195,7 @@ def parse_tsl(text: str) -> dict:
     """`tsl gold, 4005`."""
     m = re.match(r"(?i)^\s*tsl\s+([a-z0-9\-/.]+)\s*,\s*([+-]?[\d.]+)\s*$", text.strip())
     if not m:
-        raise BotParseError("TSL syntax: `tsl SYMBOL, NEW_SL`")
+        raise BotParseError("TSL syntax: <code>tsl SYMBOL, NEW_SL</code>")
     return {"symbol": m.group(1).upper(), "current_sl": _to_float(m.group(2), "SL")}
 
 
@@ -197,7 +203,7 @@ def parse_close(text: str) -> dict:
     """`close gold, 4015, +150, fee: 3.5, !early, notes...`."""
     m = re.match(r"(?i)^\s*close\s+([a-z0-9\-/.]+)\s*,(.*)$", text.strip(), re.DOTALL)
     if not m:
-        raise BotParseError("Close syntax: `close SYMBOL, EXIT, [GROSS], [fee: X], [!tags], [notes]`")
+        raise BotParseError("Close syntax: <code>close SYMBOL, EXIT, [GROSS], [fee: X], [!tags], [notes]</code>")
     symbol, rest = m.group(1).upper(), m.group(2)
     parts = _split_args(rest)
     if not parts:
@@ -238,7 +244,7 @@ async def send_text(
     chat_id: int,
     text: str,
     reply_markup: Optional[dict] = None,
-    parse_mode: Optional[str] = None,
+    parse_mode: Optional[str] = "HTML",
 ) -> int:
     """Send a message; returns the Telegram message_id (for reply tracking)."""
     payload: dict[str, Any] = {"chat_id": chat_id, "text": text}
@@ -454,32 +460,33 @@ async def do_close(chat_id: int, session: Session, args: dict) -> None:
 START = (
     "👋 Welcome to your Trading Journal bot!\n"
     "I log your trades, nudge you on stale positions and send a nightly EOD recap.\n"
-    "Just type a trade (`buy gold, 0.1, 4000, 3990, 4020`) or send /help for the full syntax."
+    "Just type a trade (<code>buy gold, 0.1, 4000, 3990, 4020</code>) "
+    "or send /help for the full syntax."
 )
 
 HELP = (
-    "📒 Trading Journal bot — syntax guide\n"
+    "📒 <b>Trading Journal bot — syntax guide</b>\n"
     "\n"
-    "OPEN a trade:\n"
-    "`buy SYMBOL, SIZE, ENTRY, SL, [TP], [#setup tags]`\n"
-    "e.g. `buy gold, 0.1, 4000, 3990, 4020, #fvg` (sell = short)\n"
-    "Open @ a past time: add `time: 14:30` or `time: 2026-09-20 14:30`\n"
+    "<b>OPEN a trade:</b>\n"
+    "<code>buy SYMBOL, SIZE, ENTRY, SL, [TP], [#setup tags]</code>\n"
+    "e.g. <code>buy gold, 0.1, 4000, 3990, 4020, #fvg</code> (sell = short)\n"
+    "Open @ a past time: add <code>time: 14:30</code> or <code>time: 2026-09-20 14:30</code>\n"
     "\n"
-    "MOVE the stop (trailing):\n"
-    "`tsl SYMBOL, NEW_SL` — e.g. `tsl gold, 4005`\n"
+    "<b>MOVE the stop (trailing):</b>\n"
+    "<code>tsl SYMBOL, NEW_SL</code> — e.g. <code>tsl gold, 4005</code>\n"
     "\n"
-    "CLOSE a trade:\n"
-    "`close SYMBOL, EXIT, [GROSS_PNL], [fee: X], [!mistake tags], [notes]`\n"
-    "e.g. `close gold, 4015, +150, fee: 3.5, !early` "
+    "<b>CLOSE a trade:</b>\n"
+    "<code>close SYMBOL, EXIT, [GROSS_PNL], [fee: X], [!mistake tags], [notes]</code>\n"
+    "e.g. <code>close gold, 4015, +150, fee: 3.5, !early</code> "
     "(gross is estimated from price when omitted)\n"
     "\n"
-    "BACKFILL an old trade:\n"
-    "`past buy SYMBOL, SIZE, ENTRY, SL, TP, exit: EXIT, pnl: PNL, date: YYYY-MM-DD HH:MM`\n"
+    "<b>BACKFILL an old trade:</b>\n"
+    "<code>past buy SYMBOL, SIZE, ENTRY, SL, TP, exit: EXIT, pnl: PNL, date: YYYY-MM-DD HH:MM</code>\n"
     "\n"
-    "CHART screenshots: just send a photo — it attaches to your open trade "
+    "<b>CHART screenshots:</b> just send a photo — it attaches to your open trade "
     "(you pick one if several are open).\n"
     "\n"
-    "COMMANDS:\n"
+    "<b>COMMANDS:</b>\n"
     "/start — greeting · /help — this guide · /open — list open trades · "
     "/stats_daily — today's stats · /cancel — drop the pending question\n"
     "\n"
@@ -511,7 +518,7 @@ async def do_past(chat_id: int, session: Session, args: dict) -> None:
         ticket, created = insert_backfill_record(session, rec)
     except Exception as exc:
         detail = getattr(exc, "detail", str(exc))
-        await send_text(chat_id, f"❌ Backfill failed — {detail}")
+        await send_text(chat_id, f"❌ Backfill failed — {esc(detail)}")
         return
     if not created:
         await send_text(chat_id, f"⏭️ Already recorded: {ticket}.")
@@ -724,7 +731,7 @@ async def handle_photo(chat_id: int, file_id: str, session: Session) -> None:
             await attach_photo_to_trade(chat_id, session, state["trade_id"], file_id)
         except Exception as exc:
             log.exception("photo attach failed")
-            await send_text(chat_id, f"❌ Screenshot upload failed: {exc}")
+            await send_text(chat_id, f"❌ Screenshot upload failed: {esc(exc)}")
         return
     trades = _open_trades(session)
     if not trades:
@@ -735,7 +742,7 @@ async def handle_photo(chat_id: int, file_id: str, session: Session) -> None:
             await attach_photo_to_trade(chat_id, session, trades[0].id, file_id)
         except Exception as exc:
             log.exception("photo attach failed")
-            await send_text(chat_id, f"❌ Screenshot upload failed: {exc}")
+            await send_text(chat_id, f"❌ Screenshot upload failed: {esc(exc)}")
         return
     _pending[chat_id] = {"action": "photo_pick", "file_id": file_id}
     await send_text(
@@ -769,7 +776,7 @@ async def handle_callback(chat_id: int, callback_id: str, data: str, session: Se
             await attach_photo_to_trade(chat_id, session, trade_id, state["file_id"])
         except Exception as exc:
             log.exception("photo attach failed")
-            await send_text(chat_id, f"❌ Screenshot upload failed: {exc}")
+            await send_text(chat_id, f"❌ Screenshot upload failed: {esc(exc)}")
         return
 
     if action == "snooze":
@@ -804,7 +811,7 @@ async def handle_callback(chat_id: int, callback_id: str, data: str, session: Se
         await _answer_callback(callback_id)
         await send_text(
             chat_id,
-            f"🏁 Reply with exit details for {trade.symbol} — e.g. `4315, +120, fee: 2.5, !early` — or /cancel.",
+            f"🏁 Reply with exit details for {trade.symbol} — e.g. <code>4315, +120, fee: 2.5, !early</code> — or /cancel.",
         )
     elif action == "photo":
         _pending[chat_id] = {"action": "photo", "trade_id": trade.id}
