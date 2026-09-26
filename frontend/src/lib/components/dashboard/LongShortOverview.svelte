@@ -86,17 +86,17 @@
 		{ label: 'Average win', value: fmtMoney(sel.avg_win), tone: 'text-win' },
 		{ label: 'Average loss', value: fmtMoney(sel.avg_loss), tone: 'text-loss' },
 		{
-			label: 'Best trade',
-			value: activity.best_trade ? `${activity.best_trade.ticket} · ${fmtMoney(activity.best_trade.net_pnl)}` : '—',
+			label: side === 'all' ? 'Best trade' : `Best ${side} trade`,
+			value: sel.best ? `${sel.best.ticket} · ${fmtMoney(sel.best.net_pnl)}` : '—',
 			tone: 'text-win'
 		},
 		{
-			label: 'Worst trade',
-			value: activity.worst_trade ? `${activity.worst_trade.ticket} · ${fmtMoney(activity.worst_trade.net_pnl)}` : '—',
+			label: side === 'all' ? 'Worst trade' : `Worst ${side} trade`,
+			value: sel.worst ? `${sel.worst.ticket} · ${fmtMoney(sel.worst.net_pnl)}` : '—',
 			tone: 'text-loss'
 		},
-		{ label: 'Max win streak', value: `${activity.max_win_streak}`, tone: 'text-fg' },
-		{ label: 'Max loss streak', value: `${activity.max_loss_streak}`, tone: 'text-fg' }
+		{ label: side === 'all' ? 'Max win streak' : `Max ${side} win streak`, value: `${sel.max_win_streak}`, tone: 'text-fg' },
+		{ label: side === 'all' ? 'Max loss streak' : `Max ${side} loss streak`, value: `${sel.max_loss_streak ?? '—'}`, tone: 'text-fg' }
 	]);
 
 	let canvas: HTMLCanvasElement | null = null;
