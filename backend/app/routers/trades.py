@@ -417,6 +417,15 @@ def patch_trade(trade_id: int, patch: TradePatch, session: Session = Depends(get
             get_or_create_tag(session, name, category)
             for name, category in parse_tags(" ".join(patch.tags))
         ]
+    # Keep r_multiple consistent: recompute when price legs change unless the
+    # caller explicitly supplied r_multiple in the same patch.
+    if "r_multiple" not in data and any(
+        k in data for k in ("exit_price", "entry_price", "initial_sl", "direction")
+    ):
+        trade.r_multiple = compute_r_multiple(
+            trade.direction, trade.entry_price, trade.initial_sl, trade.exit_price
+        )
+        session.add(trade)
     trade.updated_at = _now()
     session.add(trade)
     session.commit()
