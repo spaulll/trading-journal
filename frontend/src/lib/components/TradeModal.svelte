@@ -186,7 +186,7 @@
 					class="rounded-lg px-2 py-0.5 font-mono text-[10px] font-semibold tracking-[0.14em] uppercase {trade.status ===
 					'OPEN'
 						? 'bg-accent/12 text-accent'
-						: 'bg-flat/12 text-dim'}"
+						: 'bg-flat/12 text-flat'}"
 				>
 					{trade.status}
 				</span>

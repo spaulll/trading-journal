@@ -10,7 +10,7 @@
 
 	const { points }: { points: EquityPoint[] } = $props();
 
-	const AXIS_FONT = '11px Geist, ui-sans-serif, sans-serif';
+	const AXIS_FONT = '11px "Geist Mono", ui-monospace, monospace';
 
 	/** Rebuild `rgb(r g b)` (with or without alpha) at an explicit alpha. */
 	function alpha(color: string, a: number): string {

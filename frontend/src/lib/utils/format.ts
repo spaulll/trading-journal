@@ -71,7 +71,7 @@ export function pnlTone(v: number | null | undefined): 'win' | 'loss' | 'be' {
 export const toneText: Record<'win' | 'loss' | 'be', string> = {
 	win: 'text-win',
 	loss: 'text-loss',
-	be: 'text-dim'
+	be: 'text-flat'
 };
 
 /** Soft tinted background for P&L chips and calendar cells. */

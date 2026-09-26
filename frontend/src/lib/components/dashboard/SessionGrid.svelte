@@ -7,10 +7,10 @@
 	const { kpi }: { kpi: KpiDashboard } = $props();
 
 	const META = [
-		{ key: 'london', label: 'London', hours: '7 AM – 1 PM UTC', accent: 'from-accent/18' },
-		{ key: 'new_york', label: 'New York', hours: '1 PM – 10 PM UTC', accent: 'from-win/18' },
-		{ key: 'asia', label: 'Asia', hours: '12 AM – 6 AM UTC', accent: 'from-flat/20' },
-		{ key: 'outside', label: 'Outside', hours: 'Off-killzone', accent: 'from-loss/14' }
+		{ key: 'london', label: 'London', hours: '7 AM – 1 PM UTC' },
+		{ key: 'new_york', label: 'New York', hours: '1 PM – 10 PM UTC' },
+		{ key: 'asia', label: 'Asia', hours: '12 AM – 6 AM UTC' },
+		{ key: 'outside', label: 'Outside', hours: 'Off-killzone' }
 	] as const;
 </script>
 
@@ -24,18 +24,18 @@
 			style="animation: rise 0.6s cubic-bezier(0.22, 1, 0.36, 1) {i * 60}ms both;"
 		>
 			<span
-				class="pointer-events-none absolute inset-x-0 top-0 h-24 bg-gradient-to-b to-transparent {m.accent}"
+				class="pointer-events-none absolute inset-x-0 top-0 h-24 bg-gradient-to-b from-accent/14 to-transparent"
 				aria-hidden="true"
 			></span>
 
 			<div class="relative flex items-baseline justify-between gap-2">
-				<h3 class="text-[13.5px] font-semibold text-fg">{m.label}</h3>
+				<h3 class="eyebrow">{m.label}</h3>
 				<span class="num text-[10.5px] text-dim">{m.hours}</span>
 			</div>
 
 			<p
 				class="relative mt-2 flex items-center gap-1 text-[1.65rem] leading-none tabular-nums {flat
-					? 'text-dim'
+					? 'text-flat'
 					: up
 						? 'text-win'
 						: 'text-loss'}"
@@ -55,12 +55,13 @@
 				<span class="eyebrow ml-0.5 self-end pb-0.5">{up ? 'profit' : flat ? 'flat' : 'loss'}</span>
 			</p>
 
-			<div class="relative mt-3 flex items-center gap-2.5 border-t border-line pt-3 font-mono text-[11.5px] tabular-nums">
-				<span class="{flat ? 'text-dim' : up ? 'text-win' : 'text-loss'}">{fmtMoney(s.net_pnl)}</span>
-				<span class="text-dim/60">·</span>
-				<span class="text-mut">{s.trade_count} trades</span>
-				<span class="text-dim/60">·</span>
-				<span class="text-mut">{s.win_rate.toFixed(0)}% WR</span>
+			<div class="relative mt-3 border-t border-line pt-3 font-mono tabular-nums">
+				<p class="text-[13px] font-semibold {flat ? 'text-flat' : up ? 'text-win' : 'text-loss'}">
+					{fmtMoney(s.net_pnl)}
+				</p>
+				<p class="mt-0.5 text-[11px] whitespace-nowrap text-mut">
+					{s.trade_count} trades · {s.win_rate.toFixed(0)}% WR
+				</p>
 			</div>
 		</div>
 	{/each}

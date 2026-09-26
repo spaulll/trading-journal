@@ -124,7 +124,7 @@
 							usePointStyle: true,
 							pointStyle: 'circle',
 							boxWidth: 8,
-							padding: 14,
+							padding: 12,
 							font: { family: 'Geist', size: 11 }
 						}
 					},
@@ -167,8 +167,9 @@
 </script>
 
 <section class="card p-5" aria-label="Long short analysis">
-	<div class="mb-4 flex flex-wrap items-center gap-2">
-		<h2 class="text-[13.5px] font-semibold tracking-[-0.01em] text-fg">Long / short analysis</h2>
+	<div class="mb-5 flex flex-wrap items-center gap-3">
+		<h2 class="eyebrow">Long / short analysis</h2>
+		<p class="num text-[11.5px] text-dim">{sel.trades} trades · {sel.win_rate.toFixed(1)}% win rate</p>
 		<div class="ml-auto flex rounded-xl border border-line bg-raised/50 p-1" role="group" aria-label="Direction filter">
 			{#each (['all', 'long', 'short'] as const) as s}
 				<button
@@ -183,9 +184,11 @@
 		</div>
 	</div>
 
-	<div class="grid grid-cols-1 gap-5 md:grid-cols-3">
-		<div class="h-60 min-w-0"><canvas bind:this={canvas}></canvas></div>
-		<div class="min-w-0">
+	<div class="grid grid-cols-1 gap-5 lg:grid-cols-12">
+		<div class="lg:col-span-4 xl:col-span-3">
+			<div class="h-60 min-w-0"><canvas bind:this={canvas}></canvas></div>
+		</div>
+		<div class="min-w-0 lg:col-span-4 xl:col-span-4">
 			<h3 class="eyebrow mb-1 text-win">Win statistics</h3>
 			<dl>
 				{#each winRows as r}
@@ -196,7 +199,7 @@
 				{/each}
 			</dl>
 		</div>
-		<div class="min-w-0">
+		<div class="min-w-0 lg:col-span-4 xl:col-span-5">
 			<h3 class="eyebrow mb-1 text-loss">Loss statistics</h3>
 			<dl>
 				{#each lossRows as r}
@@ -209,8 +212,8 @@
 		</div>
 	</div>
 
-	<h3 class="eyebrow mt-5 mb-2">Performance overview</h3>
-	<div class="grid grid-cols-2 gap-2 sm:grid-cols-3">
+	<h3 class="eyebrow mt-6 mb-2">Performance overview</h3>
+	<div class="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-6">
 		{#each overview as o}
 			<div class="rounded-xl border border-line bg-raised/50 p-3">
 				<p class="text-[11px] text-dim">{o.label}</p>
@@ -218,7 +221,4 @@
 			</div>
 		{/each}
 	</div>
-	<p class="num mt-3 text-[11.5px] text-dim">
-		{sel.trades} trades · {sel.win_rate.toFixed(1)}% win rate
-	</p>
 </section>

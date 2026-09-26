@@ -189,30 +189,32 @@
 			/>
 		{/if}
 
-		<section class="grid grid-cols-1 gap-4 lg:grid-cols-3">
-			<div class="card p-5">
+		<!-- Composition plane: outcome donut · tag performance · R distribution -->
+		<section class="grid grid-cols-1 items-stretch gap-4 lg:grid-cols-3">
+			<div class="card flex flex-col p-5">
 				<h2 class="eyebrow mb-3">Win / loss / breakeven</h2>
-				<OutcomeDonut {summary} />
+				<div class="flex-1"><OutcomeDonut {summary} /></div>
 			</div>
-			<div class="card p-5 lg:col-span-2">
+			<div class="card flex flex-col p-5">
 				<h2 class="eyebrow mb-3">Tag performance</h2>
-				<TagPerformanceBar {tags} />
+				<div class="flex-1"><TagPerformanceBar {tags} /></div>
+			</div>
+			<div class="card flex flex-col p-5">
+				<h2 class="eyebrow mb-3">R multiple distribution</h2>
+				<div class="flex-1">
+					{#if rBuckets.length > 0}
+						<RDistributionChart buckets={rBuckets} />
+					{:else}
+						<p class="py-10 text-center text-sm text-mut">Not enough data.</p>
+					{/if}
+				</div>
 			</div>
 		</section>
 
-		<section class="grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
-			<div class="card p-5">
-				<h2 class="eyebrow mb-3">R multiple distribution</h2>
-				{#if rBuckets.length > 0}
-					<RDistributionChart buckets={rBuckets} />
-				{:else}
-					<p class="py-10 text-center text-sm text-mut">Not enough data.</p>
-				{/if}
-			</div>
-			{#if longShort && activity}
-				<LongShortOverview {longShort} {activity} />
-			{/if}
-		</section>
+		<!-- Long / short runs alone on its own plane, full bleed. -->
+		{#if longShort && activity}
+			<LongShortOverview {longShort} {activity} />
+		{/if}
 
 		{#if kpi}
 			<SessionGrid {kpi} />

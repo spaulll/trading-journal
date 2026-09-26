@@ -288,7 +288,7 @@
 							? 'bg-loss/70'
 							: pnlTone(t.net_pnl) === 'win'
 								? 'bg-win/70'
-								: 'bg-flat/50'}"
+								: 'bg-flat/70'}"
 						aria-hidden="true"
 					></span>
 					<div class="flex items-center justify-between gap-2 pl-1.5">

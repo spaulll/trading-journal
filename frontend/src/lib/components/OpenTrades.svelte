@@ -23,7 +23,7 @@
 	<header class="mb-3 flex items-baseline justify-between gap-3">
 		<div class="flex items-center gap-2.5">
 			<span class="h-1.5 w-1.5 rounded-full bg-win dot-live" aria-hidden="true"></span>
-			<h2 class="text-[13.5px] font-semibold tracking-[-0.01em] text-fg">Live positions</h2>
+			<h2 class="eyebrow">Live positions</h2>
 		</div>
 		<span class="num text-xs text-mut">{$openTrades.length} open</span>
 	</header>

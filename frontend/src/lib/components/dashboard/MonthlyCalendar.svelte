@@ -86,9 +86,9 @@
 			case 'loss':
 				return `${base} border-loss/25 bg-loss/10${ring}`;
 			case 'be':
-				return `${base} border-line bg-raised${ring}`;
+				return `${base} border-flat/25 bg-flat/10${ring}`;
 			default:
-				return `${base} border-transparent bg-raised/40${ring}`;
+				return `${base} border-line bg-raised${ring}`;
 		}
 	}
 
@@ -99,7 +99,7 @@
 				? 'text-win'
 				: net < 0
 					? 'text-loss'
-					: 'text-dim';
+					: 'text-flat';
 
 	let donut = $state<HTMLCanvasElement | null>(null);
 	let chart: Chart | null = null;
@@ -128,7 +128,7 @@
 			options: {
 				responsive: true,
 				maintainAspectRatio: false,
-				cutout: '74%',
+				cutout: '70%',
 				animation: { duration: 850, easing: 'easeOutQuart', animateRotate: true },
 				plugins: {
 					legend: {

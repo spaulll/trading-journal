@@ -27,7 +27,8 @@
 					{
 						data: [summary.wins, summary.losses, summary.breakeven],
 						backgroundColor: [p.win, p.loss, p.flat],
-						borderWidth: 0,
+						borderColor: p.panel,
+						borderWidth: 3,
 						hoverOffset: 6
 					}
 				]
@@ -35,7 +36,7 @@
 			options: {
 				responsive: true,
 				maintainAspectRatio: false,
-				cutout: '68%',
+				cutout: '70%',
 				animation: { duration: 800, easing: 'easeOutQuart', animateRotate: true },
 				plugins: {
 					legend: {
@@ -43,9 +44,10 @@
 						labels: {
 							color: p.axis,
 							font: { family: 'Geist', size: 11 },
-							boxWidth: 10,
-							padding: 14,
-							usePointStyle: true
+							usePointStyle: true,
+							pointStyle: 'circle',
+							boxWidth: 8,
+							padding: 12
 						}
 					},
 					tooltip: {

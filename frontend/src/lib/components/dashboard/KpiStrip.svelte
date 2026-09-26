@@ -57,7 +57,7 @@
 				datasets: [
 					{
 						data: [filled, GAUGE_MAX - filled],
-						backgroundColor: [pf >= 1.5 ? p.win : pf >= 1 ? p.accent : p.loss, p.grid],
+						backgroundColor: [pf >= 1.5 ? p.win : pf >= 1 ? p.flat : p.loss, p.grid],
 						borderWidth: 0
 					}
 				]
@@ -99,7 +99,7 @@
 			value: fmtR(kpi.avg_realized_rr.current),
 			raw: kpi.avg_realized_rr.current,
 			format: (v: number) => fmtR(v),
-			tone: 'text-fg'
+			tone: toneText[pnlTone(kpi.avg_realized_rr.current)]
 		},
 		{
 			label: 'Win rate',
@@ -113,7 +113,7 @@
 			value: kpi.profit_factor ?? 0,
 			raw: kpi.profit_factor ?? 0,
 			format: (v: number) => (kpi.profit_factor === null ? '—' : v.toFixed(2)),
-			tone: (kpi.profit_factor ?? 0) >= 1.5 ? 'text-win' : (kpi.profit_factor ?? 0) >= 1 ? 'text-accent' : 'text-loss'
+			tone: (kpi.profit_factor ?? 0) >= 1.5 ? 'text-win' : (kpi.profit_factor ?? 0) >= 1 ? 'text-flat' : 'text-loss'
 		}
 	]);
 </script>
@@ -193,12 +193,12 @@
 				<div class="mt-5">
 					<div class="relative h-1.5 rounded-full bg-raised">
 						<div
-							class="absolute top-1/2 h-4 w-1 -translate-y-1/2 rounded-full bg-accent shadow-[0_0_10px_rgb(var(--c-accent)/0.8)]"
+							class="absolute top-1/2 h-4 w-1 -translate-y-1/2 rounded-full bg-accent shadow-[0_0_10px_rgb(var(--c-accent)/0.7)]"
 							style="left: calc({(rrPos * 100).toFixed(1)}% - 2px)"
 							title="Current {fmtR(kpi.avg_realized_rr.current)}"
 						></div>
 						<div
-							class="absolute top-1/2 h-4 w-1 -translate-y-1/2 rounded-full bg-flat/70"
+							class="absolute top-1/2 h-4 w-1 -translate-y-1/2 rounded-full bg-flat/80"
 							style="left: calc({(rrTarget * 100).toFixed(1)}% - 2px)"
 							title="Target {kpi.avg_realized_rr.target.toFixed(1)}R"
 						></div>
@@ -219,7 +219,7 @@
 				>
 					<span class="flex-1 rounded-lg bg-win/12 py-2 text-center font-mono text-sm font-bold text-win tabular-nums" title="Wins">W {kpi.win_rate.wins}</span>
 					<span class="flex-1 rounded-lg bg-loss/12 py-2 text-center font-mono text-sm font-bold text-loss tabular-nums" title="Losses">L {kpi.win_rate.losses}</span>
-					<span class="flex-1 rounded-lg bg-flat/12 py-2 text-center font-mono text-sm font-bold text-dim tabular-nums" title="Breakeven">BE {kpi.win_rate.breakeven}</span>
+					<span class="flex-1 rounded-lg bg-flat/12 py-2 text-center font-mono text-sm font-bold text-flat tabular-nums" title="Breakeven">BE {kpi.win_rate.breakeven}</span>
 				</div>
 			{:else}
 				<div class="relative mx-auto mt-2 h-24 w-full max-w-52">
