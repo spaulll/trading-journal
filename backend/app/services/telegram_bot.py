@@ -874,12 +874,35 @@ async def _process_update(update: dict) -> None:
             await handle_text(chat_id, text, session)
 
 
+# Command menu published via setMyCommands (see register_commands).
+COMMAND_MENU = [
+    {"command": "start", "description": "Greet and get started"},
+    {"command": "help", "description": "Full trade entry syntax guide"},
+    {"command": "open", "description": "List your open trades"},
+    {"command": "stats_daily", "description": "Show today's trading stats"},
+    {"command": "cancel", "description": "Drop the pending question"},
+]
+
+
+async def register_commands() -> bool:
+    """Publish COMMAND_MENU via setMyCommands. Best-effort: never raises."""
+    try:
+        async with _api() as client:
+            resp = await client.post("/setMyCommands", json={"commands": COMMAND_MENU})
+            resp.raise_for_status()
+            return True
+    except Exception:
+        log.warning("setMyCommands failed", exc_info=True)
+        return False
+
+
 async def run_polling() -> None:
     """Long-poll getUpdates until cancelled. No-op when unconfigured."""
     if not is_configured():
         log.warning("TG_BOT_TOKEN not set — Telegram polling disabled")
         return
     log.info("Telegram polling started")
+    await register_commands()  # best-effort; polling continues regardless
     offset = 0
     backoff = 1
     try:
