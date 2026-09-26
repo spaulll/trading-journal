@@ -7,7 +7,7 @@ Text syntax:
     Open:  buy gold, 0.1, 4000, 3990, 4020, #fvg
     TSL:   tsl gold, 4005
     Close: close gold, 4015, +150, fee: 3.5, !early, notes
-Commands: /open, /cancel, /start (help).
+Commands: /start, /help, /open, /stats_daily, /cancel.
 
 Photos are downloaded via getFile and streamed straight into
 immich_client (never touch local disk), then recorded in screenshots.
@@ -17,13 +17,15 @@ import asyncio
 import logging
 import os
 import re
-from datetime import datetime, timezone
+from datetime import date as date_type
+from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
 import httpx
 from sqlmodel import Session, select
 
 from app.models import Screenshot, Trade
+from app.services.timeutils import as_naive_utc
 
 log = logging.getLogger("telegram_bot")
 
@@ -449,14 +451,41 @@ async def do_close(chat_id: int, session: Session, args: dict) -> None:
         await send_text(chat_id, "🚨 GUARDRAIL BREACH: daily loss limit hit. Walk away from the screen!")
 
 
+START = (
+    "👋 Welcome to your Trading Journal bot!\n"
+    "I log your trades, nudge you on stale positions and send a nightly EOD recap.\n"
+    "Just type a trade (`buy gold, 0.1, 4000, 3990, 4020`) or send /help for the full syntax."
+)
+
 HELP = (
-    "📒 Trading Journal bot\n"
-    "Open: `buy gold, 0.1, 4000, 3990, 4020, #fvg`\n"
-    "Open @ time: `buy gold, 0.1, 4000, 3990, 4020, time: 14:30`\n"
-    "TSL: `tsl gold, 4005`\n"
-    "Close: `close gold, 4015, +150, fee: 3.5, !early, notes`\n"
-    "Backfill: `past buy gold, 0.1, 4000, 3990, 4020, exit: 4015, pnl: 150, date: 2026-09-20 14:30`\n"
-    "Commands: /open · /cancel"
+    "📒 Trading Journal bot — syntax guide\n"
+    "\n"
+    "OPEN a trade:\n"
+    "`buy SYMBOL, SIZE, ENTRY, SL, [TP], [#setup tags]`\n"
+    "e.g. `buy gold, 0.1, 4000, 3990, 4020, #fvg` (sell = short)\n"
+    "Open @ a past time: add `time: 14:30` or `time: 2026-09-20 14:30`\n"
+    "\n"
+    "MOVE the stop (trailing):\n"
+    "`tsl SYMBOL, NEW_SL` — e.g. `tsl gold, 4005`\n"
+    "\n"
+    "CLOSE a trade:\n"
+    "`close SYMBOL, EXIT, [GROSS_PNL], [fee: X], [!mistake tags], [notes]`\n"
+    "e.g. `close gold, 4015, +150, fee: 3.5, !early` "
+    "(gross is estimated from price when omitted)\n"
+    "\n"
+    "BACKFILL an old trade:\n"
+    "`past buy SYMBOL, SIZE, ENTRY, SL, TP, exit: EXIT, pnl: PNL, date: YYYY-MM-DD HH:MM`\n"
+    "\n"
+    "CHART screenshots: just send a photo — it attaches to your open trade "
+    "(you pick one if several are open).\n"
+    "\n"
+    "COMMANDS:\n"
+    "/start — greeting · /help — this guide · /open — list open trades · "
+    "/stats_daily — today's stats · /cancel — drop the pending question\n"
+    "\n"
+    "Buttons under each confirmation: Move to BE · Update TSL · Close Trade · "
+    "Attach Chart. Stale-trade nudges can be snoozed 2h; reply to the nightly "
+    "EOD recap to save your journal review."
 )
 
 
@@ -498,18 +527,82 @@ async def do_past(chat_id: int, session: Session, args: dict) -> None:
     await send_text(chat_id, f"📚 Backfilled {args['direction'].upper()} {args['symbol']} 🎫 {ticket}.{info}")
 
 
+# Breakeven tolerance mirrors the analytics API: |net| <= 1 cent is BE.
+BE_TOLERANCE = 0.01
+
+
+def _is_win(net: float) -> bool:
+    return net > BE_TOLERANCE
+
+
+def _is_loss(net: float) -> bool:
+    return net < -BE_TOLERANCE
+
+
+def daily_stats_text(session: Session, today: Optional[date_type] = None) -> str:
+    """One-day stats over naive-UTC close days (same convention as analytics)."""
+    day = today or _now().date()
+    start = datetime(day.year, day.month, day.day)
+    end = start + timedelta(days=1)
+    closed = [
+        t
+        for t in session.exec(select(Trade).where(Trade.status == "CLOSED")).all()
+        if start <= (as_naive_utc(t.timestamp_close) or datetime.min) < end
+    ]
+    nets = [t.net_pnl if t.net_pnl is not None else 0.0 for t in closed]
+    wins = sum(1 for n in nets if _is_win(n))
+    losses = sum(1 for n in nets if _is_loss(n))
+    be = len(nets) - wins - losses
+    total = len(closed)
+    wr = f"{wins / total * 100:.0f}%" if total else "n/a"
+    r_total = sum(t.r_multiple for t in closed if t.r_multiple is not None)
+    opens = session.exec(select(Trade).where(Trade.status == "OPEN")).all()
+    lines = [
+        f"📊 Daily stats {day.isoformat()} (UTC): "
+        f"{total} closed ({wins}W · {losses}L · {be}BE), "
+        f"win rate {wr}, net {sum(nets):+.2f}, R {r_total:+.2f}."
+    ]
+    for t in sorted(closed, key=lambda x: x.timestamp_close or datetime.min):
+        net = t.net_pnl if t.net_pnl is not None else 0.0
+        r_txt = f"{t.r_multiple:+.2f}R" if t.r_multiple is not None else "n/a"
+        lines.append(
+            f"• {(t.direction or '').upper()} {t.symbol} {net:+.2f} ({r_txt}) 🎫 {t.ticket}"
+        )
+    if not closed:
+        lines.append("No closed trades yet today.")
+    lines.append(f"Open now: {len(opens)}.")
+    return "\n".join(lines)
+
+
+async def handle_stats_daily(chat_id: int, session: Session) -> None:
+    await send_text(chat_id, daily_stats_text(session))
+
+
+def _command_key(body: str) -> str:
+    """Base slash-command: lowercase, `@BotName` mention and args stripped."""
+    head = body.split()[0] if body.split() else ""
+    return head.split("@")[0].lower()
+
+
 async def handle_text(chat_id: int, text: str, session: Session) -> None:
     body = text.strip()
     low = body.lower()
 
-    if low in ("/start", "help"):
+    cmd = _command_key(body)
+    if cmd == "/start":
+        await send_text(chat_id, START)
+        return
+    if cmd == "/help" or low == "help":
         await send_text(chat_id, HELP)
         return
-    if low == "/cancel":
+    if cmd in ("/stats_daily", "/stats"):
+        await handle_stats_daily(chat_id, session)
+        return
+    if cmd == "/cancel":
         _pending.pop(chat_id, None)
         await send_text(chat_id, "Cancelled.")
         return
-    if low == "/open":
+    if cmd == "/open":
         await handle_open_command(chat_id, session)
         return
 
@@ -764,7 +857,7 @@ async def _process_update(update: dict) -> None:
         if photos:
             await handle_photo(chat_id, photos[-1]["file_id"], session)
             # A captioned command still executes (photo already routed above).
-            if text.strip() and re.match(r"(?i)^\s*(buy|sell|tsl|close|past|/open|/cancel)", text.strip()):
+            if text.strip() and re.match(r"(?i)^\s*(buy|sell|tsl|close|past|/open|/cancel|/start|/help|/stats_daily|/stats)", text.strip()):
                 await handle_text(chat_id, text, session)
         elif text:
             # EOD review replies (Phase 3) are picked up there; ignore here
