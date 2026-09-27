@@ -38,7 +38,7 @@ Backend (`backend/.env`):
 | `IMMICH_BASE_URL` / `IMMICH_API_KEY` | Screenshot storage (**server-side only**, never expose the key) |
 | `PORT` | API port |
 | `MAX_DAILY_LOSS` / `MAX_DAILY_TRADES` | Guardrail caps |
-| `STALE_TRADE_HOURS` / `EOD_PROMPT_HOUR` | Scheduler tuning |
+| `STALE_TRADE_HOURS` / `EOD_PROMPT_HOUR` / `EOD_PROMPT_MINUTE` / `EOD_TZ` | Scheduler tuning (EOD prompt timezone, skips tradeless days) |
 | `TG_BOT_CSV_PATH` | Legacy one-shot CSV import only |
 | `CORS_ORIGINS` | Comma-separated extra browser origins |
 

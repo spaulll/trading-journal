@@ -16,6 +16,7 @@ from datetime import datetime
 from datetime import timezone
 from typing import Optional
 
+import pytz
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from sqlmodel import Session, select
 
@@ -47,6 +48,20 @@ def _env_int(name: str, default: int) -> int:
 
 def _now() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def _eod_tz():
+    """EOD prompt timezone (EOD_TZ, default UTC). Falls back to UTC on bad names."""
+    name = os.getenv("EOD_TZ", "UTC").strip() or "UTC"
+    try:
+        return pytz.timezone(name)
+    except Exception:
+        log.warning("bad EOD_TZ %r — falling back to UTC", name)
+        return pytz.UTC
+
+
+def _eod_today() -> date_type:
+    return datetime.now(_eod_tz()).date()
 
 
 def _as_naive_utc(dt: Optional[datetime]) -> Optional[datetime]:
@@ -141,13 +156,38 @@ def eod_summary_text(session: Session, today: date_type) -> str:
     return "\n".join(lines)
 
 
+def _trades_today(session: Session, today: date_type) -> tuple[list, list]:
+    """Trades opened / closed on `today` (naive-UTC midnight bucketing)."""
+    day_start = datetime(today.year, today.month, today.day)
+    all_trades = session.exec(select(Trade)).all()
+    opened = [
+        t
+        for t in all_trades
+        if (_as_naive_utc(t.entry_time) or _as_naive_utc(t.timestamp_open) or datetime.min)
+        >= day_start
+    ]
+    closed = [
+        t
+        for t in all_trades
+        if t.status == "CLOSED" and (_as_naive_utc(t.timestamp_close) or datetime.min) >= day_start
+    ]
+    return opened, closed
+
+
 async def send_eod_recap() -> dict:
-    """Send the daily EOD prompt and remember its message id for replies."""
+    """Send the daily EOD prompt and remember its message id for replies.
+
+    Skipped entirely on days with no trade activity (nothing opened or
+    closed) — no message, no journal row.
+    """
     from app.database import engine
     from app.services import telegram_bot
 
-    today = _now().date()
+    today = _eod_today()
     with Session(engine) as session:
+        opened, _closed = _trades_today(session, today)
+        if not opened and not _closed:
+            return {"sent": False, "reason": "no_trades"}
         text = eod_summary_text(session, today)
         note = session.exec(select(DailyNote).where(DailyNote.date == today)).first()
         if note is None:
@@ -204,11 +244,13 @@ def build_scheduler() -> AsyncIOScheduler:
         coalesce=True,
     )
     eod_hour = _env_int("EOD_PROMPT_HOUR", 21)
+    eod_minute = _env_int("EOD_PROMPT_MINUTE", 0)
     sched.add_job(
         send_eod_recap,
         "cron",
         hour=eod_hour,
-        minute=0,
+        minute=eod_minute,
+        timezone=_eod_tz(),
         id="eod_recap",
         max_instances=1,
         coalesce=True,
