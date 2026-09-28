@@ -3,7 +3,7 @@
 import httpx
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import Response
-from sqlmodel import Session, select
+from sqlmodel import Session, SQLModel, select
 
 from app.database import get_session
 from app.models import Screenshot, ScreenshotRead, Trade
@@ -84,6 +84,26 @@ async def upload_screenshot(
         sha256=digest,
         byte_size=len(data),
     )
+    session.add(shot)
+    session.commit()
+    session.refresh(shot)
+    return ScreenshotRead.model_validate(shot.model_dump())
+
+
+class ScreenshotLabelPatch(SQLModel):
+    label: str
+
+
+@router.patch("/api/screenshots/{screenshot_id}", response_model=ScreenshotRead)
+def update_screenshot_label(
+    screenshot_id: int, patch: ScreenshotLabelPatch, session: Session = Depends(get_session)
+):
+    shot = session.get(Screenshot, screenshot_id)
+    if shot is None:
+        raise HTTPException(status_code=404, detail="Screenshot not found")
+    if patch.label not in LABELS:
+        raise HTTPException(status_code=422, detail=f"label must be one of {sorted(LABELS)}")
+    shot.label = patch.label
     session.add(shot)
     session.commit()
     session.refresh(shot)

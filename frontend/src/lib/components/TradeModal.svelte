@@ -9,6 +9,7 @@
 		requestClose,
 		selectedTradeId,
 		trades,
+		updateScreenshot,
 		upsertTrade
 	} from '$lib/stores/trades';
 	import { toasts } from '$lib/stores/toast';
@@ -28,7 +29,21 @@
 	let zoomShot: ScreenshotDto | null = $state(null);
 	let confirmDelete = $state(false);
 	let saving = $state(false);
+	let savingEdits = $state(false);
 	let lastTradeId: number | null = $state(null);
+
+	// Editable trade legs (strings so empty = clear nullable field).
+	let fSymbol = $state('');
+	let fDirection = $state('buy');
+	let fSize = $state('');
+	let fEntry = $state('');
+	let fInitSl = $state('');
+	let fCurrSl = $state('');
+	let fTp = $state('');
+	let fExit = $state('');
+	let fFees = $state('');
+
+	const numStr = (v: number | null | undefined): string => (v === null || v === undefined ? '' : String(v));
 
 	$effect(() => {
 		if (trade && trade.id !== lastTradeId) {
@@ -36,6 +51,15 @@
 			thesis = trade.thesis ?? '';
 			notes = trade.review_notes ?? '';
 			tagInput = trade.tags.map((t) => `${t.category === 'mistake' ? '!' : '#'}${t.name}`).join(' ');
+			fSymbol = trade.symbol ?? '';
+			fDirection = (trade.direction ?? 'buy').toLowerCase();
+			fSize = numStr(trade.size);
+			fEntry = numStr(trade.entry_price);
+			fInitSl = numStr(trade.initial_sl);
+			fCurrSl = numStr(trade.current_sl);
+			fTp = numStr(trade.tp);
+			fExit = numStr(trade.exit_price);
+			fFees = numStr(trade.fees);
 			confirmDelete = false;
 			zoomShot = null;
 		}
@@ -46,6 +70,18 @@
 	const tagsDirty = $derived(
 		trade !== null &&
 			tagInput.trim() !== trade.tags.map((t) => `${t.category === 'mistake' ? '!' : '#'}${t.name}`).join(' ')
+	);
+	const editsDirty = $derived(
+		trade !== null &&
+			(fSymbol.trim().toUpperCase() !== (trade.symbol ?? '') ||
+				fDirection !== (trade.direction ?? '').toLowerCase() ||
+				fSize.trim() !== numStr(trade.size) ||
+				fEntry.trim() !== numStr(trade.entry_price) ||
+				fInitSl.trim() !== numStr(trade.initial_sl) ||
+				fCurrSl.trim() !== numStr(trade.current_sl) ||
+				fTp.trim() !== numStr(trade.tp) ||
+				fExit.trim() !== numStr(trade.exit_price) ||
+				fFees.trim() !== numStr(trade.fees))
 	);
 
 	function onBackdrop(e: MouseEvent): void {
@@ -93,6 +129,71 @@
 			toasts.push('error', `Tag update failed — ${err instanceof Error ? err.message : 'unknown error'}`);
 		} finally {
 			saving = false;
+		}
+	}
+
+	async function saveEdits(): Promise<void> {
+		if (!trade || savingEdits) return;
+		const payload: Record<string, unknown> = {};
+		if (fSymbol.trim().toUpperCase() !== (trade.symbol ?? '')) {
+			if (!fSymbol.trim()) {
+				toasts.push('error', 'Symbol cannot be empty.');
+				return;
+			}
+			payload.symbol = fSymbol.trim().toUpperCase();
+		}
+		if (fDirection !== (trade.direction ?? '').toLowerCase()) {
+			if (fDirection !== 'buy' && fDirection !== 'sell') {
+				toasts.push('error', 'Direction must be buy or sell.');
+				return;
+			}
+			payload.direction = fDirection;
+		}
+		const nums: [key: string, raw: string, current: number | null][] = [
+			['size', fSize, trade.size],
+			['entry_price', fEntry, trade.entry_price],
+			['initial_sl', fInitSl, trade.initial_sl],
+			['current_sl', fCurrSl, trade.current_sl],
+			['tp', fTp, trade.tp],
+			['exit_price', fExit, trade.exit_price],
+			['fees', fFees, trade.fees]
+		];
+		for (const [key, raw, current] of nums) {
+			const t = raw.trim();
+			if (t === numStr(current)) continue;
+			if (t === '') {
+				payload[key] = null;
+				continue;
+			}
+			const v = Number(t);
+			if (!Number.isFinite(v)) {
+				toasts.push('error', `Bad ${key.replace('_', ' ')}: ${t}`);
+				return;
+			}
+			payload[key] = v;
+		}
+		if (Object.keys(payload).length === 0) return;
+		savingEdits = true;
+		try {
+			const updated = await api.patchTrade(trade.id, payload);
+			upsertTrade(updated);
+			toasts.push('success', 'Trade updated — net and R recomputed.');
+		} catch (err) {
+			toasts.push('error', `Update failed — ${err instanceof Error ? err.message : 'unknown error'}`);
+		} finally {
+			savingEdits = false;
+		}
+	}
+
+	async function changeShotLabel(tradeId: number, shot: ScreenshotDto, select: HTMLSelectElement): Promise<void> {
+		if (select.value === shot.label) return;
+		try {
+			const updated = await api.patchScreenshot(shot.id, select.value);
+			updateScreenshot(tradeId, updated);
+			toasts.push('success', `Screenshot labeled ${updated.label}.`);
+		} catch (err) {
+			select.value = shot.label;
+			toasts.push('error', `Label update failed — ${err instanceof Error ? err.message : 'unknown error'}`);
 		}
 	}
 
@@ -258,6 +359,63 @@
 					{#if trade.timestamp_close} · Closed {fmtDateTime(trade.timestamp_close)}{/if}
 				</p>
 
+				<!-- Trade details editor -->
+				<div class="mt-5">
+					<div class="mb-2 flex items-center justify-between">
+						<span class="eyebrow">Trade details</span>
+						<button
+							type="button"
+							onclick={() => void saveEdits()}
+							disabled={!editsDirty || savingEdits}
+							class="btn btn-ghost h-7 shrink-0 px-3 text-[12px]"
+						>
+							{savingEdits ? 'Saving…' : 'Save changes'}
+						</button>
+					</div>
+					<div class="grid grid-cols-3 gap-2">
+						<label class="flex min-w-0 flex-col gap-1">
+							<span class="eyebrow">Symbol</span>
+							<input type="text" bind:value={fSymbol} class="field h-9 font-mono text-[13px]" />
+						</label>
+						<label class="flex min-w-0 flex-col gap-1">
+							<span class="eyebrow">Side</span>
+							<select bind:value={fDirection} class="field h-9 font-mono text-[13px]">
+								<option value="buy">buy</option>
+								<option value="sell">sell</option>
+							</select>
+						</label>
+						<label class="flex min-w-0 flex-col gap-1">
+							<span class="eyebrow">Size</span>
+							<input type="text" inputmode="decimal" bind:value={fSize} class="field h-9 font-mono text-[13px]" />
+						</label>
+						<label class="flex min-w-0 flex-col gap-1">
+							<span class="eyebrow">Entry</span>
+							<input type="text" inputmode="decimal" bind:value={fEntry} class="field h-9 font-mono text-[13px]" />
+						</label>
+						<label class="flex min-w-0 flex-col gap-1">
+							<span class="eyebrow">Init SL</span>
+							<input type="text" inputmode="decimal" bind:value={fInitSl} class="field h-9 font-mono text-[13px]" />
+						</label>
+						<label class="flex min-w-0 flex-col gap-1">
+							<span class="eyebrow">Curr SL</span>
+							<input type="text" inputmode="decimal" bind:value={fCurrSl} class="field h-9 font-mono text-[13px]" />
+						</label>
+						<label class="flex min-w-0 flex-col gap-1">
+							<span class="eyebrow">Target</span>
+							<input type="text" inputmode="decimal" bind:value={fTp} class="field h-9 font-mono text-[13px]" />
+						</label>
+						<label class="flex min-w-0 flex-col gap-1">
+							<span class="eyebrow">Exit</span>
+							<input type="text" inputmode="decimal" bind:value={fExit} class="field h-9 font-mono text-[13px]" />
+						</label>
+						<label class="flex min-w-0 flex-col gap-1">
+							<span class="eyebrow">Fees</span>
+							<input type="text" inputmode="decimal" bind:value={fFees} class="field h-9 font-mono text-[13px]" />
+						</label>
+					</div>
+					<p class="num mt-1.5 text-[11px] text-dim">Net and R recompute automatically from prices and fees.</p>
+				</div>
+
 				<!-- Editors -->
 				<div class="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2">
 					<label class="flex flex-col gap-1.5">
@@ -370,35 +528,40 @@
 					{#if trade.screenshots.length > 0}
 						<div class="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
 							{#each trade.screenshots as shot (shot.id)}
-								<button
-									type="button"
-									onclick={() => (zoomShot = shot)}
-									class="group relative aspect-video overflow-hidden rounded-xl border border-line bg-raised focus-visible:outline-none"
-								>
-									<span class="skeleton absolute inset-0" aria-hidden="true"></span>
-									<img
-										src={api.thumbUrl(shot.immich_asset_id)}
-										alt="{shot.label} screenshot"
-										loading="lazy"
-										onload={(e) => (e.currentTarget.previousElementSibling as HTMLElement)?.remove()}
-										class="absolute inset-0 h-full w-full object-cover transition-transform duration-300 ease-spring group-hover:scale-[1.04]"
-									/>
-									<span
-										class="absolute bottom-1.5 left-1.5 rounded-md bg-base/80 px-1.5 py-0.5 font-mono text-[10px] font-medium tracking-wide text-fg backdrop-blur-sm"
+								<div class="flex min-w-0 flex-col gap-1">
+									<button
+										type="button"
+										onclick={() => (zoomShot = shot)}
+										class="group relative aspect-video overflow-hidden rounded-xl border border-line bg-raised focus-visible:outline-none"
 									>
-										{shot.label}
-									</span>
-									<span
-										class="absolute inset-0 bg-base/40 opacity-0 transition-opacity duration-200 group-hover:opacity-100"
-										aria-hidden="true"
-									></span>
-									<ZoomIn
-										size={15}
-										strokeWidth={1.8}
-										aria-hidden="true"
-										class="absolute right-1.5 bottom-1.5 z-10 text-accent opacity-0 transition-opacity duration-200 group-hover:opacity-100"
-									/>
-								</button>
+										<span class="skeleton absolute inset-0" aria-hidden="true"></span>
+										<img
+											src={api.thumbUrl(shot.immich_asset_id)}
+											alt="{shot.label} screenshot"
+											loading="lazy"
+											onload={(e) => (e.currentTarget.previousElementSibling as HTMLElement)?.remove()}
+											class="absolute inset-0 h-full w-full object-cover transition-transform duration-300 ease-spring group-hover:scale-[1.04]"
+										/>
+										<span
+											class="absolute inset-0 bg-base/40 opacity-0 transition-opacity duration-200 group-hover:opacity-100"
+											aria-hidden="true"
+										></span>
+										<ZoomIn
+											size={15}
+											strokeWidth={1.8}
+											aria-hidden="true"
+											class="absolute right-1.5 bottom-1.5 z-10 text-accent opacity-0 transition-opacity duration-200 group-hover:opacity-100"
+										/>
+									</button>
+									<select
+										value={shot.label}
+										aria-label="Screenshot label"
+										onchange={(e) => void changeShotLabel(trade.id, shot, e.currentTarget)}
+										class="h-7 w-full rounded-lg border border-line bg-raised px-1.5 font-mono text-[11px] text-fg outline-none"
+									>
+										{#each LABELS as l}<option value={l}>{l}</option>{/each}
+									</select>
+								</div>
 							{/each}
 						</div>
 					{/if}

@@ -426,6 +426,25 @@ def patch_trade(trade_id: int, patch: TradePatch, session: Session = Depends(get
             trade.direction, trade.entry_price, trade.initial_sl, trade.exit_price
         )
         session.add(trade)
+    # Keep gross/net consistent: re-estimate gross when price legs change
+    # unless the caller explicitly supplied gross_pnl; net follows from
+    # gross minus fees unless net_pnl was explicitly supplied.
+    if "gross_pnl" not in data and any(
+        k in data for k in ("direction", "symbol", "size", "entry_price", "exit_price")
+    ):
+        estimated = estimate_gross_pnl(
+            trade.direction, trade.symbol, trade.size, trade.entry_price, trade.exit_price
+        )
+        if estimated is not None:
+            trade.gross_pnl = estimated
+            session.add(trade)
+    if "net_pnl" not in data and any(
+        k in data
+        for k in ("direction", "symbol", "size", "entry_price", "exit_price", "gross_pnl", "fees")
+    ):
+        if trade.gross_pnl is not None:
+            trade.net_pnl = trade.gross_pnl - (trade.fees or 0.0)
+            session.add(trade)
     trade.updated_at = _now()
     session.add(trade)
     session.commit()

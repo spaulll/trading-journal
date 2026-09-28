@@ -135,6 +135,16 @@ export function appendScreenshot(tradeId: number, shot: ScreenshotDto): void {
 	);
 }
 
+export function updateScreenshot(tradeId: number, shot: ScreenshotDto): void {
+	trades.update((list) =>
+		list.map((t) =>
+			t.id === tradeId
+				? { ...t, screenshots: t.screenshots.map((s) => (s.id === shot.id ? shot : s)) }
+				: t
+		)
+	);
+}
+
 export function removeTrade(id: number): void {
 	trades.update((list) => list.filter((t) => t.id !== id));
 	if (get(selectedTradeId) === id) selectedTradeId.set(null);

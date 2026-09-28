@@ -277,6 +277,8 @@ export const api = {
 		form.append('label', label);
 		return req<ScreenshotDto>(`/api/trades/${id}/screenshots`, { method: 'POST', body: form });
 	},
+	patchScreenshot: (shotId: number, label: string) =>
+		req<ScreenshotDto>(`/api/screenshots/${shotId}`, json({ method: 'PATCH', body: JSON.stringify({ label }) })),
 	thumbUrl: (assetId: string) => `${API_BASE}/api/screenshots/${assetId}/thumbnail`,
 	fullUrl: (assetId: string) => `${API_BASE}/api/screenshots/${assetId}/full`
 };
