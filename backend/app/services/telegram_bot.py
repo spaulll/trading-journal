@@ -668,7 +668,7 @@ async def handle_text(chat_id: int, text: str, session: Session) -> None:
 
 async def _download_telegram_file(file_path: str) -> bytes:
     async with httpx.AsyncClient(base_url=FILE_BASE, timeout=60.0) as client:
-        resp = await client.get(f"/file/bot{_token()}/{file_path}")
+        resp = await client.get(f"/bot{_token()}/{file_path}")
         resp.raise_for_status()
         return resp.content
 
