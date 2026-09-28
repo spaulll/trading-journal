@@ -6,6 +6,8 @@
 	import DayPanel from '$lib/components/DayPanel.svelte';
 	import TradeModal from '$lib/components/TradeModal.svelte';
 	import { api, type DailyNoteDto } from '$lib/api';
+	import { SNAPSHOT_KEYS, readSnapshot, saveSnapshot } from '$lib/offline-snapshot';
+	import { markOffline, markOnline, snapshotAt } from '$lib/stores/offline';
 	import { loadTrades, trades } from '$lib/stores/trades';
 	import { notesVersion, openDay } from '$lib/stores/journal';
 	import { dayKeyOf, fmtDate, fmtMoney, pnlTone, toneText } from '$lib/utils/format';
@@ -33,8 +35,18 @@
 		error = null;
 		try {
 			notes = await api.listNotes();
+			markOnline();
+			const at = saveSnapshot(SNAPSHOT_KEYS.notes, notes);
+			if (at) snapshotAt.set(at);
 		} catch (e) {
-			error = e instanceof Error ? e.message : 'Could not load notes.';
+			const snap = readSnapshot<DailyNoteDto[]>(SNAPSHOT_KEYS.notes);
+			if (snap) {
+				notes = snap.data;
+				markOffline(snap.savedAt);
+				error = null;
+			} else {
+				error = e instanceof Error ? e.message : 'Could not load notes.';
+			}
 		} finally {
 			loading = false;
 		}

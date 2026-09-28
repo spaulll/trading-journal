@@ -1,5 +1,7 @@
 import { derived, get, writable } from 'svelte/store';
 import { errMsg, type ScreenshotDto, type TradeDto, api } from '$lib/api';
+import { SNAPSHOT_KEYS, readSnapshot, saveSnapshot } from '$lib/offline-snapshot';
+import { markOffline, markOnline, snapshotAt } from './offline';
 import { toasts } from './toast';
 
 export const trades = writable<TradeDto[]>([]);
@@ -98,8 +100,20 @@ export async function loadTrades(quiet = false): Promise<boolean> {
 		trades.set(items);
 		tradesTotal.set(total);
 		if (quiet) tradesError.set(null);
+		markOnline();
+		snapshotAt.set(saveSnapshot(SNAPSHOT_KEYS.trades, { items, total }) ?? null);
 		return true;
 	} catch (e) {
+		// Server unreachable: fall back to the last labelled snapshot so the
+		// journal stays readable during outages (read-only, see banner).
+		const snap = readSnapshot<{ items: TradeDto[]; total: number }>(SNAPSHOT_KEYS.trades);
+		if (snap) {
+			trades.set(snap.data.items);
+			tradesTotal.set(snap.data.total);
+			tradesError.set(null);
+			markOffline(snap.savedAt);
+			return true;
+		}
 		if (!quiet) tradesError.set(errMsg(e));
 		return false;
 	} finally {

@@ -17,6 +17,8 @@
 	import DayPanel from '$lib/components/DayPanel.svelte';
 	import TradeModal from '$lib/components/TradeModal.svelte';
 	import { loadTrades } from '$lib/stores/trades';
+	import { markOffline, markOnline, snapshotAt } from '$lib/stores/offline';
+	import { SNAPSHOT_KEYS, readSnapshot, saveSnapshot } from '$lib/offline-snapshot';
 	import {
 		api,
 		errMsg,
@@ -47,6 +49,37 @@
 	let activity = $state<ActivityStreaks | null>(null);
 	let longShort = $state<{ buy: DirectionStats; sell: DirectionStats; all?: DirectionStats } | null>(null);
 	let radarData = $state<RadarProfiles | null>(null);
+	let snapshotRestored = $state(false);
+
+	interface AnalyticsSnapshot {
+		summary: SummaryDto;
+		points: EquityPoint[];
+		tags: TagPerf[];
+		days: CalendarDay[];
+		year: number;
+		kpi: KpiDashboard | null;
+		monthData: MonthlyCalendarDto | null;
+		monthCursor: { y: number; m: number };
+		activity: ActivityStreaks | null;
+		longShort: { buy: DirectionStats; sell: DirectionStats; all?: DirectionStats } | null;
+		radarData: RadarProfiles | null;
+		rBuckets: RBucket[];
+	}
+
+	function applySnapshot(snap: AnalyticsSnapshot): void {
+		summary = snap.summary;
+		points = snap.points;
+		tags = snap.tags;
+		days = snap.days;
+		year = snap.year;
+		kpi = snap.kpi;
+		monthData = snap.monthData;
+		if (snap.monthCursor) monthCursor = snap.monthCursor;
+		activity = snap.activity;
+		longShort = snap.longShort;
+		radarData = snap.radarData;
+		rBuckets = snap.rBuckets;
+	}
 
 	async function loadYearDays(y: number): Promise<void> {
 		try {
@@ -86,8 +119,35 @@
 			longShort = ls;
 			radarData = rd;
 			rBuckets = rb.buckets;
+			snapshotRestored = false;
+			markOnline();
+			snapshotAt.set(
+				saveSnapshot<AnalyticsSnapshot>(SNAPSHOT_KEYS.analytics, {
+					summary: s,
+					points: e.points,
+					tags: t.tags,
+					days: c.days,
+					year: c.year,
+					kpi: k,
+					monthData: mc,
+					monthCursor: { y: mc.year, m: mc.month },
+					activity: a,
+					longShort: ls,
+					radarData: rd,
+					rBuckets: rb.buckets
+				}) ?? null
+			);
 		} catch (e) {
-			error = errMsg(e);
+			// Server unreachable: restore the last labelled snapshot (read-only).
+			const snap = readSnapshot<AnalyticsSnapshot>(SNAPSHOT_KEYS.analytics);
+			if (snap && snap.data.summary) {
+				applySnapshot(snap.data);
+				snapshotRestored = true;
+				markOffline(snap.savedAt);
+				error = null;
+			} else {
+				error = errMsg(e);
+			}
 		} finally {
 			loading = false;
 		}
@@ -170,7 +230,9 @@
 		<PageHead
 			eyebrow="Performance"
 			title="Analytics"
-			meta="{summary.total_trades} closed trades · {year} · expectancy, risk &amp; distribution"
+			meta="{summary.total_trades} closed trades · {year} · expectancy, risk &amp; distribution{snapshotRestored
+				? ' · offline snapshot'
+				: ''}"
 		/>
 
 		{#if kpi}
