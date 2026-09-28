@@ -76,8 +76,20 @@ export function fmtDate(v: string | null | undefined): string {
 export function parseStoredUTC(v: string): Date | null {
 	const s = v.trim();
 	if (!s) return null;
+	if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+		const d = new Date(`${s}T00:00:00Z`);
+		return Number.isNaN(d.getTime()) ? null : d;
+	}
 	const d = new Date(/[zZ]|[+-]\d{2}:?\d{2}$/.test(s) ? s : `${s}Z`);
 	return Number.isNaN(d.getTime()) ? null : d;
+}
+
+/** UTC calendar-day key (`YYYY-MM-DD`) of a stored timestamp — matches backend day buckets. */
+export function dayKeyOf(iso: string | null | undefined): string {
+	if (!iso) return '';
+	const d = parseStoredUTC(iso);
+	if (!d) return '';
+	return d.toISOString().slice(0, 10);
 }
 
 /** Epoch ms for chart axes from a stored timestamp. */

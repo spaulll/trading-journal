@@ -4,6 +4,7 @@
 	import type { CalendarDay, MonthlyCalendarDto } from '$lib/api';
 	import CalendarHeatmap from '$lib/components/dashboard/CalendarHeatmap.svelte';
 	import { fmtMoney } from '$lib/utils/format';
+	import { openDay } from '$lib/stores/journal';
 	import { palette } from '$lib/utils/palette';
 	import { theme } from '$lib/stores/theme';
 
@@ -364,7 +365,13 @@
 							<div></div>
 						{:else}
 							{@const info = data.days[c.key] ?? { net_pnl: 0, trade_count: 0, outcome: 'inactive' }}
-							<div role="gridcell" class={cellClass(info.outcome, c.key === todayKey)} title="{c.key}: {fmtMoney(info.net_pnl)} · {info.trade_count} trades">
+							<button
+								type="button"
+								onclick={() => openDay(c.key)}
+								aria-label="{c.key}: {fmtMoney(info.net_pnl)}, {info.trade_count} trades — open day"
+								title="{c.key}: {fmtMoney(info.net_pnl)} · {info.trade_count} trades"
+								class="{cellClass(info.outcome, c.key === todayKey)} cursor-pointer focus-visible:outline-2 focus-visible:outline-accent"
+							>
 								<p class="num text-[10px] leading-none {c.key === todayKey ? 'font-bold text-accent' : 'text-mut'}">
 									{c.day}
 								</p>
@@ -375,7 +382,7 @@
 									</p>
 									<p class="num text-[9px] leading-tight text-dim">{info.trade_count}T</p>
 								{/if}
-							</div>
+							</button>
 						{/if}
 					{/each}
 				</div>

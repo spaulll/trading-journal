@@ -48,6 +48,16 @@ export interface TradeDto {
 	screenshots: ScreenshotDto[];
 }
 
+export interface DailyNoteDto {
+	id: number;
+	date: string;
+	pre_market: string | null;
+	eod_review: string | null;
+	discipline_breach: boolean;
+	created_at: string;
+	updated_at: string;
+}
+
 export interface PagedTrades {
 	items: TradeDto[];
 	total: number;
@@ -281,6 +291,23 @@ export const api = {
 		req<ScreenshotDto>(`/api/screenshots/${shotId}`, json({ method: 'PATCH', body: JSON.stringify({ label }) })),
 	getBrokerOffset: () =>
 		req<{ offset_minutes: number | null; label: string | null }>('/api/settings/broker-offset'),
+	listNotes: (from?: string, to?: string) => {
+		const qs = new URLSearchParams();
+		if (from) qs.set('date_from', from);
+		if (to) qs.set('date_to', to);
+		const suffix = qs.toString() ? `?${qs}` : '';
+		return req<DailyNoteDto[]>(`/api/daily-notes${suffix}`);
+	},
+	getNote: async (day: string): Promise<DailyNoteDto | null> => {
+		try {
+			return await req<DailyNoteDto>(`/api/daily-notes/${day}`);
+		} catch (e) {
+			if (e instanceof ApiError && e.status === 404) return null;
+			throw e;
+		}
+	},
+	putNote: (day: string, patch: { pre_market?: string | null; eod_review?: string | null }) =>
+		req<DailyNoteDto>(`/api/daily-notes/${day}`, json({ method: 'PUT', body: JSON.stringify(patch) })),
 	thumbUrl: (assetId: string) => `${API_BASE}/api/screenshots/${assetId}/thumbnail`,
 	fullUrl: (assetId: string) => `${API_BASE}/api/screenshots/${assetId}/full`
 };

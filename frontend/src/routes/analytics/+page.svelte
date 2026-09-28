@@ -14,6 +14,9 @@
 	import StatPanels from '$lib/components/dashboard/StatPanels.svelte';
 	import PageHead from '$lib/components/PageHead.svelte';
 	import StateBlock from '$lib/components/StateBlock.svelte';
+	import DayPanel from '$lib/components/DayPanel.svelte';
+	import TradeModal from '$lib/components/TradeModal.svelte';
+	import { loadTrades } from '$lib/stores/trades';
 	import {
 		api,
 		errMsg,
@@ -124,6 +127,7 @@
 
 	onMount(() => {
 		void load();
+		void loadTrades(true);
 	});
 </script>
 
@@ -243,3 +247,6 @@
 		{/if}
 	</div>
 {/if}
+
+<DayPanel />
+<TradeModal />
