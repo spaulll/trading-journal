@@ -1,8 +1,8 @@
 <script lang="ts">
 	import { fade, fly } from 'svelte/transition';
-	import { X } from 'lucide-svelte';
+	import { Trash2, X } from 'lucide-svelte';
 	import { api, type DailyNoteDto } from '$lib/api';
-	import { closeDay, selectedDay } from '$lib/stores/journal';
+	import { bumpNotes, closeDay, selectedDay } from '$lib/stores/journal';
 	import { openTrade, openTrades, trades } from '$lib/stores/trades';
 	import { toasts } from '$lib/stores/toast';
 	import { dayKeyOf, fmtDate, fmtMoney, fmtR, pnlTone, toneText } from '$lib/utils/format';
@@ -27,6 +27,7 @@
 
 	let loading = $state(false);
 	let saving = $state(false);
+	let confirmDelete = $state(false);
 	let note = $state<DailyNoteDto | null>(null);
 	let preMarket = $state('');
 	let eod = $state('');
@@ -39,6 +40,7 @@
 			note = null;
 			preMarket = '';
 			eod = '';
+			confirmDelete = false;
 			loading = true;
 			void api
 				.getNote(key)
@@ -73,11 +75,32 @@
 		saving = true;
 		try {
 			note = await api.putNote(day, { pre_market: preMarket || null, eod_review: eod || null });
+			bumpNotes();
 			toasts.push('success', 'Day note saved.');
 		} catch (err) {
 			toasts.push('error', `Save failed — ${err instanceof Error ? err.message : 'unknown error'}`);
 		} finally {
 			saving = false;
+		}
+	}
+
+	async function doDelete(): Promise<void> {
+		if (!day) return;
+		if (!confirmDelete) {
+			confirmDelete = true;
+			setTimeout(() => (confirmDelete = false), 4000);
+			return;
+		}
+		try {
+			await api.deleteNote(day);
+			note = null;
+			preMarket = '';
+			eod = '';
+			confirmDelete = false;
+			bumpNotes();
+			toasts.push('success', 'Day note deleted.');
+		} catch (err) {
+			toasts.push('error', `Delete failed — ${err instanceof Error ? err.message : 'unknown error'}`);
 		}
 	}
 
@@ -200,7 +223,21 @@
 								<textarea bind:value={eod} rows={4} placeholder="How did the day go? (also settable via the bot's EOD reply)" class="field resize-y text-[13px]"></textarea>
 							</label>
 						</div>
-						<div class="mt-2 flex justify-end">
+						<div class="mt-2 flex items-center justify-between">
+							{#if note}
+								<button
+									type="button"
+									onclick={() => void doDelete()}
+									class="btn h-8 gap-1.5 px-3 text-[13px] {confirmDelete
+										? 'btn-danger shadow-pop'
+										: 'text-loss hover:bg-loss/10'}"
+								>
+									<Trash2 size={14} strokeWidth={1.8} aria-hidden="true" />
+									{confirmDelete ? 'Confirm delete?' : 'Delete note'}
+								</button>
+							{:else}
+								<span></span>
+							{/if}
 							<button
 								type="button"
 								onclick={() => void saveNote()}

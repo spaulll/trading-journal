@@ -61,3 +61,13 @@ def put_note(day: date_type, patch: DailyNotePatch, session: Session = Depends(g
     session.commit()
     session.refresh(note)
     return DailyNoteRead.model_validate(note.model_dump())
+
+
+@router.delete("/{day}")
+def delete_note(day: date_type, session: Session = Depends(get_session)):
+    note = session.exec(select(DailyNote).where(DailyNote.date == day)).first()
+    if note is None:
+        raise HTTPException(status_code=404, detail="No note for this date")
+    session.delete(note)
+    session.commit()
+    return {"deleted": day.isoformat()}

@@ -7,7 +7,7 @@
 	import TradeModal from '$lib/components/TradeModal.svelte';
 	import { api, type DailyNoteDto } from '$lib/api';
 	import { loadTrades, trades } from '$lib/stores/trades';
-	import { openDay } from '$lib/stores/journal';
+	import { notesVersion, openDay } from '$lib/stores/journal';
 	import { dayKeyOf, fmtDate, fmtMoney, pnlTone, toneText } from '$lib/utils/format';
 
 	const BE_TOL = 0.01;
@@ -42,6 +42,10 @@
 
 	onMount(() => {
 		void loadTrades(true);
+	});
+
+	$effect(() => {
+		$notesVersion;
 		void refresh();
 	});
 </script>

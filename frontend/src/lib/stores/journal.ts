@@ -10,3 +10,10 @@ export function openDay(day: string): void {
 export function closeDay(): void {
 	selectedDay.set(null);
 }
+
+/** Bumped on note save/delete so the Journal list refreshes. */
+export const notesVersion = writable(0);
+
+export function bumpNotes(): void {
+	notesVersion.update((v) => v + 1);
+}

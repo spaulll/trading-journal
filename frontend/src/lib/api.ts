@@ -308,6 +308,7 @@ export const api = {
 	},
 	putNote: (day: string, patch: { pre_market?: string | null; eod_review?: string | null }) =>
 		req<DailyNoteDto>(`/api/daily-notes/${day}`, json({ method: 'PUT', body: JSON.stringify(patch) })),
+	deleteNote: (day: string) => req<{ deleted: string }>(`/api/daily-notes/${day}`, { method: 'DELETE' }),
 	thumbUrl: (assetId: string) => `${API_BASE}/api/screenshots/${assetId}/thumbnail`,
 	fullUrl: (assetId: string) => `${API_BASE}/api/screenshots/${assetId}/full`
 };
