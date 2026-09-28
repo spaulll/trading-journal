@@ -84,29 +84,42 @@ def _to_float(token: str, what: str) -> float:
 
 
 def _parse_explicit_time(tail: str) -> tuple[Optional[datetime], str]:
-    """Pull an optional `time: HH:MM` / `time: YYYY-MM-DD HH:MM` flag from tail.
+    """Pull an optional `time: ...` flag from tail.
 
-    Returns (entry_time or None, tail with the flag removed).
+    Shapes: `time: HH:MM [ZONE]` or `time: YYYY-MM-DD HH:MM [ZONE]`.
+    ZONE is IST or UTC (case-insensitive); bare times are UTC. HH:MM
+    resolves against today in the stated zone. Returns (entry_time as
+    naive UTC or None, tail with the flag removed).
     """
+    from app.services.timeutils import split_zone_suffix, wall_to_naive_utc
+
     m = re.search(
-        r"time\s*:\s*(\d{4}-\d{2}-\d{2}\s+\d{1,2}:\d{2}|\d{1,2}:\d{2})", tail, re.IGNORECASE
+        r"time\s*:\s*(\d{4}-\d{2}-\d{2}\s+\d{1,2}:\d{2}|\d{1,2}:\d{2})(?:\s+([A-Za-z]{1,8}))?",
+        tail,
+        re.IGNORECASE,
     )
     if not m:
         return None, tail
-    raw = m.group(1).strip()
+    raw, suffix = m.group(1).strip(), (m.group(2) or "").strip()
+    try:
+        _, offset = split_zone_suffix(f"x {suffix}" if suffix else "x")
+    except ValueError:
+        raise BotParseError(f"Bad time zone: <code>{esc(suffix)}</code> (use IST or UTC)") from None
     try:
         if re.match(r"^\d{4}-", raw):
-            entry = datetime.strptime(raw, "%Y-%m-%d %H:%M")
+            wall = datetime.strptime(raw, "%Y-%m-%d %H:%M")
         else:
             hh, mm = raw.split(":")
-            now = datetime.now(timezone.utc)
-            entry = now.replace(hour=int(hh), minute=int(mm), second=0, microsecond=0,
+            # Date base in the stated zone so `23:55 IST` near midnight lands
+            # on the right day.
+            base = datetime.now(timezone.utc) + offset
+            wall = base.replace(hour=int(hh), minute=int(mm), second=0, microsecond=0,
                                 tzinfo=None)
     except ValueError:
         raise BotParseError(f"Bad time value: <code>{esc(raw)}</code> (use HH:MM or YYYY-MM-DD HH:MM)")
-    if not (0 <= entry.hour <= 23 and 0 <= entry.minute <= 59):
+    if not (0 <= wall.hour <= 23 and 0 <= wall.minute <= 59):
         raise BotParseError(f"Bad time value: <code>{esc(raw)}</code>")
-    return entry, (tail[: m.start()] + tail[m.end():]).strip(" ,")
+    return wall_to_naive_utc(wall, offset), (tail[: m.start()] + tail[m.end():]).strip(" ,")
 
 
 def parse_open(text: str) -> dict:
@@ -160,10 +173,13 @@ def parse_past(text: str) -> dict:
     fee_raw = grab("fee")
     if exit_raw is None or pnl_raw is None or date_raw is None:
         raise BotParseError("Backfill needs <code>exit:</code>, <code>pnl:</code> and <code>date: YYYY-MM-DD HH:MM</code>")
+    from app.services.timeutils import split_zone_suffix, wall_to_naive_utc
+
     try:
-        entry_time = datetime.strptime(date_raw.strip(), "%Y-%m-%d %H:%M")
-    except ValueError:
-        raise BotParseError(f"Bad date: <code>{esc(date_raw.strip())}</code> (use YYYY-MM-DD HH:MM)") from None
+        date_part, offset = split_zone_suffix(date_raw)
+        entry_time = wall_to_naive_utc(datetime.strptime(date_part, "%Y-%m-%d %H:%M"), offset)
+    except ValueError as exc:
+        raise BotParseError(f"Bad date: <code>{esc(date_raw.strip())}</code> (use YYYY-MM-DD HH:MM [IST|UTC])") from exc
 
     cleaned = re.sub(r"(?i)\b(exit|pnl|fee|date)\s*:\s*[^\s,][^,]*", "", rest)
     parts = _split_args(cleaned)
@@ -471,6 +487,7 @@ HELP = (
     "<code>buy SYMBOL, SIZE, ENTRY, SL, [TP], [#setup tags]</code>\n"
     "e.g. <code>buy gold, 0.1, 4000, 3990, 4020, #fvg</code> (sell = short)\n"
     "Open @ a past time: add <code>time: 14:30</code> or <code>time: 2026-09-20 14:30</code>\n"
+    "Times take an optional zone: <code>time: 2026-09-28 16:01 IST</code> (bare = UTC, IST = +05:30)\n"
     "\n"
     "<b>MOVE the stop (trailing):</b>\n"
     "<code>tsl SYMBOL, NEW_SL</code> — e.g. <code>tsl gold, 4005</code>\n"

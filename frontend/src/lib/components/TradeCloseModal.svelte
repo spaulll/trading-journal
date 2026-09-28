@@ -2,7 +2,7 @@
 	import { Flag, X } from 'lucide-svelte';
 	import { fade, scale } from 'svelte/transition';
 	import { dismissLifecycle, lifecycleBusy, submitClose, trades } from '$lib/stores/trades';
-	import { fmtMoney, fmtR, pnlTone, toneText } from '$lib/utils/format';
+	import { fmtMoney, fmtR, pnlTone, previewIST, toneText } from '$lib/utils/format';
 	import { FADE, MODAL } from '$lib/utils/transitions';
 
 	const { tradeId }: { tradeId: number } = $props();
@@ -138,6 +138,9 @@
 					<label class="{label} col-span-2 sm:col-span-1">
 						Exit time (UTC) <span class="normal-case tracking-normal text-dim">empty = now</span>
 						<input type="datetime-local" value={exitAt} oninput={(e) => (exitAt = e.currentTarget.value)} class={field} />
+						{#if previewIST(exitAt)}
+							<span class="num text-[11px] normal-case tracking-normal text-accent">→ {previewIST(exitAt)}</span>
+						{/if}
 					</label>
 				</div>
 				<label class="{label} mt-3">

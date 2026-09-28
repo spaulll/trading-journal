@@ -2,7 +2,7 @@
 	import { Plus, X } from 'lucide-svelte';
 	import { fade, scale } from 'svelte/transition';
 	import { dismissLifecycle, lifecycleBusy, submitBackfill, submitOpen } from '$lib/stores/trades';
-	import { fmtMoney } from '$lib/utils/format';
+	import { fmtMoney, previewIST } from '$lib/utils/format';
 	import { FADE, MODAL } from '$lib/utils/transitions';
 
 	/** Rough per-unit contract sizes for the risk preview (estimate only). */
@@ -280,6 +280,9 @@
 				<label class="{label} mt-3">
 					Entry time (UTC) <span class="normal-case tracking-normal text-dim">empty = now</span>
 					<input type="datetime-local" value={liveEntryAt} oninput={(e) => (liveEntryAt = e.currentTarget.value)} class={field} />
+					{#if previewIST(liveEntryAt)}
+						<span class="num text-[11px] normal-case tracking-normal text-accent">→ {previewIST(liveEntryAt)}</span>
+					{/if}
 				</label>
 			{/if}
 
@@ -290,10 +293,16 @@
 						<label class={label}>
 							Entry date/time
 							<input type="datetime-local" value={entryAt} oninput={(e) => (entryAt = e.currentTarget.value)} class={field} />
+							{#if previewIST(entryAt)}
+								<span class="num text-[11px] normal-case tracking-normal text-accent">→ {previewIST(entryAt)}</span>
+							{/if}
 						</label>
 						<label class={label}>
 							Exit date/time
 							<input type="datetime-local" value={exitAt} oninput={(e) => (exitAt = e.currentTarget.value)} class={field} />
+							{#if previewIST(exitAt)}
+								<span class="num text-[11px] normal-case tracking-normal text-accent">→ {previewIST(exitAt)}</span>
+							{/if}
 						</label>
 						<label class={label}>
 							Exit price

@@ -3,7 +3,7 @@
 	import uPlot from 'uplot';
 	import 'uplot/dist/uPlot.min.css';
 	import type { EquityPoint } from '$lib/api';
-	import { fmtDate, fmtMoney, pnlTone } from '$lib/utils/format';
+	import { fmtAxisDay, fmtDate, fmtMoney, pnlTone, storedMs } from '$lib/utils/format';
 	import { tooltipPlugin } from '$lib/components/charts/uplotTooltip';
 	import { palette } from '$lib/utils/palette';
 	import { theme } from '$lib/stores/theme';
@@ -25,7 +25,7 @@
 		if (!wrap || points.length === 0) return;
 		const pal = palette();
 		plot?.destroy();
-		const xs = points.map((p) => new Date(p.timestamp).getTime() / 1000);
+		const xs = points.map((p) => (storedMs(p.timestamp) ?? 0) / 1000);
 		const ys = points.map((p) => p.equity);
 		const w = wrap.clientWidth || 600;
 		plot = new uPlot(
@@ -46,11 +46,7 @@
 						font: AXIS_FONT,
 						stroke: pal.axis,
 						grid: { stroke: pal.grid, width: 1 },
-						values: (_u, vals) =>
-							vals.map((v) => {
-								const d = new Date(v * 1000);
-								return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`;
-							})
+						values: (_u, vals) => vals.map((v) => fmtAxisDay(v * 1000))
 					},
 					{
 						font: AXIS_FONT,

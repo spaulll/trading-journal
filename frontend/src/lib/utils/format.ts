@@ -1,5 +1,14 @@
 /** Number / date formatting helpers. All figures use tabular numerals. */
 
+/** Display timezone — every clock in the UI renders in IST. Storage stays naive-UTC. */
+export const DISPLAY_TZ = 'Asia/Kolkata';
+
+const axisDayFmt = new Intl.DateTimeFormat('en-GB', {
+	timeZone: DISPLAY_TZ,
+	day: '2-digit',
+	month: '2-digit'
+});
+
 const money = new Intl.NumberFormat('en-US', {
 	style: 'currency',
 	currency: 'USD',
@@ -35,22 +44,57 @@ export function fmtNum(v: number | null | undefined, digits = 2): string {
 }
 
 export function fmtDateTime(v: string | null | undefined): string {
-	if (!v) return '—';
-	const d = new Date(v);
-	if (Number.isNaN(d.getTime())) return '—';
-	return d.toLocaleString('en-GB', {
-		day: '2-digit',
-		month: 'short',
-		hour: '2-digit',
-		minute: '2-digit'
-	});
+	const d = v ? parseStoredUTC(v) : null;
+	if (!d) return '—';
+	return (
+		d.toLocaleString('en-GB', {
+			timeZone: DISPLAY_TZ,
+			day: '2-digit',
+			month: 'short',
+			hour: '2-digit',
+			minute: '2-digit'
+		}) + ' IST'
+	);
 }
 
 export function fmtDate(v: string | null | undefined): string {
-	if (!v) return '—';
-	const d = new Date(v);
-	if (Number.isNaN(d.getTime())) return '—';
-	return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+	const d = v ? parseStoredUTC(v) : null;
+	if (!d) return '—';
+	return d.toLocaleDateString('en-GB', {
+		timeZone: DISPLAY_TZ,
+		day: '2-digit',
+		month: 'short',
+		year: 'numeric'
+	});
+}
+
+/**
+ * Stored timestamps are naive UTC — parse them as UTC, never browser-local,
+ * so a trader in any timezone sees the same instant.
+ */
+export function parseStoredUTC(v: string): Date | null {
+	const s = v.trim();
+	if (!s) return null;
+	const d = new Date(/[zZ]|[+-]\d{2}:?\d{2}$/.test(s) ? s : `${s}Z`);
+	return Number.isNaN(d.getTime()) ? null : d;
+}
+
+/** Epoch ms for chart axes from a stored timestamp. */
+export function storedMs(v: string): number | null {
+	const d = parseStoredUTC(v);
+	return d ? d.getTime() : null;
+}
+
+/** uPlot x-axis tick (epoch ms) → DD/MM in IST. */
+export function fmtAxisDay(ms: number): string {
+	return axisDayFmt.format(new Date(ms));
+}
+
+/** Live `datetime-local` (UTC) → IST label for input previews; '' when invalid. */
+export function previewIST(raw: string): string {
+	const t = raw.trim();
+	if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(t)) return '';
+	return fmtDateTime(`${t}:00`);
 }
 
 /** Duration in minutes → "4h 12m" / "38m". */

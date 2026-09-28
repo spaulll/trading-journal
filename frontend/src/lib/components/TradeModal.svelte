@@ -14,7 +14,7 @@
 		upsertTrade
 	} from '$lib/stores/trades';
 	import { toasts } from '$lib/stores/toast';
-	import { fmtDateTime, fmtMoney, fmtNum, fmtR, pnlTone, toneText } from '$lib/utils/format';
+	import { fmtDateTime, fmtMoney, fmtNum, fmtR, parseStoredUTC, pnlTone, previewIST, toneText } from '$lib/utils/format';
 	import { DRAWER, FADE } from '$lib/utils/transitions';
 
 	const LABELS = ['entry', 'exit', 'setup', 'mistake'] as const;
@@ -105,9 +105,8 @@
 	/** `datetime-local` value in UTC — stored timestamps are naive-UTC by convention. */
 	const toInputDT = (iso: string | null | undefined): string => {
 		if (!iso) return '';
-		const s = /[zZ]|[+-]\d{2}:?\d{2}$/.test(iso) ? iso : `${iso}Z`;
-		const d = new Date(s);
-		return Number.isNaN(d.getTime()) ? '' : d.toISOString().slice(0, 16);
+		const d = parseStoredUTC(iso);
+		return d ? d.toISOString().slice(0, 16) : '';
 	};
 
 	$effect(() => {
@@ -525,10 +524,16 @@
 						<label class="flex min-w-0 flex-col gap-1">
 							<span class="eyebrow">Entry time (UTC)</span>
 							<input type="datetime-local" bind:value={fEntryTime} class="field h-9 w-full font-mono text-[13px]" />
+							{#if previewIST(fEntryTime)}
+								<span class="num text-[11px] text-accent">→ {previewIST(fEntryTime)}</span>
+							{/if}
 						</label>
 						<label class="flex min-w-0 flex-col gap-1">
 							<span class="eyebrow">Exit time (UTC)</span>
 							<input type="datetime-local" bind:value={fExitTime} class="field h-9 w-full font-mono text-[13px]" />
+							{#if previewIST(fExitTime)}
+								<span class="num text-[11px] text-accent">→ {previewIST(fExitTime)}</span>
+							{/if}
 						</label>
 					</div>
 					<p class="num mt-1.5 text-[11px] text-dim">
