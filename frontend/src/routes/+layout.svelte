@@ -6,6 +6,7 @@
 	import Toasts from '$lib/components/Toasts.svelte';
 	import { startPolling } from '$lib/stores/connection';
 	import { loadBrokerOffset } from '$lib/stores/broker';
+	import { sidebarCollapsed } from '$lib/stores/ui';
 	import '../app.css';
 
 	let { children } = $props();
@@ -19,7 +20,7 @@
 <div class="relative z-[1] min-h-[100dvh] bg-base text-fg">
 	<a href="#main-content" class="skip-link">Skip to content</a>
 	<Sidebar />
-	<div class="lg:pl-60">
+	<div class="transition-[padding] duration-300 ease-spring {$sidebarCollapsed ? 'lg:pl-[68px]' : 'lg:pl-60'}">
 		<TopBar />
 		<main
 			id="main-content"
