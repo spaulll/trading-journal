@@ -10,7 +10,7 @@
  *   (see $lib/offline-snapshot) so stale PnL is always labelled.
  */
 
-const CACHE = 'tj-shell-v1';
+const CACHE = 'tj-shell-v2';
 const PRECACHE = ['/', '/manifest.webmanifest', '/icon-192.png', '/icon-512.png'];
 
 self.addEventListener('install', (event) => {
