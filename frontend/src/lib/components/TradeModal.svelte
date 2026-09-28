@@ -97,8 +97,18 @@
 	let fTp = $state('');
 	let fExit = $state('');
 	let fFees = $state('');
+	let fEntryTime = $state('');
+	let fExitTime = $state('');
 
 	const numStr = (v: number | null | undefined): string => (v === null || v === undefined ? '' : String(v));
+
+	/** `datetime-local` value in UTC — stored timestamps are naive-UTC by convention. */
+	const toInputDT = (iso: string | null | undefined): string => {
+		if (!iso) return '';
+		const s = /[zZ]|[+-]\d{2}:?\d{2}$/.test(iso) ? iso : `${iso}Z`;
+		const d = new Date(s);
+		return Number.isNaN(d.getTime()) ? '' : d.toISOString().slice(0, 16);
+	};
 
 	$effect(() => {
 		if (trade && trade.id !== lastTradeId) {
@@ -115,6 +125,8 @@
 			fTp = numStr(trade.tp);
 			fExit = numStr(trade.exit_price);
 			fFees = numStr(trade.fees);
+			fEntryTime = toInputDT(trade.entry_time ?? trade.timestamp_open);
+			fExitTime = toInputDT(trade.exit_time ?? trade.timestamp_close);
 			confirmDelete = false;
 			zoomShot = null;
 		}
@@ -136,7 +148,9 @@
 				fCurrSl.trim() !== numStr(trade.current_sl) ||
 				fTp.trim() !== numStr(trade.tp) ||
 				fExit.trim() !== numStr(trade.exit_price) ||
-				fFees.trim() !== numStr(trade.fees))
+				fFees.trim() !== numStr(trade.fees) ||
+				fEntryTime.trim() !== toInputDT(trade.entry_time ?? trade.timestamp_open) ||
+				fExitTime.trim() !== toInputDT(trade.exit_time ?? trade.timestamp_close))
 	);
 
 	function onBackdrop(e: MouseEvent): void {
@@ -226,6 +240,23 @@
 				return;
 			}
 			payload[key] = v;
+		}
+		const dts: [key: string, raw: string, current: string | null][] = [
+			['entry_time', fEntryTime, trade.entry_time ?? trade.timestamp_open],
+			['exit_time', fExitTime, trade.exit_time ?? trade.timestamp_close]
+		];
+		for (const [key, raw, current] of dts) {
+			const t = raw.trim();
+			if (t === toInputDT(current)) continue;
+			if (t === '') {
+				payload[key] = null;
+				continue;
+			}
+			if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(t) || Number.isNaN(new Date(`${t}:00Z`).getTime())) {
+				toasts.push('error', `Bad ${key.replace('_', ' ')}: ${t}`);
+				return;
+			}
+			payload[key] = `${t}:00`;
 		}
 		if (Object.keys(payload).length === 0) return;
 		savingEdits = true;
@@ -491,8 +522,19 @@
 							<span class="eyebrow">Fees</span>
 							<input type="text" inputmode="decimal" bind:value={fFees} class="field h-9 font-mono text-[13px]" />
 						</label>
+						<label class="flex min-w-0 flex-col gap-1">
+							<span class="eyebrow">Entry time (UTC)</span>
+							<input type="datetime-local" bind:value={fEntryTime} class="field h-9 w-full font-mono text-[13px]" />
+						</label>
+						<label class="flex min-w-0 flex-col gap-1">
+							<span class="eyebrow">Exit time (UTC)</span>
+							<input type="datetime-local" bind:value={fExitTime} class="field h-9 w-full font-mono text-[13px]" />
+						</label>
 					</div>
-					<p class="num mt-1.5 text-[11px] text-dim">Net and R recompute automatically from prices and fees.</p>
+					<p class="num mt-1.5 text-[11px] text-dim">
+						Net and R recompute automatically from prices and fees. Times are UTC — changing entry
+						re-resolves session and duration.
+					</p>
 				</div>
 
 				<!-- Editors -->

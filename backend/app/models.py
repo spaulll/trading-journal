@@ -145,7 +145,10 @@ class TradeRead(SQLModel):
 
 
 class TradePatch(SQLModel):
+    timestamp_open: Optional[datetime] = None
     timestamp_close: Optional[datetime] = None
+    entry_time: Optional[datetime] = None
+    exit_time: Optional[datetime] = None
     direction: Optional[str] = None
     symbol: Optional[str] = None
     size: Optional[float] = None

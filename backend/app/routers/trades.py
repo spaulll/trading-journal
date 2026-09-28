@@ -417,6 +417,28 @@ def patch_trade(trade_id: int, patch: TradePatch, session: Session = Depends(get
             get_or_create_tag(session, name, category)
             for name, category in parse_tags(" ".join(patch.tags))
         ]
+    # Entry/exit timestamps are mirrored pairs (live + backfill flows keep
+    # timestamp_open/entry_time and timestamp_close/exit_time in sync).
+    if "entry_time" in data and "timestamp_open" not in data:
+        trade.timestamp_open = trade.entry_time
+        session.add(trade)
+    elif "timestamp_open" in data and "entry_time" not in data:
+        trade.entry_time = trade.timestamp_open
+        session.add(trade)
+    if "exit_time" in data and "timestamp_close" not in data:
+        trade.timestamp_close = trade.exit_time
+        session.add(trade)
+    elif "timestamp_close" in data and "exit_time" not in data:
+        trade.exit_time = trade.timestamp_close
+        session.add(trade)
+    # Keep duration/session consistent when either leg moves: duration from
+    # the entry/exit pair, session re-resolved from the entry time.
+    if any(k in data for k in ("entry_time", "timestamp_open", "exit_time", "timestamp_close")):
+        entry = trade.entry_time or trade.timestamp_open
+        trade.duration_minutes = duration_minutes(entry, trade.exit_time or trade.timestamp_close)
+        if any(k in data for k in ("entry_time", "timestamp_open")):
+            trade.session = normalize_session(None, entry)
+        session.add(trade)
     # Keep r_multiple consistent: recompute when price legs change unless the
     # caller explicitly supplied r_multiple in the same patch.
     if "r_multiple" not in data and any(
