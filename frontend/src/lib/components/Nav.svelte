@@ -8,7 +8,10 @@
 	aria-label="Primary"
 	class="fixed inset-x-0 bottom-0 z-40 border-t border-line bg-base/85 pb-[env(safe-area-inset-bottom)] backdrop-blur-xl lg:hidden"
 >
-	<div class="mx-auto grid max-w-md grid-cols-2 gap-1 p-2">
+	<div
+		class="mx-auto grid max-w-md gap-1 p-2"
+		style="grid-template-columns: repeat({NAV_LINKS.length}, minmax(0, 1fr));"
+	>
 		{#each NAV_LINKS as link (link.href)}
 			{@const Icon = link.icon}
 			{@const isActive = isActiveLink(link.href, page.url.pathname)}
