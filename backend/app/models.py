@@ -90,6 +90,15 @@ class DailyNote(SQLModel, table=True):
     updated_at: datetime = Field(default_factory=_utcnow)
 
 
+class AppSetting(SQLModel, table=True):
+    """Process-wide key-value settings (e.g. broker clock offset)."""
+
+    __tablename__ = "app_setting"
+    key: str = Field(primary_key=True)
+    value: str = Field(default="")
+    updated_at: datetime = Field(default_factory=_utcnow)
+
+
 # --- Read schemas (responses embed tags + screenshot metadata) ---
 
 

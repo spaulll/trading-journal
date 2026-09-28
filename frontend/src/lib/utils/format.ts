@@ -98,6 +98,31 @@ export function previewIST(raw: string): string {
 	return fmtDateTime(`${t}:00`);
 }
 
+const MT5_INPUT_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/;
+
+/** MT5 wall `datetime-local` → UTC `YYYY-MM-DDTHH:MM:SS` (null when invalid). */
+export function mt5WallToUTC(raw: string, offsetMinutes: number): string | null {
+	const t = raw.trim();
+	if (!MT5_INPUT_RE.test(t)) return null;
+	const ms = Date.parse(`${t}:00Z`);
+	if (Number.isNaN(ms)) return null;
+	return new Date(ms - offsetMinutes * 60000).toISOString().slice(0, 19);
+}
+
+/** Stored UTC timestamp → MT5 wall `datetime-local` value ('' when missing). */
+export function utcToMT5Wall(iso: string | null | undefined, offsetMinutes: number): string {
+	if (!iso) return '';
+	const d = parseStoredUTC(iso);
+	if (!d) return '';
+	return new Date(d.getTime() + offsetMinutes * 60000).toISOString().slice(0, 16);
+}
+
+/** Live MT5 `datetime-local` → IST label for input previews; '' when invalid. */
+export function previewMT5(raw: string, offsetMinutes: number): string {
+	const utc = mt5WallToUTC(raw, offsetMinutes);
+	return utc ? fmtDateTime(utc) : '';
+}
+
 /** Duration in minutes → "4h 12m" / "38m". */
 export function fmtDuration(min: number | null | undefined): string {
 	if (min === null || min === undefined) return '—';

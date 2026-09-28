@@ -7,7 +7,7 @@ Text syntax:
     Open:  buy gold, 0.1, 4000, 3990, 4020, #fvg
     TSL:   tsl gold, 4005
     Close: close gold, 4015, +150, fee: 3.5, !early, notes
-Commands: /start, /help, /open, /stats_daily, /cancel.
+Commands: /start, /help, /open, /stats_daily, /brokertime, /cancel.
 
 Photos are downloaded via getFile and streamed straight into
 immich_client (never touch local disk), then recorded in screenshots.
@@ -26,7 +26,8 @@ import httpx
 from sqlmodel import Session, select
 
 from app.models import Screenshot, Trade
-from app.services.timeutils import as_naive_utc
+from app.services.timeutils import as_naive_utc, wall_to_naive_utc
+from app.services.broker_clock import IST_OFFSET
 
 log = logging.getLogger("telegram_bot")
 
@@ -83,28 +84,62 @@ def _to_float(token: str, what: str) -> float:
         raise BotParseError(f"Bad {what}: <code>{esc(token.strip())}</code>") from None
 
 
-def _parse_explicit_time(tail: str) -> tuple[Optional[datetime], str]:
+def _suffix_offset(suffix: str, broker_offset: Optional[timedelta]) -> timedelta:
+    """UTC offset for a `time:`/`date:` zone suffix ('' = UTC)."""
+    if not suffix:
+        return timedelta(0)
+    low = suffix.lower()
+    if low in ("utc", "gmt"):
+        return timedelta(0)
+    if low == "ist":
+        return IST_OFFSET
+    if low in ("mt5", "broker"):
+        if broker_offset is None:
+            raise BotParseError(
+                "Broker clock not set — send <code>/brokertime</code> to calibrate it first."
+            )
+        return broker_offset
+    raise BotParseError(f"Bad time zone: <code>{esc(suffix)}</code> (use MT5, IST or UTC)")
+
+
+def _split_zone(raw: str, broker_offset: Optional[timedelta]) -> tuple[str, timedelta]:
+    """Split 'YYYY-MM-DD HH:MM [ZONE]' into (datetime part, offset)."""
+    text = (raw or "").strip()
+    m = re.search(r"\s+([A-Za-z][A-Za-z0-9]{0,7})\s*$", text)
+    if not m:
+        return text, timedelta(0)
+    return text[: m.start()].strip(), _suffix_offset(m.group(1), broker_offset)
+
+
+def _broker_offset(session: Session) -> Optional[timedelta]:
+    """Calibrated broker offset from AppSetting (None when never set)."""
+    from app.services import broker_clock as _bc
+
+    minutes = _bc.get_offset_minutes(session)
+    return timedelta(minutes=minutes) if minutes is not None else None
+
+
+def _parse_explicit_time(
+    tail: str, broker_offset: Optional[timedelta] = None
+) -> tuple[Optional[datetime], str]:
     """Pull an optional `time: ...` flag from tail.
 
     Shapes: `time: HH:MM [ZONE]` or `time: YYYY-MM-DD HH:MM [ZONE]`.
-    ZONE is IST or UTC (case-insensitive); bare times are UTC. HH:MM
+    ZONE is MT5, IST or UTC (case-insensitive); bare times are UTC. HH:MM
     resolves against today in the stated zone. Returns (entry_time as
     naive UTC or None, tail with the flag removed).
     """
-    from app.services.timeutils import split_zone_suffix, wall_to_naive_utc
+    from app.services.timeutils import wall_to_naive_utc
 
     m = re.search(
-        r"time\s*:\s*(\d{4}-\d{2}-\d{2}\s+\d{1,2}:\d{2}|\d{1,2}:\d{2})(?:\s+([A-Za-z]{1,8}))?",
+        r"time\s*:\s*(\d{4}-\d{2}-\d{2}\s+\d{1,2}:\d{2}|\d{1,2}:\d{2})(?:\s+([A-Za-z][A-Za-z0-9]{0,7}))?",
         tail,
         re.IGNORECASE,
     )
     if not m:
         return None, tail
     raw, suffix = m.group(1).strip(), (m.group(2) or "").strip()
-    try:
-        _, offset = split_zone_suffix(f"x {suffix}" if suffix else "x")
-    except ValueError:
-        raise BotParseError(f"Bad time zone: <code>{esc(suffix)}</code> (use IST or UTC)") from None
+    offset = _suffix_offset(suffix, broker_offset)
     try:
         if re.match(r"^\d{4}-", raw):
             wall = datetime.strptime(raw, "%Y-%m-%d %H:%M")
@@ -122,13 +157,13 @@ def _parse_explicit_time(tail: str) -> tuple[Optional[datetime], str]:
     return wall_to_naive_utc(wall, offset), (tail[: m.start()] + tail[m.end():]).strip(" ,")
 
 
-def parse_open(text: str) -> dict:
+def parse_open(text: str, broker_offset: Optional[timedelta] = None) -> dict:
     """`buy gold, 0.1, 4000, 3990, 4020, #fvg ...` (+ optional `time:` flag)."""
     m = re.match(r"(?i)^\s*(buy|sell)\s+([a-z0-9\-/.]+)\s*,(.*)$", text.strip(), re.DOTALL)
     if not m:
         raise BotParseError("Open syntax: <code>buy SYMBOL, SIZE, ENTRY, SL, [TP], [#tags]</code>")
     direction, symbol, rest = m.group(1).lower(), m.group(2).upper(), m.group(3)
-    entry_time, rest = _parse_explicit_time(rest)
+    entry_time, rest = _parse_explicit_time(rest, broker_offset)
     parts = _split_args(rest)
     if len(parts) < 3:
         raise BotParseError("Open needs at least SIZE, ENTRY and SL")
@@ -156,7 +191,7 @@ def parse_open(text: str) -> dict:
     }
 
 
-def parse_past(text: str) -> dict:
+def parse_past(text: str, broker_offset: Optional[timedelta] = None) -> dict:
     """`past buy gold, 0.1, 4000, 3990, 4020, exit: 4015, pnl: 150, date: 2026-09-20 14:30`."""
     m = re.match(r"(?i)^\s*past\s+(buy|sell)\s+([a-z0-9\-/.]+)\s*,(.*)$", text.strip(), re.DOTALL)
     if not m:
@@ -173,13 +208,13 @@ def parse_past(text: str) -> dict:
     fee_raw = grab("fee")
     if exit_raw is None or pnl_raw is None or date_raw is None:
         raise BotParseError("Backfill needs <code>exit:</code>, <code>pnl:</code> and <code>date: YYYY-MM-DD HH:MM</code>")
-    from app.services.timeutils import split_zone_suffix, wall_to_naive_utc
+    from app.services.timeutils import wall_to_naive_utc
 
     try:
-        date_part, offset = split_zone_suffix(date_raw)
+        date_part, offset = _split_zone(date_raw, broker_offset)
         entry_time = wall_to_naive_utc(datetime.strptime(date_part, "%Y-%m-%d %H:%M"), offset)
     except ValueError as exc:
-        raise BotParseError(f"Bad date: <code>{esc(date_raw.strip())}</code> (use YYYY-MM-DD HH:MM [IST|UTC])") from exc
+        raise BotParseError(f"Bad date: <code>{esc(date_raw.strip())}</code> (use YYYY-MM-DD HH:MM [MT5|IST|UTC])") from exc
 
     cleaned = re.sub(r"(?i)\b(exit|pnl|fee|date)\s*:\s*[^\s,][^,]*", "", rest)
     parts = _split_args(cleaned)
@@ -487,7 +522,8 @@ HELP = (
     "<code>buy SYMBOL, SIZE, ENTRY, SL, [TP], [#setup tags]</code>\n"
     "e.g. <code>buy gold, 0.1, 4000, 3990, 4020, #fvg</code> (sell = short)\n"
     "Open @ a past time: add <code>time: 14:30</code> or <code>time: 2026-09-20 14:30</code>\n"
-    "Times take an optional zone: <code>time: 2026-09-28 16:01 IST</code> (bare = UTC, IST = +05:30)\n"
+    "Times take an optional zone: <code>time: 2026-09-28 16:01 IST</code> (bare = UTC).\n"
+    "Broker times work too once calibrated: <code>time: 2026-09-28 19:31 MT5</code> — see /brokertime.\n"
     "\n"
     "<b>MOVE the stop (trailing):</b>\n"
     "<code>tsl SYMBOL, NEW_SL</code> — e.g. <code>tsl gold, 4005</code>\n"
@@ -505,7 +541,7 @@ HELP = (
     "\n"
     "<b>COMMANDS:</b>\n"
     "/start — greeting · /help — this guide · /open — list open trades · "
-    "/stats_daily — today's stats · /cancel — drop the pending question\n"
+    "/stats_daily — today's stats · /brokertime — set broker clock · /cancel — drop the pending question\n"
     "\n"
     "Buttons under each confirmation: Move to BE · Update TSL · Close Trade · "
     "Attach Chart. Stale-trade nudges can be snoozed 2h; reply to the nightly "
@@ -602,6 +638,55 @@ async def handle_stats_daily(chat_id: int, session: Session) -> None:
     await send_text(chat_id, daily_stats_text(session))
 
 
+BROKER_SETUP_RE = re.compile(
+    r"^MT5\s+(\d{4}-\d{2}-\d{2}\s+\d{1,2}:\d{2})\s+IST\s+(\d{4}-\d{2}-\d{2}\s+\d{1,2}:\d{2})\s*$",
+    re.IGNORECASE,
+)
+
+BROKER_GUIDE = (
+    "🕰️ <b>Broker clock setup</b>\n"
+    "Send both readings of the <b>same instant</b>:\n"
+    "<code>/brokertime MT5 YYYY-MM-DD HH:MM IST YYYY-MM-DD HH:MM</code>\n"
+    "e.g. <code>/brokertime MT5 2026-09-28 19:31 IST 2026-09-28 21:31</code>\n"
+    "After that, <code>time: … MT5</code> just works — no manual conversion."
+)
+
+
+async def handle_broker_clock(chat_id: int, text: str, session: Session) -> None:
+    from app.services import broker_clock as _bc
+
+    current = _bc.get_offset_minutes(session)
+    status = (
+        f"Current: <b>{_bc.format_label(current)}</b>."
+        if current is not None
+        else "Not set yet — <code>MT5</code> times will be rejected until set."
+    )
+    args = re.sub(r"^/\S+\s*", "", text.strip())
+    if not args:
+        await send_text(chat_id, BROKER_GUIDE + "\n" + status)
+        return
+    m = BROKER_SETUP_RE.match(args)
+    if not m:
+        await send_text(chat_id, f"❌ Couldn't parse that.\n{BROKER_GUIDE}\n{status}")
+        return
+    try:
+        mt5_wall = datetime.strptime(m.group(1), "%Y-%m-%d %H:%M")
+        ist_wall = datetime.strptime(m.group(2), "%Y-%m-%d %H:%M")
+        minutes = _bc.calibrate(mt5_wall, ist_wall)
+    except ValueError as exc:
+        await send_text(chat_id, f"❌ {esc(exc)}")
+        return
+    _bc.set_offset_minutes(session, minutes)
+    session.commit()
+    utc_wall = mt5_wall - timedelta(minutes=minutes)
+    await send_text(
+        chat_id,
+        f"🕰️ Broker clock: <b>{_bc.format_label(minutes)}</b> — "
+        f"MT5 {mt5_wall.strftime('%H:%M')} = IST {ist_wall.strftime('%H:%M')} = "
+        f"{utc_wall.strftime('%H:%M')} UTC on {mt5_wall.date().isoformat()}.",
+    )
+
+
 def _command_key(body: str) -> str:
     """Base slash-command: lowercase, `@BotName` mention and args stripped."""
     head = body.split()[0] if body.split() else ""
@@ -628,6 +713,9 @@ async def handle_text(chat_id: int, text: str, session: Session) -> None:
         return
     if cmd == "/open":
         await handle_open_command(chat_id, session)
+        return
+    if cmd == "/brokertime":
+        await handle_broker_clock(chat_id, body, session)
         return
 
     state = _pending.get(chat_id)
@@ -666,9 +754,9 @@ async def handle_text(chat_id: int, text: str, session: Session) -> None:
 
     try:
         if re.match(r"(?i)^\s*past\s", body):
-            await do_past(chat_id, session, parse_past(body))
+            await do_past(chat_id, session, parse_past(body, _broker_offset(session)))
         elif re.match(r"(?i)^\s*(buy|sell)\s", body):
-            await do_open(chat_id, session, parse_open(body))
+            await do_open(chat_id, session, parse_open(body, _broker_offset(session)))
         elif re.match(r"(?i)^\s*tsl\s", body):
             args = parse_tsl(body)
             await do_tsl(chat_id, session, args["symbol"], args["current_sl"])
@@ -899,11 +987,14 @@ async def _process_update(update: dict) -> None:
 
 
 # Command menu published via setMyCommands (see register_commands).
+# register_commands() runs on every backend start, so new entries here land
+# in Telegram's command list automatically after a restart.
 COMMAND_MENU = [
     {"command": "start", "description": "Greet and get started"},
     {"command": "help", "description": "Full trade entry syntax guide"},
     {"command": "open", "description": "List your open trades"},
     {"command": "stats_daily", "description": "Show today's trading stats"},
+    {"command": "brokertime", "description": "Set broker clock offset (MT5 vs IST)"},
     {"command": "cancel", "description": "Drop the pending question"},
 ]
 

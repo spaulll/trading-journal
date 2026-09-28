@@ -2,7 +2,8 @@
 	import { Plus, X } from 'lucide-svelte';
 	import { fade, scale } from 'svelte/transition';
 	import { dismissLifecycle, lifecycleBusy, submitBackfill, submitOpen } from '$lib/stores/trades';
-	import { fmtMoney, previewIST } from '$lib/utils/format';
+	import { fmtMoney, mt5WallToUTC, previewIST, previewMT5 } from '$lib/utils/format';
+	import { brokerOffset } from '$lib/stores/broker';
 	import { FADE, MODAL } from '$lib/utils/transitions';
 
 	/** Rough per-unit contract sizes for the risk preview (estimate only). */
@@ -38,21 +39,50 @@
 		return 'Outside';
 	}
 
+	/** UTC instant for a wall input in the current zone (null when invalid). */
+	function inputToUTCDate(raw: string): Date | null {
+		const t = raw.trim();
+		if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(t)) return null;
+		const iso = $brokerOffset ? mt5WallToUTC(t, $brokerOffset.minutes) : `${t}:00`;
+		if (!iso) return null;
+		const d = new Date(`${iso}Z`);
+		return Number.isNaN(d.getTime()) ? null : d;
+	}
+
+	const timePreview = (raw: string): string => {
+		if ($brokerOffset) return previewMT5(raw, $brokerOffset.minutes);
+		return previewIST(raw);
+	};
+
+	/** Wall input → UTC `YYYY-MM-DDTHH:MM:SS` for the API; sets formError on failure. */
+	function toSubmitTime(raw: string, label: string): string | null {
+		const d = inputToUTCDate(raw);
+		if (!d) {
+			formError = `${label} must be a valid date/time.`;
+			return null;
+		}
+		return d.toISOString().slice(0, 19);
+	}
+
+	const zoneTag = (fallback: string): string =>
+		$brokerOffset ? `MT5 · ${$brokerOffset.label}` : fallback;
+
 	function sessionForUTC(d: Date): string {
 		return sessionForHour(d.getUTCHours() + d.getUTCMinutes() / 60);
 	}
 
 	const liveSession = $derived.by(() => {
-		const m = liveEntryAt.trim().match(/T(\d{2}):(\d{2})/);
-		if (m) return sessionForHour(parseInt(m[1], 10) + parseInt(m[2], 10) / 60);
+		// Session resolves server-side from the UTC instant, so preview from that.
+		const d = inputToUTCDate(liveEntryAt);
+		if (d) return sessionForHour(d.getUTCHours() + d.getUTCMinutes() / 60);
 		return sessionForUTC(new Date());
 	});
 	// Session preview parsed from the literal entry stamp (server resolves
 	// the same naive-UTC value, so this preview always matches).
 	const backfillSession = $derived.by(() => {
-		const m = entryAt.trim().match(/T(\d{2}):(\d{2})/);
-		if (!m) return null;
-		return sessionForHour(parseInt(m[1], 10) + parseInt(m[2], 10) / 60);
+		const d = inputToUTCDate(entryAt);
+		if (!d) return null;
+		return sessionForHour(d.getUTCHours() + d.getUTCMinutes() / 60);
 	});
 
 	const num = (v: string): number | null => {
@@ -117,6 +147,12 @@
 			formError = direction === 'buy' ? 'For a buy, stop loss must be below entry.' : 'For a sell, stop loss must be above entry.';
 			return;
 		}
+		let liveEntryIso: string | undefined;
+		if (liveEntryAt.trim()) {
+			const iso = toSubmitTime(liveEntryAt, 'Entry time');
+			if (iso === null) return;
+			liveEntryIso = iso;
+		}
 		await submitOpen({
 			symbol: symbol.trim(),
 			direction,
@@ -124,7 +160,7 @@
 			entry_price: entryN,
 			initial_sl: slN,
 			tp: tpN,
-			entry_time: liveEntryAt.trim() ? `${liveEntryAt.trim()}:00` : undefined,
+			entry_time: liveEntryIso,
 			tags: tags.split(/[\s,]+/).filter(Boolean)
 		});
 	}
@@ -150,11 +186,12 @@
 			return;
 		}
 		if (!entryAt.trim() || !exitAt.trim()) {
-			formError = 'Entry and exit date/time are required (UTC).';
+			formError = `Entry and exit date/time are required (${$brokerOffset ? 'MT5' : 'UTC'}).`;
 			return;
 		}
-		const entryIso = `${entryAt.trim()}:00`;
-		const exitIso = `${exitAt.trim()}:00`;
+		const entryIso = toSubmitTime(entryAt, 'Entry date/time');
+		const exitIso = toSubmitTime(exitAt, 'Exit date/time');
+		if (entryIso === null || exitIso === null) return;
 		if (exitIso <= entryIso) {
 			formError = 'Exit must be after entry.';
 			return;
@@ -278,30 +315,30 @@
 
 			{#if mode === 'live'}
 				<label class="{label} mt-3">
-					Entry time (UTC) <span class="normal-case tracking-normal text-dim">empty = now</span>
+					Entry time ({zoneTag('UTC')}) <span class="normal-case tracking-normal text-dim">empty = now</span>
 					<input type="datetime-local" value={liveEntryAt} oninput={(e) => (liveEntryAt = e.currentTarget.value)} class={field} />
-					{#if previewIST(liveEntryAt)}
-						<span class="num text-[11px] normal-case tracking-normal text-accent">→ {previewIST(liveEntryAt)}</span>
+					{#if timePreview(liveEntryAt)}
+						<span class="num text-[11px] normal-case tracking-normal text-accent">→ {timePreview(liveEntryAt)}</span>
 					{/if}
 				</label>
 			{/if}
 
 			{#if mode === 'backfill'}
 				<fieldset class="mt-3 rounded-xl border border-line p-3">
-					<legend class="px-1 font-mono text-[10px] tracking-[0.16em] text-dim uppercase">Historical exit (UTC)</legend>
+					<legend class="px-1 font-mono text-[10px] tracking-[0.16em] text-dim uppercase">Historical exit ({zoneTag('UTC')})</legend>
 					<div class="grid grid-cols-2 gap-3">
 						<label class={label}>
 							Entry date/time
 							<input type="datetime-local" value={entryAt} oninput={(e) => (entryAt = e.currentTarget.value)} class={field} />
-							{#if previewIST(entryAt)}
-								<span class="num text-[11px] normal-case tracking-normal text-accent">→ {previewIST(entryAt)}</span>
+							{#if timePreview(entryAt)}
+								<span class="num text-[11px] normal-case tracking-normal text-accent">→ {timePreview(entryAt)}</span>
 							{/if}
 						</label>
 						<label class={label}>
 							Exit date/time
 							<input type="datetime-local" value={exitAt} oninput={(e) => (exitAt = e.currentTarget.value)} class={field} />
-							{#if previewIST(exitAt)}
-								<span class="num text-[11px] normal-case tracking-normal text-accent">→ {previewIST(exitAt)}</span>
+							{#if timePreview(exitAt)}
+								<span class="num text-[11px] normal-case tracking-normal text-accent">→ {timePreview(exitAt)}</span>
 							{/if}
 						</label>
 						<label class={label}>

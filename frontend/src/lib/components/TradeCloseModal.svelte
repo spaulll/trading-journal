@@ -2,7 +2,8 @@
 	import { Flag, X } from 'lucide-svelte';
 	import { fade, scale } from 'svelte/transition';
 	import { dismissLifecycle, lifecycleBusy, submitClose, trades } from '$lib/stores/trades';
-	import { fmtMoney, fmtR, pnlTone, previewIST, toneText } from '$lib/utils/format';
+	import { fmtMoney, fmtR, mt5WallToUTC, pnlTone, previewIST, previewMT5, toneText } from '$lib/utils/format';
+	import { brokerOffset } from '$lib/stores/broker';
 	import { FADE, MODAL } from '$lib/utils/transitions';
 
 	const { tradeId }: { tradeId: number } = $props();
@@ -48,6 +49,20 @@
 		if (e.target === e.currentTarget) dismissLifecycle();
 	}
 
+	/** Wall input → UTC `YYYY-MM-DDTHH:MM:SS` for the API (null when invalid). */
+	function exitToUTC(): string | null {
+		const t = exitAt.trim();
+		if (!t) return null;
+		if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(t)) return null;
+		if ($brokerOffset) return mt5WallToUTC(t, $brokerOffset.minutes);
+		return Number.isNaN(new Date(`${t}:00Z`).getTime()) ? null : `${t}:00`;
+	}
+
+	const exitPreview = (raw: string): string => {
+		if ($brokerOffset) return previewMT5(raw, $brokerOffset.minutes);
+		return previewIST(raw);
+	};
+
 	async function submit(e: SubmitEvent): Promise<void> {
 		e.preventDefault();
 		formError = null;
@@ -63,11 +78,20 @@
 			formError = 'Exit price must be a number.';
 			return;
 		}
+		let exitIso: string | undefined;
+		if (exitAt.trim()) {
+			const iso = exitToUTC();
+			if (iso === null) {
+				formError = 'Exit time must be a valid date/time.';
+				return;
+			}
+			exitIso = iso;
+		}
 		await submitClose(trade.id, {
 			exit_price: exitN,
 			gross_pnl: grossN,
 			fees: feesN ?? 0,
-			timestamp_close: exitAt.trim() ? `${exitAt.trim()}:00` : undefined,
+			timestamp_close: exitIso,
 			mistake_tags: mistakes.split(/[\s,]+/).filter(Boolean),
 			review_notes: notes.trim() || null
 		});
@@ -136,10 +160,10 @@
 						<input type="number" value={fees} oninput={(e) => (fees = e.currentTarget.value)} min="0" step="any" class={field} />
 					</label>
 					<label class="{label} col-span-2 sm:col-span-1">
-						Exit time (UTC) <span class="normal-case tracking-normal text-dim">empty = now</span>
+						Exit time ({$brokerOffset ? `MT5 · ${$brokerOffset.label}` : 'UTC'}) <span class="normal-case tracking-normal text-dim">empty = now</span>
 						<input type="datetime-local" value={exitAt} oninput={(e) => (exitAt = e.currentTarget.value)} class={field} />
-						{#if previewIST(exitAt)}
-							<span class="num text-[11px] normal-case tracking-normal text-accent">→ {previewIST(exitAt)}</span>
+						{#if exitPreview(exitAt)}
+							<span class="num text-[11px] normal-case tracking-normal text-accent">→ {exitPreview(exitAt)}</span>
 						{/if}
 					</label>
 				</div>

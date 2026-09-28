@@ -14,7 +14,7 @@ from fastapi import FastAPI  # noqa: E402
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
 
 from app.database import create_db_and_tables  # noqa: E402
-from app.routers import analytics, screenshots, trades  # noqa: E402
+from app.routers import analytics, screenshots, settings, trades  # noqa: E402
 from app.services import scheduler, telegram_bot  # noqa: E402
 
 log = logging.getLogger("journal")
@@ -70,6 +70,7 @@ app.add_middleware(
 app.include_router(trades.router)
 app.include_router(screenshots.router)
 app.include_router(analytics.router)
+app.include_router(settings.router)
 
 
 @app.get("/api/health")

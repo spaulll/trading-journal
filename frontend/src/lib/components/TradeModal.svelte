@@ -14,7 +14,8 @@
 		upsertTrade
 	} from '$lib/stores/trades';
 	import { toasts } from '$lib/stores/toast';
-	import { fmtDateTime, fmtMoney, fmtNum, fmtR, parseStoredUTC, pnlTone, previewIST, toneText } from '$lib/utils/format';
+	import { fmtDateTime, fmtMoney, fmtNum, fmtR, mt5WallToUTC, parseStoredUTC, pnlTone, previewIST, previewMT5, toneText, utcToMT5Wall } from '$lib/utils/format';
+	import { brokerOffset } from '$lib/stores/broker';
 	import { DRAWER, FADE } from '$lib/utils/transitions';
 
 	const LABELS = ['entry', 'exit', 'setup', 'mistake'] as const;
@@ -99,6 +100,8 @@
 	let fFees = $state('');
 	let fEntryTime = $state('');
 	let fExitTime = $state('');
+	// Time-input zone: MT5 wall when the broker clock is calibrated, else UTC.
+	let tzMode = $state<'mt5' | 'utc'>('utc');
 
 	const numStr = (v: number | null | undefined): string => (v === null || v === undefined ? '' : String(v));
 
@@ -107,6 +110,25 @@
 		if (!iso) return '';
 		const d = parseStoredUTC(iso);
 		return d ? d.toISOString().slice(0, 16) : '';
+	};
+
+	/** Stored timestamp → input value in the current zone. */
+	const timeToInput = (iso: string | null | undefined): string => {
+		if ($brokerOffset) return utcToMT5Wall(iso, $brokerOffset.minutes);
+		return toInputDT(iso);
+	};
+
+	/** Input value → UTC `YYYY-MM-DDTHH:MM:SS` (null when invalid). */
+	const inputToUTC = (raw: string): string | null => {
+		const t = raw.trim();
+		if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(t)) return null;
+		if ($brokerOffset) return mt5WallToUTC(t, $brokerOffset.minutes);
+		return Number.isNaN(new Date(`${t}:00Z`).getTime()) ? null : `${t}:00`;
+	};
+
+	const timePreview = (raw: string): string => {
+		if ($brokerOffset) return previewMT5(raw, $brokerOffset.minutes);
+		return previewIST(raw);
 	};
 
 	$effect(() => {
@@ -124,12 +146,30 @@
 			fTp = numStr(trade.tp);
 			fExit = numStr(trade.exit_price);
 			fFees = numStr(trade.fees);
-			fEntryTime = toInputDT(trade.entry_time ?? trade.timestamp_open);
-			fExitTime = toInputDT(trade.exit_time ?? trade.timestamp_close);
+			tzMode = $brokerOffset ? 'mt5' : 'utc';
+			fEntryTime = timeToInput(trade.entry_time ?? trade.timestamp_open);
+			fExitTime = timeToInput(trade.exit_time ?? trade.timestamp_close);
 			confirmDelete = false;
 			zoomShot = null;
 		}
 		if (!trade) lastTradeId = null;
+	});
+
+	// Late broker-offset arrival (loaded after the drawer opened): convert the
+	// UTC walls already in the inputs to MT5 walls so values stay correct.
+	$effect(() => {
+		const off = $brokerOffset;
+		if (trade && off && tzMode === 'utc') {
+			if (fEntryTime.trim()) {
+				const mt5 = utcToMT5Wall(`${fEntryTime.trim()}:00`, off.minutes);
+				if (mt5) fEntryTime = mt5;
+			}
+			if (fExitTime.trim()) {
+				const mt5 = utcToMT5Wall(`${fExitTime.trim()}:00`, off.minutes);
+				if (mt5) fExitTime = mt5;
+			}
+			tzMode = 'mt5';
+		}
 	});
 
 	const dirty = $derived(trade !== null && (thesis !== (trade.thesis ?? '') || notes !== (trade.review_notes ?? '')));
@@ -148,8 +188,8 @@
 				fTp.trim() !== numStr(trade.tp) ||
 				fExit.trim() !== numStr(trade.exit_price) ||
 				fFees.trim() !== numStr(trade.fees) ||
-				fEntryTime.trim() !== toInputDT(trade.entry_time ?? trade.timestamp_open) ||
-				fExitTime.trim() !== toInputDT(trade.exit_time ?? trade.timestamp_close))
+				fEntryTime.trim() !== timeToInput(trade.entry_time ?? trade.timestamp_open) ||
+				fExitTime.trim() !== timeToInput(trade.exit_time ?? trade.timestamp_close))
 	);
 
 	function onBackdrop(e: MouseEvent): void {
@@ -246,16 +286,17 @@
 		];
 		for (const [key, raw, current] of dts) {
 			const t = raw.trim();
-			if (t === toInputDT(current)) continue;
+			if (t === timeToInput(current)) continue;
 			if (t === '') {
 				payload[key] = null;
 				continue;
 			}
-			if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(t) || Number.isNaN(new Date(`${t}:00Z`).getTime())) {
+			const utc = inputToUTC(t);
+			if (utc === null) {
 				toasts.push('error', `Bad ${key.replace('_', ' ')}: ${t}`);
 				return;
 			}
-			payload[key] = `${t}:00`;
+			payload[key] = utc;
 		}
 		if (Object.keys(payload).length === 0) return;
 		savingEdits = true;
@@ -522,23 +563,26 @@
 							<input type="text" inputmode="decimal" bind:value={fFees} class="field h-9 font-mono text-[13px]" />
 						</label>
 						<label class="flex min-w-0 flex-col gap-1">
-							<span class="eyebrow">Entry time (UTC)</span>
+							<span class="eyebrow">Entry time ({tzMode === 'mt5' && $brokerOffset ? `MT5 · ${$brokerOffset.label}` : 'UTC'})</span>
 							<input type="datetime-local" bind:value={fEntryTime} class="field h-9 w-full font-mono text-[13px]" />
-							{#if previewIST(fEntryTime)}
-								<span class="num text-[11px] text-accent">→ {previewIST(fEntryTime)}</span>
+							{#if timePreview(fEntryTime)}
+								<span class="num text-[11px] text-accent">→ {timePreview(fEntryTime)}</span>
 							{/if}
 						</label>
 						<label class="flex min-w-0 flex-col gap-1">
-							<span class="eyebrow">Exit time (UTC)</span>
+							<span class="eyebrow">Exit time ({tzMode === 'mt5' && $brokerOffset ? `MT5 · ${$brokerOffset.label}` : 'UTC'})</span>
 							<input type="datetime-local" bind:value={fExitTime} class="field h-9 w-full font-mono text-[13px]" />
-							{#if previewIST(fExitTime)}
-								<span class="num text-[11px] text-accent">→ {previewIST(fExitTime)}</span>
+							{#if timePreview(fExitTime)}
+								<span class="num text-[11px] text-accent">→ {timePreview(fExitTime)}</span>
 							{/if}
 						</label>
 					</div>
 					<p class="num mt-1.5 text-[11px] text-dim">
-						Net and R recompute automatically from prices and fees. Times are UTC — changing entry
-						re-resolves session and duration.
+						Net and R recompute automatically from prices and fees. Times are
+						{tzMode === 'mt5' ? 'MT5 —' : 'UTC —'} changing entry re-resolves session and duration.
+						{#if tzMode === 'utc'}
+							<span>Calibrate with <span class="font-mono">/brokertime</span> to type MT5 times directly.</span>
+						{/if}
 					</p>
 				</div>
 

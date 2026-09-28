@@ -279,6 +279,8 @@ export const api = {
 	},
 	patchScreenshot: (shotId: number, label: string) =>
 		req<ScreenshotDto>(`/api/screenshots/${shotId}`, json({ method: 'PATCH', body: JSON.stringify({ label }) })),
+	getBrokerOffset: () =>
+		req<{ offset_minutes: number | null; label: string | null }>('/api/settings/broker-offset'),
 	thumbUrl: (assetId: string) => `${API_BASE}/api/screenshots/${assetId}/thumbnail`,
 	fullUrl: (assetId: string) => `${API_BASE}/api/screenshots/${assetId}/full`
 };

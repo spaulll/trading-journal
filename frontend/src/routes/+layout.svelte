@@ -5,12 +5,14 @@
 	import Nav from '$lib/components/Nav.svelte';
 	import Toasts from '$lib/components/Toasts.svelte';
 	import { startPolling } from '$lib/stores/connection';
+	import { loadBrokerOffset } from '$lib/stores/broker';
 	import '../app.css';
 
 	let { children } = $props();
 
 	onMount(() => {
 		startPolling();
+		void loadBrokerOffset();
 	});
 </script>
 

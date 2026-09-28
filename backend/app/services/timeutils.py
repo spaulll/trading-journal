@@ -63,7 +63,7 @@ def split_zone_suffix(raw: str) -> tuple[str, timedelta]:
     ValueError on an unknown suffix (callers surface it as a parse error).
     """
     text = (raw or "").strip()
-    m = re.search(r"\s+([A-Za-z]{1,8})\s*$", text)
+    m = re.search(r"\s+([A-Za-z][A-Za-z0-9]{0,7})\s*$", text)
     if not m:
         return text, timedelta(0)
     zone = m.group(1).lower()
