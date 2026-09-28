@@ -123,9 +123,28 @@
 		if (e.dataTransfer?.files.length) void uploadFiles(e.dataTransfer.files);
 	}
 
+	function filesFromClipboard(e: ClipboardEvent): File[] {
+		const cd = e.clipboardData;
+		if (!cd) return [];
+		if (cd.files?.length) return [...cd.files].filter((f) => f.type.startsWith('image/'));
+		// Chrome/Snipping Tool often expose images via items with empty files.
+		const out: File[] = [];
+		for (const item of cd.items ?? []) {
+			if (item.type.startsWith('image/')) {
+				const f = item.getAsFile();
+				if (f) out.push(f);
+			}
+		}
+		return out;
+	}
+
 	function onPaste(e: ClipboardEvent): void {
-		const files = e.clipboardData?.files;
-		if (files?.length) void uploadFiles(files);
+		if (!trade || uploading) return;
+		const imgs = filesFromClipboard(e);
+		if (imgs.length) {
+			e.preventDefault();
+			void uploadFiles(imgs);
+		}
 	}
 
 	async function doDelete(): Promise<void> {
@@ -154,7 +173,7 @@
 	] as const;
 </script>
 
-<svelte:window onkeydown={onBackdropKey} />
+<svelte:window onkeydown={onBackdropKey} onpaste={onPaste} />
 
 {#if trade}
 	<div
