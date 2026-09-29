@@ -205,31 +205,54 @@ def parse_open(text: str, broker_offset: Optional[timedelta] = None) -> dict:
 
 
 def parse_past(text: str, broker_offset: Optional[timedelta] = None) -> dict:
-    """`past buy gold, 0.1, 4000, 3990, 4020, exit: 4015, pnl: 150, date: 2026-09-20 14:30`."""
+    """`past buy gold, 0.1, 4000, 3990, 4020, exit: 4015, pnl: 150, date: 2026-09-20 14:30`.
+
+    `date:` is the OPEN time; add `exit_date:` for the CLOSE time (MT5 history
+    shows both). `date:` alone keeps the old behaviour (open == close).
+    Each timestamp is `YYYY-MM-DD HH:MM[:SS] [MT5|IST|UTC]`; a close time
+    without a zone inherits the open's zone.
+    """
     m = re.match(r"(?i)^\s*past\s+(buy|sell)\s+([a-z0-9\-/.]+)\s*,(.*)$", text.strip(), re.DOTALL)
     if not m:
         raise BotParseError(
-            "Backfill syntax: <code>past buy SYMBOL, SIZE, ENTRY, SL, TP, exit: EXIT, pnl: PNL, date: YYYY-MM-DD HH:MM</code>"
+            "Backfill syntax: <code>past buy SYMBOL, SIZE, ENTRY, SL, [TP], exit: EXIT, pnl: PNL, date: YYYY-MM-DD HH:MM[:SS] [MT5|IST|UTC]</code>"
         )
     direction, symbol, rest = m.group(1).lower(), m.group(2).upper(), m.group(3)
 
     def grab(flag: str) -> Optional[str]:
-        found = re.search(rf"{flag}\s*:\s*([^\s,][^,]*)", rest, re.IGNORECASE)
+        found = re.search(rf"\b{flag}\s*:\s*([^\s,][^,]*)", rest, re.IGNORECASE)
         return found.group(1).strip() if found else None
 
-    exit_raw, pnl_raw, date_raw = grab("exit"), grab("pnl"), grab("date")
+    exit_raw, pnl_raw = grab("exit"), grab("pnl")
     fee_raw = grab("fee")
-    if exit_raw is None or pnl_raw is None or date_raw is None:
-        raise BotParseError("Backfill needs <code>exit:</code>, <code>pnl:</code> and <code>date: YYYY-MM-DD HH:MM</code>")
+    open_raw = grab("date") or grab("open") or grab("entry_date") or grab("open_date")
+    close_raw = grab("exit_date") or grab("close_date") or grab("exit_time") or grab("close_time")
+    if exit_raw is None or pnl_raw is None or open_raw is None:
+        raise BotParseError("Backfill needs <code>exit:</code>, <code>pnl:</code> and <code>date: YYYY-MM-DD HH:MM[:SS]</code>")
+    if close_raw is None:
+        # Single-flag range: `date: OPEN to CLOSE`.
+        split = re.split(r"\s+(?:to|->|→)\s+", open_raw, maxsplit=1, flags=re.IGNORECASE)
+        if len(split) == 2 and re.match(r"^\d{4}-", split[1].strip()):
+            open_raw, close_raw = split[0].strip(), split[1].strip()
     from app.services.timeutils import wall_to_naive_utc
 
-    try:
-        date_part, offset = _split_zone(date_raw, broker_offset)
-        entry_time = wall_to_naive_utc(_parse_wall_datetime(date_part), offset)
-    except ValueError as exc:
-        raise BotParseError(f"Bad date: <code>{esc(date_raw.strip())}</code> (use YYYY-MM-DD HH:MM[:SS] [MT5|IST|UTC])") from exc
+    def _parse_stamp(raw: str, default_offset: Optional[timedelta]) -> datetime:
+        part, offset = _split_zone(raw, broker_offset)
+        if re.search(r"\s+[A-Za-z][A-Za-z0-9]{0,7}\s*$", raw.strip()) is None and default_offset is not None:
+            offset = default_offset  # close without zone inherits open's zone
+        return wall_to_naive_utc(_parse_wall_datetime(part), offset)
 
-    cleaned = re.sub(r"(?i)\b(exit|pnl|fee|date)\s*:\s*[^\s,][^,]*", "", rest)
+    try:
+        open_part, open_offset = _split_zone(open_raw, broker_offset)
+        entry_time = wall_to_naive_utc(_parse_wall_datetime(open_part), open_offset)
+        exit_time = _parse_stamp(close_raw, open_offset) if close_raw is not None else entry_time
+    except ValueError as exc:
+        shown = open_raw if close_raw is None else f"{open_raw} / {close_raw}"
+        raise BotParseError(f"Bad date: <code>{esc(shown.strip())}</code> (use YYYY-MM-DD HH:MM[:SS] [MT5|IST|UTC])") from exc
+    if exit_time < entry_time:
+        raise BotParseError("Close time precedes open time — check <code>date:</code> and <code>exit_date:</code>")
+
+    cleaned = re.sub(r"(?i)\b(exit_date|close_date|entry_date|open_date|exit_time|close_time|exit|pnl|fee|date|open)\s*:\s*[^\s,][^,]*", "", rest)
     parts = _split_args(cleaned)
     if len(parts) < 3:
         raise BotParseError("Backfill needs at least SIZE, ENTRY and SL")
@@ -250,7 +273,7 @@ def parse_past(text: str, broker_offset: Optional[timedelta] = None) -> dict:
         "gross_pnl": _to_float(pnl_raw, "pnl"),
         "fees": _to_float(fee_raw, "fee") if fee_raw else 0.0,
         "entry_time": entry_time,
-        "exit_time": entry_time,
+        "exit_time": exit_time,
         "tags": tail.split() if tail else [],
     }
 
@@ -547,7 +570,9 @@ HELP = (
     "(gross is estimated from price when omitted)\n"
     "\n"
     "<b>BACKFILL an old trade:</b>\n"
-    "<code>past buy SYMBOL, SIZE, ENTRY, SL, TP, exit: EXIT, pnl: PNL, date: YYYY-MM-DD HH:MM</code>\n"
+    "<code>past buy SYMBOL, SIZE, ENTRY, SL, [TP], exit: EXIT, pnl: PNL, date: OPEN [, exit_date: CLOSE]</code>\n"
+    "e.g. <code>past sell gold, 0.05, 450.25, 450.87, exit: 450.43, pnl: -0.90, date: 2026-09-28 16:10:05 MT5, exit_date: 2026-09-28 16:39:06 MT5</code>\n"
+    "(<code>date:</code> alone = open and close at the same time; seconds and MT5 zone supported)\n"
     "\n"
     "<b>CHART screenshots:</b> just send a photo — it attaches to your open trade "
     "(you pick one if several are open).\n"
