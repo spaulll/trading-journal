@@ -119,12 +119,23 @@ def _broker_offset(session: Session) -> Optional[timedelta]:
     return timedelta(minutes=minutes) if minutes is not None else None
 
 
+def _parse_wall_datetime(raw: str) -> datetime:
+    """Parse `YYYY-MM-DD HH:MM[:SS]`, seconds optional (MT5 exports include them)."""
+    text = (raw or "").strip()
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M"):
+        try:
+            return datetime.strptime(text, fmt)
+        except ValueError:
+            continue
+    raise ValueError(f"Bad datetime: {text!r}")
+
+
 def _parse_explicit_time(
     tail: str, broker_offset: Optional[timedelta] = None
 ) -> tuple[Optional[datetime], str]:
     """Pull an optional `time: ...` flag from tail.
 
-    Shapes: `time: HH:MM [ZONE]` or `time: YYYY-MM-DD HH:MM [ZONE]`.
+    Shapes: `time: HH:MM[:SS] [ZONE]` or `time: YYYY-MM-DD HH:MM[:SS] [ZONE]`.
     ZONE is MT5, IST or UTC (case-insensitive); bare times are UTC. HH:MM
     resolves against today in the stated zone. Returns (entry_time as
     naive UTC or None, tail with the flag removed).
@@ -132,7 +143,7 @@ def _parse_explicit_time(
     from app.services.timeutils import wall_to_naive_utc
 
     m = re.search(
-        r"time\s*:\s*(\d{4}-\d{2}-\d{2}\s+\d{1,2}:\d{2}|\d{1,2}:\d{2})(?:\s+([A-Za-z][A-Za-z0-9]{0,7}))?",
+        r"time\s*:\s*(\d{4}-\d{2}-\d{2}\s+\d{1,2}:\d{2}(?::\d{2})?|\d{1,2}:\d{2}(?::\d{2})?)(?:\s+([A-Za-z][A-Za-z0-9]{0,7}))?",
         tail,
         re.IGNORECASE,
     )
@@ -142,13 +153,15 @@ def _parse_explicit_time(
     offset = _suffix_offset(suffix, broker_offset)
     try:
         if re.match(r"^\d{4}-", raw):
-            wall = datetime.strptime(raw, "%Y-%m-%d %H:%M")
+            wall = _parse_wall_datetime(raw)
         else:
-            hh, mm = raw.split(":")
+            segs = raw.split(":")
+            hh, mm = int(segs[0]), int(segs[1])
+            ss = int(segs[2]) if len(segs) > 2 else 0
             # Date base in the stated zone so `23:55 IST` near midnight lands
             # on the right day.
             base = datetime.now(timezone.utc) + offset
-            wall = base.replace(hour=int(hh), minute=int(mm), second=0, microsecond=0,
+            wall = base.replace(hour=hh, minute=mm, second=ss, microsecond=0,
                                 tzinfo=None)
     except ValueError:
         raise BotParseError(f"Bad time value: <code>{esc(raw)}</code> (use HH:MM or YYYY-MM-DD HH:MM)")
@@ -212,9 +225,9 @@ def parse_past(text: str, broker_offset: Optional[timedelta] = None) -> dict:
 
     try:
         date_part, offset = _split_zone(date_raw, broker_offset)
-        entry_time = wall_to_naive_utc(datetime.strptime(date_part, "%Y-%m-%d %H:%M"), offset)
+        entry_time = wall_to_naive_utc(_parse_wall_datetime(date_part), offset)
     except ValueError as exc:
-        raise BotParseError(f"Bad date: <code>{esc(date_raw.strip())}</code> (use YYYY-MM-DD HH:MM [MT5|IST|UTC])") from exc
+        raise BotParseError(f"Bad date: <code>{esc(date_raw.strip())}</code> (use YYYY-MM-DD HH:MM[:SS] [MT5|IST|UTC])") from exc
 
     cleaned = re.sub(r"(?i)\b(exit|pnl|fee|date)\s*:\s*[^\s,][^,]*", "", rest)
     parts = _split_args(cleaned)
@@ -639,7 +652,7 @@ async def handle_stats_daily(chat_id: int, session: Session) -> None:
 
 
 BROKER_SETUP_RE = re.compile(
-    r"^MT5\s+(\d{4}-\d{2}-\d{2}\s+\d{1,2}:\d{2})\s+IST\s+(\d{4}-\d{2}-\d{2}\s+\d{1,2}:\d{2})\s*$",
+    r"^MT5\s+(\d{4}-\d{2}-\d{2}\s+\d{1,2}:\d{2}(?::\d{2})?)\s+IST\s+(\d{4}-\d{2}-\d{2}\s+\d{1,2}:\d{2}(?::\d{2})?)\s*$",
     re.IGNORECASE,
 )
 
@@ -670,8 +683,8 @@ async def handle_broker_clock(chat_id: int, text: str, session: Session) -> None
         await send_text(chat_id, f"❌ Couldn't parse that.\n{BROKER_GUIDE}\n{status}")
         return
     try:
-        mt5_wall = datetime.strptime(m.group(1), "%Y-%m-%d %H:%M")
-        ist_wall = datetime.strptime(m.group(2), "%Y-%m-%d %H:%M")
+        mt5_wall = _parse_wall_datetime(m.group(1))
+        ist_wall = _parse_wall_datetime(m.group(2))
         minutes = _bc.calibrate(mt5_wall, ist_wall)
     except ValueError as exc:
         await send_text(chat_id, f"❌ {esc(exc)}")
