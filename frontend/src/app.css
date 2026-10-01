@@ -373,6 +373,15 @@ html {
 		@apply font-mono text-[10px] tracking-[0.16em] uppercase;
 		color: rgb(var(--c-dim));
 	}
+	/* Ledger grid — ONE template shared by the header row and every body
+	   row, so columns align by construction (no table auto-layout drift). */
+	.tgrid {
+		display: grid;
+		grid-template-columns:
+			48px 180px minmax(120px, 1.1fr) minmax(150px, 1.3fr)
+			minmax(110px, 0.9fr) 84px minmax(140px, 1.7fr) 96px;
+		align-items: center;
+	}
 	.row-line {
 		border-bottom: 1px solid rgb(var(--c-line));
 	}

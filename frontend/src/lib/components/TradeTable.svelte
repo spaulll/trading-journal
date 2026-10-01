@@ -76,8 +76,6 @@
 		}`;
 	}
 
-	const th =
-		'px-3 py-2.5 text-left font-mono text-[10px] font-medium tracking-[0.16em] uppercase text-dim';
 </script>
 
 <svelte:window onkeydown={onGlobalKey} />
@@ -150,35 +148,35 @@
 			<p class="mt-1.5 text-sm text-mut">Try a different symbol, tag, or status.</p>
 		</div>
 	{:else}
-		<!-- Desktop table -->
-		<div class="card hidden overflow-x-auto md:block">
-			<table class="w-full min-w-[820px] border-collapse text-sm">
-				<thead>
-					<tr class="border-b border-line">
-						<th class="{th} w-8"></th>
-						<th class={th}>Opened</th>
-						<th class={th}>Symbol</th>
-						<th class="{th} text-right">Entry → Exit</th>
-						<th class="{th} text-right">Net</th>
-						<th class="{th} text-right">R</th>
-						<th class={th}>Tags</th>
-						<th class="{th} text-right">Action</th>
-					</tr>
-				</thead>
-				<tbody>
-					{#each filtered as t, i (t.id)}
-						<tr
+		<!-- Desktop ledger: div-grid, ONE shared .tgrid template for header + rows -->
+		<div class="card hidden overflow-x-auto md:block" role="table" aria-label="Trade history">
+			<div class="min-w-[940px]">
+				<div role="row" class="tgrid sticky top-0 z-10 border-b border-line bg-panel">
+					<span role="columnheader" class="px-2 py-2.5 text-center"><span class="sr-only">Expand</span></span>
+					<span role="columnheader" class="thead px-3 py-2.5 text-left">Opened</span>
+					<span role="columnheader" class="thead px-3 py-2.5 text-left">Symbol</span>
+					<span role="columnheader" class="thead px-3 py-2.5 text-right">Entry → Exit</span>
+					<span role="columnheader" class="thead px-3 py-2.5 text-right">Net</span>
+					<span role="columnheader" class="thead px-3 py-2.5 text-right">R</span>
+					<span role="columnheader" class="thead px-3 py-2.5 text-left">Tags</span>
+					<span role="columnheader" class="thead px-3 py-2.5 text-right">Action</span>
+				</div>
+				{#each filtered as t, i (t.id)}
+						<div
+							role="row"
+							tabindex={0}
 							onclick={() => openTrade(t.id)}
-							class="trow anim-fade cursor-pointer row-line transition-colors duration-200 hover:bg-raised/50 focus-visible:outline-none"
+							onkeydown={(e) => e.key === 'Enter' && openTrade(t.id)}
+							class="tgrid trow anim-fade cursor-pointer row-line transition-colors duration-200 hover:bg-raised/50 focus-visible:outline-none"
 							style="animation-delay: {Math.min(i, 29) * 20}ms"
 						>
-							<td class="px-3 py-2.5">
+							<span role="cell" class="px-2 py-2.5 text-center">
 								<button
 									type="button"
 									onclick={(e) => toggleExpand(t.id, e)}
 									aria-label="Preview"
 									aria-expanded={expanded.has(t.id)}
-									class="grid h-6 w-6 place-items-center rounded-md text-dim transition-all duration-300 ease-spring hover:bg-raised hover:text-fg focus-visible:outline-none {expanded.has(
+									class="mx-auto grid h-6 w-6 place-items-center rounded-md text-dim transition-all duration-300 ease-spring hover:bg-raised hover:text-fg focus-visible:outline-none {expanded.has(
 										t.id
 									)
 										? 'rotate-180 text-accent'
@@ -186,11 +184,11 @@
 								>
 									<ChevronDown size={15} strokeWidth={1.8} aria-hidden="true" />
 								</button>
-							</td>
-							<td class="px-3 py-2.5 whitespace-nowrap font-mono text-[12.5px] text-mut">
+							</span>
+							<span role="cell" class="px-3 py-2.5 font-mono whitespace-nowrap text-[12.5px] text-mut">
 								{fmtDateTime(t.timestamp_open)}
-							</td>
-							<td class="px-3 py-2.5">
+							</span>
+							<span role="cell" class="truncate px-3 py-2.5 whitespace-nowrap">
 								<span class="num text-[13px] font-semibold text-fg uppercase">{t.symbol ?? '—'}</span>
 								<span
 									class="ml-1.5 font-mono text-[10px] font-bold tracking-[0.12em] uppercase {(t.direction ?? '').toLowerCase() ===
@@ -200,13 +198,13 @@
 								>
 									{t.direction ?? ''}
 								</span>
-							</td>
-							<td class="px-3 py-2.5 text-right font-mono text-[12.5px] tabular-nums text-mut">
+							</span>
+							<span role="cell" class="px-3 py-2.5 text-right font-mono whitespace-nowrap text-[12.5px] tabular-nums text-mut">
 								<span class="text-fg">{t.entry_price?.toFixed(2) ?? '—'}</span>
 								<span class="px-1 text-dim">→</span>
 								<span class="text-fg">{t.exit_price?.toFixed(2) ?? '—'}</span>
-							</td>
-							<td class="px-3 py-2.5 text-right">
+							</span>
+							<span role="cell" class="px-3 py-2.5 text-right whitespace-nowrap">
 								<span
 									class="num inline-block rounded-md px-1.5 py-0.5 text-[12.5px] font-semibold {toneBg[
 										pnlTone(t.net_pnl)
@@ -214,11 +212,11 @@
 								>
 									{fmtMoney(t.net_pnl)}
 								</span>
-							</td>
-							<td class="px-3 py-2.5 text-right font-mono text-[12.5px] tabular-nums {toneText[pnlTone(t.r_multiple)]}">
+							</span>
+							<span role="cell" class="px-3 py-2.5 text-right font-mono whitespace-nowrap text-[12.5px] tabular-nums {toneText[pnlTone(t.r_multiple)]}">
 								{fmtR(t.r_multiple)}
-							</td>
-							<td class="px-3 py-2.5">
+							</span>
+							<span role="cell" class="min-w-0 px-3 py-2.5">
 								<span class="flex flex-wrap gap-1">
 									{#each t.tags as tag (tag.id)}
 										<span class={tagChip(tag.name, tag.category)}>
@@ -226,8 +224,8 @@
 										</span>
 									{/each}
 								</span>
-							</td>
-							<td class="px-3 py-2.5 text-right">
+							</span>
+							<span role="cell" class="px-3 py-2.5 text-right whitespace-nowrap">
 								{#if t.status === 'OPEN'}
 									<button
 										type="button"
@@ -240,12 +238,12 @@
 										Close
 									</button>
 								{/if}
-							</td>
-						</tr>
+							</span>
+						</div>
 						{#if expanded.has(t.id)}
-							<tr class="row-line">
-								<td></td>
-								<td colspan={7} class="px-3 pt-0 pb-3">
+							<div role="row" class="tgrid row-line">
+								<span></span>
+								<div role="cell" class="col-span-7 px-3 pt-0 pb-3">
 									<div
 										transition:slide={{ duration: 220 }}
 										class="border-l-2 border-accent/40 pl-3 text-[13px] leading-relaxed text-mut"
@@ -260,12 +258,11 @@
 											<p>No notes yet — open the trade to add a thesis.</p>
 										{/if}
 									</div>
-								</td>
-							</tr>
+								</div>
+							</div>
 						{/if}
 					{/each}
-				</tbody>
-			</table>
+			</div>
 		</div>
 
 		<!-- Mobile cards -->
