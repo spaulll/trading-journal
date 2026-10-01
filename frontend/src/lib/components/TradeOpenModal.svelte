@@ -6,6 +6,7 @@
 	import { brokerOffset } from '$lib/stores/broker';
 	import { FADE, MODAL, PANEL_FADE } from '$lib/utils/transitions';
 	import SegControl from '$lib/components/SegControl.svelte';
+	import { fluidHeight } from '$lib/utils/motion';
 
 	/** Rough per-unit contract sizes for the risk preview (estimate only). */
 	const CONTRACT: { match: RegExp; size: number; unit: string }[] = [
@@ -306,6 +307,7 @@
 			</label>
 
 			{#key mode}
+				<div use:fluidHeight>
 				<div in:fade={PANEL_FADE}>
 					{#if mode === 'live'}
 						<label class="{label} mt-3">
@@ -349,6 +351,7 @@
 							</p>
 						</fieldset>
 					{/if}
+				</div>
 				</div>
 			{/key}
 

@@ -10,7 +10,7 @@
 	import SegControl from '$lib/components/SegControl.svelte';
 	import { fly } from 'svelte/transition';
 	import { TAB } from '$lib/utils/transitions';
-	import { countup } from '$lib/utils/motion';
+	import { countup, fluidHeight } from '$lib/utils/motion';
 
 	Chart.register(...registerables);
 
@@ -323,6 +323,7 @@
 	</div>
 
 	{#key tab}
+		<div use:fluidHeight>
 		<div in:fly={TAB}>
 	{#if tab === 'year'}
 		<CalendarHeatmap days={yearDays} year={data.year} />
@@ -438,6 +439,7 @@
 			</aside>
 		</div>
 	{/if}
+		</div>
 		</div>
 	{/key}
 </section>
