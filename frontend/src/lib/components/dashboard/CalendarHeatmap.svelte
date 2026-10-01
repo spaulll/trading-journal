@@ -77,10 +77,10 @@
 		return Math.min(4, Math.max(1, Math.ceil((Math.abs(pnl) / maxAbs) * 4)));
 	}
 
-	/** Numbered day tile: tinted background by P&L intensity, number always legible. */
+	/** Small filled squares (no day numbers): tinted background by P&L intensity. */
 	function tileClass(cell: DayCell): string {
 		const base =
-			'group relative flex min-h-7 items-center justify-center rounded-md border transition-all duration-150 ease-soft hover:-translate-y-px hover:shadow-card focus-visible:outline-2 focus-visible:outline-accent cursor-pointer sm:min-h-8';
+			'group relative aspect-square w-full rounded-[3px] border transition-all duration-150 ease-soft hover:scale-125 hover:shadow-card hover:z-10 focus-visible:outline-2 focus-visible:outline-accent cursor-pointer';
 		if (cell.isFuture && cell.count === 0) return `${base} border-line/40 bg-transparent opacity-55`;
 		if (cell.count === 0) return `${base} border-line/50 bg-raised/60 hover:border-edge`;
 		if (Math.abs(cell.pnl) <= BE_TOL) return `${base} border-flat/25 bg-flat/10 hover:border-flat/50`;
@@ -109,14 +109,6 @@
 		}
 	}
 
-	function tileNumClass(cell: DayCell): string {
-		const base = 'num text-[10px] leading-none tabular-nums sm:text-[11px]';
-		if (cell.isToday) return `${base} font-bold text-accent`;
-		if (cell.count === 0) return `${base} text-dim/60`;
-		if (Math.abs(cell.pnl) <= BE_TOL) return `${base} text-flat`;
-		return `${base} font-medium text-fg`;
-	}
-
 	function pnlTextClass(pnl: number, count: number): string {
 		if (count === 0) return 'text-dim';
 		if (pnl > BE_TOL) return 'text-win';
@@ -125,35 +117,33 @@
 	}
 </script>
 
-<div class="grid grid-cols-2 gap-3 md:grid-cols-3 2xl:grid-cols-4">
+<div class="grid grid-cols-3 gap-1.5 sm:grid-cols-6 sm:gap-2">
 	{#each months as month (month.index)}
 		<section
 			aria-label="{month.label} {year} calendar"
-			class="min-w-0 rounded-2xl border border-line bg-raised/40 p-2.5 transition-colors duration-200 hover:border-edge sm:p-3"
+			class="min-w-0 rounded-xl border border-line bg-raised/40 p-1.5 transition-colors duration-200 hover:border-edge sm:p-2"
 		>
-			<div class="mb-1.5 flex min-w-0 items-baseline justify-between gap-2">
-				<h3 class="shrink-0 text-[12px] font-semibold tracking-tight text-fg sm:text-[13px]">
+			<div class="mb-1 flex min-w-0 items-baseline justify-between gap-1">
+				<h3 class="shrink-0 text-[10px] font-semibold tracking-tight text-fg sm:text-[11px]">
 					{month.label} <span class="font-normal text-dim">{year}</span>
 				</h3>
 				{#if month.trades > 0}
-					<p class="num min-w-0 truncate text-[10px] font-semibold tabular-nums sm:text-[11px] {pnlTextClass(month.net, month.trades)}">
-						{fmtMoney(month.net)} <span class="font-normal text-dim">· {month.trades}T</span>
+					<p class="num min-w-0 truncate text-[9px] font-semibold tabular-nums sm:text-[10px] {pnlTextClass(month.net, month.trades)}">
+						{fmtMoney(month.net)}
 					</p>
-				{:else}
-					<p class="num shrink-0 text-[10px] text-dim/60 sm:text-[11px]">No trades</p>
 				{/if}
 			</div>
 
-			<div class="mb-1 grid grid-cols-7 gap-1" aria-hidden="true">
+			<div class="mb-0.5 grid grid-cols-7 gap-[3px]" aria-hidden="true">
 				{#each WEEKDAYS as wd, i (i)}
-					<span class="text-center font-mono text-[9px] tracking-[0.1em] text-dim/70">{wd}</span>
+					<span class="text-center font-mono text-[7px] tracking-[0.08em] text-dim/70 sm:text-[8px]">{wd}</span>
 				{/each}
 			</div>
 
-			<div class="grid grid-cols-7 gap-1" role="grid" aria-label="{month.label} day grid">
+			<div class="grid grid-cols-7 gap-[3px]" role="grid" aria-label="{month.label} day grid">
 				{#each month.slots as slot (slot.key)}
 					{#if slot.blank}
-						<div aria-hidden="true"></div>
+						<div class="aspect-square w-full" aria-hidden="true"></div>
 					{:else}
 						<button
 							type="button"
@@ -162,7 +152,6 @@
 							title="{slot.key} · {fmtMoney(slot.pnl)} · {slot.count} trade{slot.count === 1 ? '' : 's'}"
 							class="{tileClass(slot)} {slot.isToday ? 'ring-1 ring-accent' : ''}"
 						>
-							<span class={tileNumClass(slot)}>{slot.day}</span>
 							<span
 								aria-hidden="true"
 								class="pointer-events-none absolute bottom-[calc(100%+6px)] left-1/2 z-30 hidden -translate-x-1/2 rounded-lg border border-line bg-panel px-2 py-1 font-mono text-[11px] whitespace-nowrap tabular-nums shadow-pop backdrop-blur-sm group-hover:block group-focus-visible:block"
