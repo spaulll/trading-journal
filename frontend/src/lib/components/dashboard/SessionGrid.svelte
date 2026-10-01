@@ -21,7 +21,7 @@
 		{@const flat = s.net_pnl === 0}
 		<div
 			class="card card-hover relative overflow-hidden p-5"
-			style="animation: rise 0.6s cubic-bezier(0.22, 1, 0.36, 1) {i * 60}ms both;"
+			style="animation: rise 0.6s cubic-bezier(0.22, 1, 0.36, 1) {i * 60}ms backwards;"
 		>
 			<span
 				class="pointer-events-none absolute inset-x-0 top-0 h-24 bg-gradient-to-b from-accent/14 to-transparent"
@@ -56,7 +56,10 @@
 			</p>
 
 			<div class="relative mt-3 border-t border-line pt-3 font-mono tabular-nums">
-				<p class="text-[13px] font-semibold {flat ? 'text-flat' : up ? 'text-win' : 'text-loss'}">
+				<p
+					class="text-[13px] font-semibold {flat ? 'text-flat' : up ? 'text-win' : 'text-loss'}"
+					use:countup={{ value: s.net_pnl, format: (v) => fmtMoney(v) }}
+				>
 					{fmtMoney(s.net_pnl)}
 				</p>
 				<p class="mt-0.5 text-[11px] whitespace-nowrap text-mut">

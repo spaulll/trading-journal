@@ -123,7 +123,7 @@
 	aria-label="Key performance indicators"
 >
 	<!-- Hero: net P&L -->
-	<div class="card relative overflow-hidden p-5 sm:col-span-2 xl:col-span-2">
+	<div class="card rise relative overflow-hidden p-5 sm:col-span-2 xl:col-span-2">
 		<span
 			class="pointer-events-none absolute inset-0 {up ? 'kpi-glow-win' : 'kpi-glow-loss'}"
 			aria-hidden="true"
@@ -179,8 +179,8 @@
 		{/if}
 	</div>
 
-	{#each cells as cell (cell.label)}
-		<div class="card p-5">
+	{#each cells as cell, ci (cell.label)}
+		<div class="card rise p-5" style="animation-delay: {(ci + 1) * 80}ms">
 			<p class="eyebrow">{cell.label}</p>
 			<p
 				class="display mt-2 text-[2.1rem] leading-none tabular-nums {cell.tone}"

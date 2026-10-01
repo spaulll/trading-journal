@@ -166,10 +166,11 @@
 					</tr>
 				</thead>
 				<tbody>
-					{#each filtered as t (t.id)}
+					{#each filtered as t, i (t.id)}
 						<tr
 							onclick={() => openTrade(t.id)}
-							class="trow cursor-pointer row-line transition-colors duration-200 hover:bg-raised/50 focus-visible:outline-none"
+							class="trow anim-fade cursor-pointer row-line transition-colors duration-200 hover:bg-raised/50 focus-visible:outline-none"
+							style="animation-delay: {Math.min(i, 29) * 20}ms"
 						>
 							<td class="px-3 py-2.5">
 								<button
@@ -269,13 +270,14 @@
 
 		<!-- Mobile cards -->
 		<div class="grid grid-cols-1 gap-2.5 md:hidden">
-			{#each filtered as t (t.id)}
+			{#each filtered as t, i (t.id)}
 				<div
 					role="button"
 					tabindex={0}
 					onclick={() => openTrade(t.id)}
 					onkeydown={(e) => e.key === 'Enter' && openTrade(t.id)}
-					class="card card-hover relative overflow-hidden p-3.5 text-left focus-visible:outline-none active:scale-[0.99]"
+					class="card card-hover rise relative overflow-hidden p-3.5 text-left focus-visible:outline-none active:scale-[0.99]"
+					style="animation-delay: {Math.min(i, 14) * 40}ms"
 				>
 					<span
 						class="absolute inset-y-0 left-0 w-[3px] {pnlTone(t.net_pnl) === 'loss'

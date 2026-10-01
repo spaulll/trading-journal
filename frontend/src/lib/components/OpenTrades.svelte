@@ -44,7 +44,7 @@
 					onclick={() => openTrade(t.id)}
 					onkeydown={(e) => e.key === 'Enter' && openTrade(t.id)}
 					class="card card-hover group relative overflow-hidden p-4 text-left focus-visible:outline-none"
-					style="animation: rise 0.6s cubic-bezier(0.22, 1, 0.36, 1) {Math.min(i, 8) * 70}ms both;"
+					style="animation: rise 0.6s cubic-bezier(0.22, 1, 0.36, 1) {Math.min(i, 8) * 70}ms backwards;"
 				>
 					<span
 						class="absolute inset-y-0 left-0 w-[3px] {isShort ? 'bg-loss/70' : 'bg-win/70'}"

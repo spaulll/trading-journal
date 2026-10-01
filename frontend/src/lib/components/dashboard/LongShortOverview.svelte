@@ -8,6 +8,7 @@
 	import SegControl from '$lib/components/SegControl.svelte';
 	import { fade } from 'svelte/transition';
 	import { PANEL_FADE } from '$lib/utils/transitions';
+	import { countup } from '$lib/utils/motion';
 
 	Chart.register(...registerables);
 
@@ -86,8 +87,8 @@
 	]);
 
 	const overview = $derived([
-		{ label: 'Average win', value: fmtMoney(sel.avg_win), tone: 'text-win' },
-		{ label: 'Average loss', value: fmtMoney(sel.avg_loss), tone: 'text-loss' },
+		{ label: 'Average win', value: fmtMoney(sel.avg_win), raw: sel.avg_win, format: (v: number) => fmtMoney(v), tone: 'text-win' },
+		{ label: 'Average loss', value: fmtMoney(sel.avg_loss), raw: sel.avg_loss, format: (v: number) => fmtMoney(v), tone: 'text-loss' },
 		{
 			label: side === 'all' ? 'Best trade' : `Best ${side} trade`,
 			value: sel.best ? `${sel.best.ticket} · ${fmtMoney(sel.best.net_pnl)}` : '—',
@@ -184,7 +185,7 @@
 		'flex items-baseline justify-between gap-3 border-b border-line py-1.5 last:border-0';
 </script>
 
-<section class="card p-5" aria-label="Long short analysis">
+<section class="card rise p-5" style="animation-delay: 80ms" aria-label="Long short analysis">
 	<div class="mb-5 flex flex-wrap items-center gap-3">
 		<h2 class="eyebrow">Long / short analysis</h2>
 		<p class="num text-[11.5px] text-dim">{sel.trades} trades · {sel.win_rate.toFixed(1)}% win rate</p>
@@ -237,10 +238,14 @@
 	<h3 class="eyebrow mt-6 mb-2">Performance overview</h3>
 	{#key side}
 		<div class="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-6" in:fade={PANEL_FADE}>
-			{#each overview as o}
-				<div class="rounded-xl border border-line bg-raised/50 p-3">
+			{#each overview as o, oi}
+				<div class="rise rounded-xl border border-line bg-raised/50 p-3" style="animation-delay: {oi * 50}ms">
 					<p class="text-[11px] text-dim">{o.label}</p>
-					<p class="num mt-0.5 text-sm leading-tight font-bold wrap-break-word {o.tone}">{o.value}</p>
+					{#if 'raw' in o && o.raw !== undefined && o.format}
+						<p class="num mt-0.5 text-sm leading-tight font-bold wrap-break-word {o.tone}" use:countup={{ value: o.raw, format: o.format }}>{o.value}</p>
+					{:else}
+						<p class="num mt-0.5 text-sm leading-tight font-bold wrap-break-word {o.tone}">{o.value}</p>
+					{/if}
 				</div>
 			{/each}
 		</div>

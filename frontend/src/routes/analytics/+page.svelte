@@ -239,7 +239,7 @@
 			<KpiStrip {kpi} />
 		{/if}
 
-		<section class="grid grid-cols-1 gap-4 xl:grid-cols-12">
+		<section class="rise grid grid-cols-1 gap-4 xl:grid-cols-12" style="animation-delay: 40ms">
 			<div class="card p-5 xl:col-span-8">
 				<h2 class="eyebrow mb-3">Equity curve</h2>
 				{#if points.length > 0}
@@ -270,7 +270,7 @@
 		{/if}
 
 		<!-- Composition plane: outcome donut · tag performance · R distribution -->
-		<section class="grid grid-cols-1 items-stretch gap-4 lg:grid-cols-3">
+		<section class="rise grid grid-cols-1 items-stretch gap-4 lg:grid-cols-3" style="animation-delay: 160ms">
 			<div class="card flex flex-col p-5">
 				<h2 class="eyebrow mb-3">Win / loss / breakeven</h2>
 				<div class="flex-1"><OutcomeDonut {summary} /></div>

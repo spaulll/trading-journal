@@ -10,6 +10,7 @@
 	import SegControl from '$lib/components/SegControl.svelte';
 	import { fly } from 'svelte/transition';
 	import { TAB } from '$lib/utils/transitions';
+	import { countup } from '$lib/utils/motion';
 
 	Chart.register(...registerables);
 
@@ -333,29 +334,29 @@
 				</figcaption>
 			</figure>
 			<div class="grid min-w-0 grid-cols-2 gap-2 sm:grid-cols-3" aria-label="Year summary">
-				<div class="min-w-0 rounded-xl border border-line bg-raised/50 p-3">
+				<div class="rise min-w-0 rounded-xl border border-line bg-raised/50 p-3" style="animation-delay: 60ms">
 					<p class="text-[11px] text-dim">Trading days</p>
-					<p class="num mt-0.5 text-lg font-bold text-fg">{yearOutcome.days}</p>
+					<p class="num mt-0.5 text-lg font-bold text-fg" use:countup={{ value: yearOutcome.days, format: (v) => `${Math.round(v)}` }}>{yearOutcome.days}</p>
 				</div>
-				<div class="min-w-0 rounded-xl border border-line bg-raised/50 p-3">
+				<div class="rise min-w-0 rounded-xl border border-line bg-raised/50 p-3" style="animation-delay: 110ms">
 					<p class="text-[11px] text-dim">Day win rate</p>
-					<p class="num mt-0.5 text-lg font-bold text-fg">{yearOutcome.winRate.toFixed(1)}%</p>
+					<p class="num mt-0.5 text-lg font-bold text-fg" use:countup={{ value: yearOutcome.winRate, format: (v) => `${v.toFixed(1)}%` }}>{yearOutcome.winRate.toFixed(1)}%</p>
 				</div>
-				<div class="min-w-0 rounded-xl border border-line bg-raised/50 p-3">
+				<div class="rise min-w-0 rounded-xl border border-line bg-raised/50 p-3" style="animation-delay: 160ms">
 					<p class="text-[11px] text-dim">Year net</p>
-					<p class="num mt-0.5 text-lg font-bold {valueClass(yearOutcome.net, yearOutcome.days)}">{fmtMoney(yearOutcome.net)}</p>
+					<p class="num mt-0.5 text-lg font-bold {valueClass(yearOutcome.net, yearOutcome.days)}" use:countup={{ value: yearOutcome.net, format: (v) => fmtMoney(v) }}>{fmtMoney(yearOutcome.net)}</p>
 				</div>
-				<div class="min-w-0 rounded-xl border border-line bg-raised/50 p-3">
+				<div class="rise min-w-0 rounded-xl border border-line bg-raised/50 p-3" style="animation-delay: 210ms">
 					<p class="text-[11px] text-dim">Breakeven days</p>
-					<p class="num mt-0.5 text-lg font-bold text-flat">{yearOutcome.breakeven}</p>
+					<p class="num mt-0.5 text-lg font-bold text-flat" use:countup={{ value: yearOutcome.breakeven, format: (v) => `${Math.round(v)}` }}>{yearOutcome.breakeven}</p>
 				</div>
-				<div class="min-w-0 rounded-xl border border-win/25 bg-win/8 p-3">
+				<div class="rise min-w-0 rounded-xl border border-win/25 bg-win/8 p-3" style="animation-delay: 260ms">
 					<p class="text-[11px] text-dim">Winning days</p>
-					<p class="num mt-0.5 text-lg font-bold text-win">{yearOutcome.wins}</p>
+					<p class="num mt-0.5 text-lg font-bold text-win" use:countup={{ value: yearOutcome.wins, format: (v) => `${Math.round(v)}` }}>{yearOutcome.wins}</p>
 				</div>
-				<div class="min-w-0 rounded-xl border border-loss/25 bg-loss/8 p-3">
+				<div class="rise min-w-0 rounded-xl border border-loss/25 bg-loss/8 p-3" style="animation-delay: 310ms">
 					<p class="text-[11px] text-dim">Losing days</p>
-					<p class="num mt-0.5 text-lg font-bold text-loss">{yearOutcome.losses}</p>
+					<p class="num mt-0.5 text-lg font-bold text-loss" use:countup={{ value: yearOutcome.losses, format: (v) => `${Math.round(v)}` }}>{yearOutcome.losses}</p>
 				</div>
 			</div>
 		</div>
@@ -363,11 +364,16 @@
 		<div class="grid grid-cols-1 gap-5 xl:grid-cols-4">
 			<div class="min-w-0 xl:col-span-3">
 				<div class="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-5">
-					{#each data.weeks as w}
-						<div class="rounded-xl border border-line bg-raised/50 px-2.5 py-2 transition-colors duration-200 hover:border-edge">
+					{#each data.weeks as w, wi}
+						<div
+							class="rise rounded-xl border border-line bg-raised/50 px-2.5 py-2 transition-colors duration-200 hover:border-edge"
+							style="animation-delay: {wi * 45}ms"
+						>
 							<p class="font-mono text-[10px] tracking-[0.14em] text-dim uppercase">{w.label}</p>
 							<p class="num mt-0.5 text-sm font-semibold {valueClass(w.net_pnl, w.trade_count)}">
-								{unit === 'usd' ? fmtMoney(w.net_pnl) : dayValue(w.net_pnl)}
+								<span use:countup={{ value: w.net_pnl, format: (v) => (unit === 'usd' ? fmtMoney(v) : dayValue(v)) }}>
+									{unit === 'usd' ? fmtMoney(w.net_pnl) : dayValue(w.net_pnl)}
+								</span>
 							</p>
 							<p class="num text-[10px] text-dim">{w.trade_count} trades</p>
 						</div>
@@ -378,52 +384,55 @@
 					{#each ['M', 'T', 'W', 'T', 'F', 'S', 'S'] as d, i (i)}
 						<p class="pb-1 text-center font-mono text-[10px] tracking-widest text-dim">{d}</p>
 					{/each}
-					{#each cells as c}
-						{#if c.blank}
-							<div></div>
-						{:else}
-							{@const info = data.days[c.key] ?? { net_pnl: 0, trade_count: 0, outcome: 'inactive' }}
-							<button
-								type="button"
-								onclick={() => openDay(c.key)}
-								aria-label="{c.key}: {fmtMoney(info.net_pnl)}, {info.trade_count} trades — open day"
-								title="{c.key}: {fmtMoney(info.net_pnl)} · {info.trade_count} trades"
-								class="{cellClass(info.outcome, c.key === todayKey)} cursor-pointer focus-visible:outline-2 focus-visible:outline-accent"
-							>
-								<p class="num text-[10px] leading-none {c.key === todayKey ? 'font-bold text-accent' : 'text-mut'}">
-									{c.day}
-								</p>
-								{#if info.trade_count > 0}
-									<p class="mt-1 truncate font-mono text-[9.5px] leading-tight font-semibold tabular-nums sm:text-xs {valueClass(info.net_pnl, info.trade_count)}">
-										<span class="sm:hidden">{compactValue(info.net_pnl)}</span>
-										<span class="hidden sm:inline">{dayValue(info.net_pnl)}</span>
+					{#key `${data.year}-${data.month}`}
+						{#each cells as c, ci}
+							{#if c.blank}
+								<div></div>
+							{:else}
+								{@const info = data.days[c.key] ?? { net_pnl: 0, trade_count: 0, outcome: 'inactive' }}
+								<button
+									type="button"
+									onclick={() => openDay(c.key)}
+									aria-label="{c.key}: {fmtMoney(info.net_pnl)}, {info.trade_count} trades — open day"
+									title="{c.key}: {fmtMoney(info.net_pnl)} · {info.trade_count} trades"
+									class="anim-tile {cellClass(info.outcome, c.key === todayKey)} cursor-pointer focus-visible:outline-2 focus-visible:outline-accent"
+									style="animation-delay: {Math.min(ci * 8, 320)}ms"
+								>
+									<p class="num text-[10px] leading-none {c.key === todayKey ? 'font-bold text-accent' : 'text-mut'}">
+										{c.day}
 									</p>
-									<p class="num text-[9px] leading-tight text-dim">{info.trade_count}T</p>
-								{/if}
-							</button>
-						{/if}
-					{/each}
+									{#if info.trade_count > 0}
+										<p class="mt-1 truncate font-mono text-[9.5px] leading-tight font-semibold tabular-nums sm:text-xs {valueClass(info.net_pnl, info.trade_count)}">
+											<span class="sm:hidden">{compactValue(info.net_pnl)}</span>
+											<span class="hidden sm:inline">{dayValue(info.net_pnl)}</span>
+										</p>
+										<p class="num text-[9px] leading-tight text-dim">{info.trade_count}T</p>
+									{/if}
+								</button>
+							{/if}
+						{/each}
+					{/key}
 				</div>
 			</div>
 
 			<aside class="flex min-w-0 flex-col gap-3" aria-label="Month summary">
 				<div class="h-44"><canvas bind:this={donut}></canvas></div>
 				<div class="grid grid-cols-2 gap-2">
-					<div class="rounded-xl border border-line bg-raised/50 p-3">
+					<div class="rise rounded-xl border border-line bg-raised/50 p-3" style="animation-delay: 60ms">
 						<p class="text-[11px] text-dim">Trading days</p>
-						<p class="num text-lg font-bold text-fg">{data.summary.trading_days}</p>
+						<p class="num text-lg font-bold text-fg" use:countup={{ value: data.summary.trading_days, format: (v) => `${Math.round(v)}` }}>{data.summary.trading_days}</p>
 					</div>
-					<div class="rounded-xl border border-line bg-raised/50 p-3">
+					<div class="rise rounded-xl border border-line bg-raised/50 p-3" style="animation-delay: 120ms">
 						<p class="text-[11px] text-dim">Day win rate</p>
-						<p class="num text-lg font-bold text-fg">{data.summary.day_win_rate.toFixed(1)}%</p>
+						<p class="num text-lg font-bold text-fg" use:countup={{ value: data.summary.day_win_rate, format: (v) => `${v.toFixed(1)}%` }}>{data.summary.day_win_rate.toFixed(1)}%</p>
 					</div>
-					<div class="rounded-xl border border-win/25 bg-win/8 p-3">
+					<div class="rise rounded-xl border border-win/25 bg-win/8 p-3" style="animation-delay: 180ms">
 						<p class="text-[11px] text-dim">Winning days</p>
-						<p class="num text-lg font-bold text-win">{data.summary.winning_days}</p>
+						<p class="num text-lg font-bold text-win" use:countup={{ value: data.summary.winning_days, format: (v) => `${Math.round(v)}` }}>{data.summary.winning_days}</p>
 					</div>
-					<div class="rounded-xl border border-loss/25 bg-loss/8 p-3">
+					<div class="rise rounded-xl border border-loss/25 bg-loss/8 p-3" style="animation-delay: 240ms">
 						<p class="text-[11px] text-dim">Losing days</p>
-						<p class="num text-lg font-bold text-loss">{data.summary.losing_days}</p>
+						<p class="num text-lg font-bold text-loss" use:countup={{ value: data.summary.losing_days, format: (v) => `${Math.round(v)}` }}>{data.summary.losing_days}</p>
 					</div>
 				</div>
 			</aside>

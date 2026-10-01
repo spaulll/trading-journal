@@ -164,8 +164,8 @@
 				{#if closes.length > 0}
 					<p class="eyebrow mt-5 mb-2">Trades closed</p>
 					<ul class="flex flex-col gap-1.5">
-						{#each closes as t (t.id)}
-							<li>
+						{#each closes as t, ci (t.id)}
+							<li class="anim-fade" style="animation-delay: {ci * 50}ms">
 								<button
 									type="button"
 									onclick={() => openTradeFromDay(t.id)}

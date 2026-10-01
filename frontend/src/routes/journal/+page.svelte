@@ -85,9 +85,9 @@
 	/>
 {:else}
 	<div class="flex flex-col gap-4">
-		{#each notes as n (n.id)}
+		{#each notes as n, ni (n.id)}
 			{@const glance = dayNet(n.date)}
-			<article class="card rise p-5" aria-label="Note for {n.date}">
+			<article class="card rise p-5" style="animation-delay: {Math.min(ni, 11) * 55}ms" aria-label="Note for {n.date}">
 				<div class="flex flex-wrap items-center gap-2">
 					<h2 class="num text-lg font-semibold text-fg">{fmtDate(n.date)}</h2>
 					{#if n.discipline_breach}

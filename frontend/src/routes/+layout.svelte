@@ -1,5 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { page } from '$app/state';
+	import { fly } from 'svelte/transition';
 	import Sidebar from '$lib/components/Sidebar.svelte';
 	import TopBar from '$lib/components/TopBar.svelte';
 	import Nav from '$lib/components/Nav.svelte';
@@ -8,6 +10,7 @@
 	import { startPolling } from '$lib/stores/connection';
 	import { loadBrokerOffset } from '$lib/stores/broker';
 	import { sidebarCollapsed } from '$lib/stores/ui';
+	import { TAB } from '$lib/utils/transitions';
 	import '../app.css';
 
 	let { children } = $props();
@@ -37,7 +40,11 @@
 			id="main-content"
 			class="mx-auto w-full max-w-[1560px] scroll-mt-20 px-4 pt-6 pb-28 outline-none sm:px-6 lg:px-8 lg:pt-8 lg:pb-16"
 		>
-			{@render children()}
+			{#key page.url.pathname}
+				<div in:fly={TAB}>
+					{@render children()}
+				</div>
+			{/key}
 		</main>
 	</div>
 	<Nav />

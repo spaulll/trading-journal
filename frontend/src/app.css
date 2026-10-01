@@ -408,10 +408,28 @@ html {
 	}
 	/* Entrance stagger — pair with inline animation-delay. */
 	.rise {
-		animation: rise 0.65s cubic-bezier(0.22, 1, 0.36, 1) both;
+		animation: rise 0.65s cubic-bezier(0.22, 1, 0.36, 1) backwards;
 	}
 	.fade-in {
-		animation: fade 0.6s cubic-bezier(0.22, 1, 0.36, 1) both;
+		animation: fade 0.6s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+	}
+	/* Springy pop for cards, pills and icons (transform-safe elements only). */
+	.anim-pop {
+		animation: pop 0.45s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+	}
+	/* Dense tile cascade (heatmap days, month cells). */
+	.anim-tile {
+		animation: tile-in 0.35s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+	}
+	/* Opacity-only entrance — safe for <tr> and other elements where
+	   transforms don't apply. */
+	.anim-fade {
+		animation: fade-only 0.4s ease backwards;
+	}
+	/* Horizontal bar fill: scaleX from the left edge. */
+	.bar-grow {
+		transform-origin: left center;
+		animation: grow-x 0.9s cubic-bezier(0.22, 1, 0.36, 1) backwards;
 	}
 	.skeleton {
 		background: linear-gradient(
@@ -505,6 +523,42 @@ html {
 @keyframes draw {
 	to {
 		stroke-dashoffset: 0;
+	}
+}
+@keyframes pop {
+	0% {
+		opacity: 0;
+		transform: scale(0.9) translateY(6px);
+	}
+	100% {
+		opacity: 1;
+		transform: none;
+	}
+}
+@keyframes tile-in {
+	0% {
+		opacity: 0;
+		transform: scale(0.4);
+	}
+	100% {
+		opacity: 1;
+		transform: scale(1);
+	}
+}
+@keyframes fade-only {
+	0% {
+		opacity: 0;
+	}
+	100% {
+		opacity: 1;
+	}
+}
+@keyframes grow-x {
+	0% {
+		transform: scaleX(0);
+	}
+	100% {
+		transform: scaleX(1);
 	}
 }
 

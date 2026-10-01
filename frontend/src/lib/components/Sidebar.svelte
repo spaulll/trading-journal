@@ -58,7 +58,7 @@
 					: ''} {isActive
 					? 'bg-raised text-fg shadow-[inset_0_1px_0_rgb(255_255_255/0.05)]'
 					: 'text-mut hover:bg-raised/60 hover:text-fg'}"
-				style="animation: rise 0.5s cubic-bezier(0.22, 1, 0.36, 1) {i * 70}ms both;"
+				style="animation: rise 0.5s cubic-bezier(0.22, 1, 0.36, 1) {i * 70}ms backwards;"
 			>
 				<span
 					class="absolute top-1/2 left-0 h-5 w-[3px] -translate-y-1/2 rounded-full bg-accent transition-all duration-300 ease-spring {isActive
@@ -69,7 +69,7 @@
 				<Icon
 					size={17}
 					strokeWidth={isActive ? 2 : 1.6}
-					class="transition-colors duration-200 {isActive ? 'text-accent' : ''}"
+					class="transition-all duration-300 ease-spring {isActive ? 'scale-110 text-accent' : 'group-hover:scale-105'}"
 					aria-hidden="true"
 				/>
 				{#if !$sidebarCollapsed}
@@ -131,13 +131,18 @@
 			title="Toggle light / dark"
 			class="btn btn-ghost h-9 w-full justify-center text-[13px]"
 		>
+			{#key $theme}
+				<span class="anim-pop inline-flex" style="animation-duration: 0.3s">
+					{#if $theme === 'dark'}
+						<Sun size={15} strokeWidth={1.8} aria-hidden="true" />
+					{:else}
+						<Moon size={15} strokeWidth={1.8} aria-hidden="true" />
+					{/if}
+				</span>
+			{/key}
 			{#if $theme === 'dark'}
-				<Sun size={15} strokeWidth={1.8} aria-hidden="true" />
 				{#if !$sidebarCollapsed}<span>Light mode</span>{/if}
-			{:else}
-				<Moon size={15} strokeWidth={1.8} aria-hidden="true" />
-				{#if !$sidebarCollapsed}<span>Dark mode</span>{/if}
-			{/if}
+			{:else if !$sidebarCollapsed}<span>Dark mode</span>{/if}
 		</button>
 
 		{#if !$sidebarCollapsed}

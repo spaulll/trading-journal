@@ -140,7 +140,7 @@
 	});
 </script>
 
-<section class="grid grid-cols-1 gap-3 md:grid-cols-2" aria-label="Radar profiles">
+<section class="rise grid grid-cols-1 gap-3 md:grid-cols-2" style="animation-delay: 120ms" aria-label="Radar profiles">
 	<div class="card p-5">
 		<div class="flex items-baseline justify-between gap-3">
 			<h3 class="eyebrow">Weekday distribution</h3>

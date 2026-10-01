@@ -60,7 +60,11 @@ export function countup(
 		update(next: CountUpParams) {
 			const changed = next.value !== target;
 			params = next;
-			if (!changed) return;
+			if (!changed) {
+				// Formatter may have changed (e.g. $ ↔ % toggle) — repaint.
+				paint(current);
+				return;
+			}
 			target = next.value;
 			if (reduced) {
 				current = target;

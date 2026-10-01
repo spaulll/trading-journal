@@ -31,7 +31,7 @@
 				<Icon
 					size={17}
 					strokeWidth={isActive ? 2 : 1.6}
-					class="transition-colors duration-200 {isActive ? 'text-accent' : ''}"
+					class="transition-all duration-300 ease-spring {isActive ? 'scale-110 text-accent' : ''}"
 					aria-hidden="true"
 				/>
 				<span class="font-medium">{link.label}</span>

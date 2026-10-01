@@ -118,10 +118,11 @@
 </script>
 
 <div class="grid grid-cols-3 gap-1.5 sm:grid-cols-6 sm:gap-2">
-	{#each months as month (month.index)}
+	{#each months as month, mi (month.index)}
 		<section
 			aria-label="{month.label} {year} calendar"
-			class="min-w-0 rounded-xl border border-line bg-raised/40 p-1.5 transition-colors duration-200 hover:border-edge sm:p-2"
+			class="rise min-w-0 rounded-xl border border-line bg-raised/40 p-1.5 transition-colors duration-200 hover:border-edge sm:p-2"
+			style="animation-delay: {mi * 45}ms"
 		>
 			<div class="mb-1 flex min-w-0 items-baseline justify-between gap-1">
 				<h3 class="shrink-0 text-[10px] font-semibold tracking-tight text-fg sm:text-[11px]">
@@ -141,7 +142,7 @@
 			</div>
 
 			<div class="grid grid-cols-7 gap-[3px]" role="grid" aria-label="{month.label} day grid">
-				{#each month.slots as slot (slot.key)}
+				{#each month.slots as slot, si (slot.key)}
 					{#if slot.blank}
 						<div class="aspect-square w-full" aria-hidden="true"></div>
 					{:else}
@@ -150,7 +151,8 @@
 							onclick={() => openDay(slot.key)}
 							aria-label="{slot.key}: {fmtMoney(slot.pnl)}, {slot.count} trade{slot.count === 1 ? '' : 's'} — open day"
 							title="{slot.key} · {fmtMoney(slot.pnl)} · {slot.count} trade{slot.count === 1 ? '' : 's'}"
-							class="{tileClass(slot)} {slot.isToday ? 'ring-1 ring-accent' : ''}"
+							class="anim-tile {tileClass(slot)} {slot.isToday ? 'ring-1 ring-accent' : ''}"
+							style="animation-delay: {Math.min(mi * 45 + si * 4, 650)}ms"
 						>
 							<span
 								aria-hidden="true"
