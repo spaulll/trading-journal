@@ -4,7 +4,8 @@
 	import { dismissLifecycle, lifecycleBusy, submitBackfill, submitOpen } from '$lib/stores/trades';
 	import { fmtMoney, mt5WallToUTC, previewIST, previewMT5 } from '$lib/utils/format';
 	import { brokerOffset } from '$lib/stores/broker';
-	import { FADE, MODAL } from '$lib/utils/transitions';
+	import { FADE, MODAL, PANEL_FADE } from '$lib/utils/transitions';
+	import SegControl from '$lib/components/SegControl.svelte';
 
 	/** Rough per-unit contract sizes for the risk preview (estimate only). */
 	const CONTRACT: { match: RegExp; size: number; unit: string }[] = [
@@ -244,25 +245,16 @@
 		</div>
 
 		<form class="px-5 py-4" onsubmit={submit}>
-			<div class="mb-4 grid grid-cols-2 gap-1 rounded-xl border border-line bg-raised/50 p-1" role="group" aria-label="Entry mode">
-				<button
-					type="button"
-					onclick={() => (mode = 'live')}
-					aria-pressed={mode === 'live'}
-					class="chip py-1.5 text-[13px] font-semibold"
-					data-active={mode === 'live'}
-				>
-					Live trade
-				</button>
-				<button
-					type="button"
-					onclick={() => (mode = 'backfill')}
-					aria-pressed={mode === 'backfill'}
-					class="chip py-1.5 text-[13px] font-semibold"
-					data-active={mode === 'backfill'}
-				>
-					Historical / backfill
-				</button>
+			<div class="mb-4">
+				<SegControl
+					label="Entry mode"
+					value={mode}
+					onChange={(v) => (mode = v as 'live' | 'backfill')}
+					options={[
+						{ value: 'live', label: 'Live trade' },
+						{ value: 'backfill', label: 'Historical / backfill' }
+					]}
+				/>
 			</div>
 
 			<div class="grid grid-cols-2 gap-3">
@@ -313,48 +305,52 @@
 				<input type="text" bind:value={tags} placeholder="#breakout" autocomplete="off" class="field font-sans text-[13px]" />
 			</label>
 
-			{#if mode === 'live'}
-				<label class="{label} mt-3">
-					Entry time ({zoneTag('UTC')}) <span class="normal-case tracking-normal text-dim">empty = now</span>
-					<input type="datetime-local" value={liveEntryAt} oninput={(e) => (liveEntryAt = e.currentTarget.value)} class={field} />
-					{#if timePreview(liveEntryAt)}
-						<span class="num text-[11px] normal-case tracking-normal text-accent">→ {timePreview(liveEntryAt)}</span>
+			{#key mode}
+				<div in:fade={PANEL_FADE}>
+					{#if mode === 'live'}
+						<label class="{label} mt-3">
+							Entry time ({zoneTag('UTC')}) <span class="normal-case tracking-normal text-dim">empty = now</span>
+							<input type="datetime-local" value={liveEntryAt} oninput={(e) => (liveEntryAt = e.currentTarget.value)} class={field} />
+							{#if timePreview(liveEntryAt)}
+								<span class="num text-[11px] normal-case tracking-normal text-accent">→ {timePreview(liveEntryAt)}</span>
+							{/if}
+						</label>
 					{/if}
-				</label>
-			{/if}
 
-			{#if mode === 'backfill'}
-				<fieldset class="mt-3 rounded-xl border border-line p-3">
-					<legend class="px-1 font-mono text-[10px] tracking-[0.16em] text-dim uppercase">Historical exit ({zoneTag('UTC')})</legend>
-					<div class="grid grid-cols-2 gap-3">
-						<label class={label}>
-							Entry date/time
-							<input type="datetime-local" value={entryAt} oninput={(e) => (entryAt = e.currentTarget.value)} class={field} />
-							{#if timePreview(entryAt)}
-								<span class="num text-[11px] normal-case tracking-normal text-accent">→ {timePreview(entryAt)}</span>
-							{/if}
-						</label>
-						<label class={label}>
-							Exit date/time
-							<input type="datetime-local" value={exitAt} oninput={(e) => (exitAt = e.currentTarget.value)} class={field} />
-							{#if timePreview(exitAt)}
-								<span class="num text-[11px] normal-case tracking-normal text-accent">→ {timePreview(exitAt)}</span>
-							{/if}
-						</label>
-						<label class={label}>
-							Exit price
-							<input type="number" value={exitPrice} oninput={(e) => (exitPrice = e.currentTarget.value)} step="any" class={field} />
-						</label>
-						<label class={label}>
-							Net PnL <span class="normal-case tracking-normal text-dim">(optional)</span>
-							<input type="number" value={netPnl} oninput={(e) => (netPnl = e.currentTarget.value)} step="any" class={field} />
-						</label>
-					</div>
-					<p class="num mt-2 text-[11px] text-dim" aria-live="polite">
-						Session: <span class="font-bold text-accent">{backfillSession ?? '— pick entry time —'}</span>
-					</p>
-				</fieldset>
-			{/if}
+					{#if mode === 'backfill'}
+						<fieldset class="mt-3 rounded-xl border border-line p-3">
+							<legend class="px-1 font-mono text-[10px] tracking-[0.16em] text-dim uppercase">Historical exit ({zoneTag('UTC')})</legend>
+							<div class="grid grid-cols-2 gap-3">
+								<label class={label}>
+									Entry date/time
+									<input type="datetime-local" value={entryAt} oninput={(e) => (entryAt = e.currentTarget.value)} class={field} />
+									{#if timePreview(entryAt)}
+										<span class="num text-[11px] normal-case tracking-normal text-accent">→ {timePreview(entryAt)}</span>
+									{/if}
+								</label>
+								<label class={label}>
+									Exit date/time
+									<input type="datetime-local" value={exitAt} oninput={(e) => (exitAt = e.currentTarget.value)} class={field} />
+									{#if timePreview(exitAt)}
+										<span class="num text-[11px] normal-case tracking-normal text-accent">→ {timePreview(exitAt)}</span>
+									{/if}
+								</label>
+								<label class={label}>
+									Exit price
+									<input type="number" value={exitPrice} oninput={(e) => (exitPrice = e.currentTarget.value)} step="any" class={field} />
+								</label>
+								<label class={label}>
+									Net PnL <span class="normal-case tracking-normal text-dim">(optional)</span>
+									<input type="number" value={netPnl} oninput={(e) => (netPnl = e.currentTarget.value)} step="any" class={field} />
+								</label>
+							</div>
+							<p class="num mt-2 text-[11px] text-dim" aria-live="polite">
+								Session: <span class="font-bold text-accent">{backfillSession ?? '— pick entry time —'}</span>
+							</p>
+						</fieldset>
+					{/if}
+				</div>
+			{/key}
 
 			<div class="mt-4 rounded-xl border border-line bg-raised/60 px-3.5 py-3" aria-live="polite">
 				<p class="eyebrow">

@@ -3,6 +3,7 @@
 	import { slide } from 'svelte/transition';
 	import { openTrade, requestClose, trades } from '$lib/stores/trades';
 	import { fmtDateTime, fmtMoney, fmtR, pnlTone, toneBg, toneText } from '$lib/utils/format';
+	import SegControl from '$lib/components/SegControl.svelte';
 	import type { TradeDto } from '$lib/api';
 
 	type StatusFilter = 'ALL' | 'OPEN' | 'CLOSED';
@@ -83,25 +84,18 @@
 
 <section aria-label="Trade history" class="rise mt-9" style="animation-delay: 140ms">
 	<div class="mb-3 flex flex-wrap items-center gap-2">
-		<div
-			class="flex rounded-xl border border-line bg-raised/50 p-1"
-			role="tablist"
-			aria-label="Status filter"
-		>
-			{#each (['ALL', 'OPEN', 'CLOSED'] as StatusFilter[]) as s}
-				<button
-					type="button"
-					role="tab"
-					aria-selected={status === s}
-					onclick={() => (status = s)}
-					class="chip px-3 py-1.5 font-mono text-xs tabular-nums {status === s ? 'font-semibold' : ''}"
-					data-active={status === s}
-				>
-					{s === 'ALL' ? 'All' : s === 'OPEN' ? 'Open' : 'Closed'}
-					<span class="ml-1 opacity-60 tabular-nums">{counts[s]}</span>
-				</button>
-			{/each}
-		</div>
+		<SegControl
+			mode="tabs"
+			label="Status filter"
+			value={status}
+			onChange={(v) => (status = v as StatusFilter)}
+			size="sm"
+			options={[
+				{ value: 'ALL', label: 'All', count: counts.ALL },
+				{ value: 'OPEN', label: 'Open', count: counts.OPEN },
+				{ value: 'CLOSED', label: 'Closed', count: counts.CLOSED }
+			]}
+		/>
 
 		<label class="relative ml-auto flex-1 sm:max-w-56">
 			<Search

@@ -5,6 +5,9 @@
 	import { fmtMoney } from '$lib/utils/format';
 	import { palette } from '$lib/utils/palette';
 	import { theme } from '$lib/stores/theme';
+	import SegControl from '$lib/components/SegControl.svelte';
+	import { fade } from 'svelte/transition';
+	import { PANEL_FADE } from '$lib/utils/transitions';
 
 	Chart.register(...registerables);
 
@@ -185,17 +188,17 @@
 	<div class="mb-5 flex flex-wrap items-center gap-3">
 		<h2 class="eyebrow">Long / short analysis</h2>
 		<p class="num text-[11.5px] text-dim">{sel.trades} trades · {sel.win_rate.toFixed(1)}% win rate</p>
-		<div class="ml-auto flex rounded-xl border border-line bg-raised/50 p-1" role="group" aria-label="Direction filter">
-			{#each (['all', 'long', 'short'] as const) as s}
-				<button
-					type="button"
-					class="chip px-4 py-1.5 text-[13px] font-semibold"
-					data-active={side === s}
-					onclick={() => (side = s)}
-				>
-					{s === 'all' ? 'All' : s === 'long' ? 'Long' : 'Short'}
-				</button>
-			{/each}
+		<div class="ml-auto">
+			<SegControl
+				label="Direction filter"
+				value={side}
+				onChange={(v) => (side = v as 'all' | 'long' | 'short')}
+				options={[
+					{ value: 'all', label: 'All' },
+					{ value: 'long', label: 'Long' },
+					{ value: 'short', label: 'Short' }
+				]}
+			/>
 		</div>
 	</div>
 
@@ -203,37 +206,43 @@
 		<div class="lg:col-span-4 xl:col-span-3">
 			<div class="h-60 min-w-0"><canvas bind:this={canvas}></canvas></div>
 		</div>
-		<div class="min-w-0 lg:col-span-4 xl:col-span-4">
-			<h3 class="eyebrow mb-1 text-win">Win statistics</h3>
-			<dl>
-				{#each winRows as r}
-					<div class={row}>
-						<dt class="text-xs text-mut">{r.label}</dt>
-						<dd class="num text-[13px] font-semibold text-fg">{r.value}</dd>
-					</div>
-				{/each}
-			</dl>
-		</div>
-		<div class="min-w-0 lg:col-span-4 xl:col-span-5">
-			<h3 class="eyebrow mb-1 text-loss">Loss statistics</h3>
-			<dl>
-				{#each lossRows as r}
-					<div class={row}>
-						<dt class="text-xs text-mut">{r.label}</dt>
-						<dd class="num text-[13px] font-semibold text-fg">{r.value}</dd>
-					</div>
-				{/each}
-			</dl>
-		</div>
+		{#key side}
+			<div class="min-w-0 lg:col-span-4 xl:col-span-4" in:fade={PANEL_FADE}>
+				<h3 class="eyebrow mb-1 text-win">Win statistics</h3>
+				<dl>
+					{#each winRows as r}
+						<div class={row}>
+							<dt class="text-xs text-mut">{r.label}</dt>
+							<dd class="num text-[13px] font-semibold text-fg">{r.value}</dd>
+						</div>
+					{/each}
+				</dl>
+			</div>
+		{/key}
+		{#key side}
+			<div class="min-w-0 lg:col-span-4 xl:col-span-5" in:fade={PANEL_FADE}>
+				<h3 class="eyebrow mb-1 text-loss">Loss statistics</h3>
+				<dl>
+					{#each lossRows as r}
+						<div class={row}>
+							<dt class="text-xs text-mut">{r.label}</dt>
+							<dd class="num text-[13px] font-semibold text-fg">{r.value}</dd>
+						</div>
+					{/each}
+				</dl>
+			</div>
+		{/key}
 	</div>
 
 	<h3 class="eyebrow mt-6 mb-2">Performance overview</h3>
-	<div class="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-6">
-		{#each overview as o}
-			<div class="rounded-xl border border-line bg-raised/50 p-3">
-				<p class="text-[11px] text-dim">{o.label}</p>
-				<p class="num mt-0.5 text-sm leading-tight font-bold wrap-break-word {o.tone}">{o.value}</p>
-			</div>
-		{/each}
-	</div>
+	{#key side}
+		<div class="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-6" in:fade={PANEL_FADE}>
+			{#each overview as o}
+				<div class="rounded-xl border border-line bg-raised/50 p-3">
+					<p class="text-[11px] text-dim">{o.label}</p>
+					<p class="num mt-0.5 text-sm leading-tight font-bold wrap-break-word {o.tone}">{o.value}</p>
+				</div>
+			{/each}
+		</div>
+	{/key}
 </section>

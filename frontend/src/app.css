@@ -341,6 +341,33 @@ html {
 		box-shadow: inset 0 0 0 1px rgb(var(--c-loss) / 0.42);
 	}
 
+	/* Sliding active pill behind segmented controls (SegControl.svelte).
+	   Pill position is measured in JS; the fluid glide is pure CSS so it
+	   also animates on resize. Killed under prefers-reduced-motion by the
+	   global rule below. */
+	.seg-pill {
+		background: rgb(var(--c-raised));
+		box-shadow:
+			0 1px 2px rgb(0 0 0 / 0.18),
+			inset 0 1px 0 rgb(255 255 255 / 0.06);
+		transition:
+			transform 0.32s cubic-bezier(0.22, 1, 0.36, 1),
+			width 0.32s cubic-bezier(0.22, 1, 0.36, 1),
+			opacity 0.2s ease;
+		will-change: transform, width;
+	}
+	.dark .seg-pill {
+		box-shadow:
+			0 1px 2px rgb(0 0 0 / 0.4),
+			inset 0 1px 0 rgb(255 255 255 / 0.07);
+	}
+	/* SegControl owns the pill background — buttons only shift type color. */
+	[data-seg-btn][data-active='true'] {
+		background: transparent;
+		box-shadow: none;
+		color: rgb(var(--c-fg));
+	}
+
 	/* ---------- Table ---------- */
 	.thead {
 		@apply font-mono text-[10px] tracking-[0.16em] uppercase;

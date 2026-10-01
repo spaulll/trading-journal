@@ -7,6 +7,9 @@
 	import { openDay } from '$lib/stores/journal';
 	import { palette } from '$lib/utils/palette';
 	import { theme } from '$lib/stores/theme';
+	import SegControl from '$lib/components/SegControl.svelte';
+	import { fly } from 'svelte/transition';
+	import { TAB } from '$lib/utils/transitions';
 
 	Chart.register(...registerables);
 
@@ -292,19 +295,34 @@
 		</div>
 
 		<div class="ml-auto flex flex-wrap items-center gap-2">
-			<div class="flex rounded-xl border border-line bg-raised/50 p-1" role="tablist" aria-label="Calendar view">
-				<button type="button" role="tab" aria-selected={tab === 'month'} class="chip px-3 py-1.5 font-mono text-xs" data-active={tab === 'month'} onclick={() => (tab = 'month')}>Month</button>
-				<button type="button" role="tab" aria-selected={tab === 'year'} class="chip px-3 py-1.5 font-mono text-xs" data-active={tab === 'year'} onclick={() => (tab = 'year')}>Year</button>
-			</div>
+			<SegControl
+				mode="tabs"
+				label="Calendar view"
+				value={tab}
+				onChange={(v) => (tab = v as 'month' | 'year')}
+				size="sm"
+				options={[
+					{ value: 'month', label: 'Month' },
+					{ value: 'year', label: 'Year' }
+				]}
+			/>
 			{#if tab === 'month'}
-				<div class="flex rounded-xl border border-line bg-raised/50 p-1" aria-label="Value unit">
-					<button type="button" class="chip px-3 py-1.5 font-mono text-xs" data-active={unit === 'usd'} onclick={() => (unit = 'usd')}>$</button>
-					<button type="button" class="chip px-3 py-1.5 font-mono text-xs" data-active={unit === 'pct'} onclick={() => (unit = 'pct')}>%</button>
-				</div>
+				<SegControl
+					label="Value unit"
+					value={unit}
+					onChange={(v) => (unit = v as 'usd' | 'pct')}
+					size="sm"
+					options={[
+						{ value: 'usd', label: '$' },
+						{ value: 'pct', label: '%' }
+					]}
+				/>
 			{/if}
 		</div>
 	</div>
 
+	{#key tab}
+		<div in:fly={TAB}>
 	{#if tab === 'year'}
 		<CalendarHeatmap days={yearDays} year={data.year} />
 		<div class="mt-5 grid grid-cols-1 gap-5 md:grid-cols-[240px_minmax(0,1fr)] md:items-center">
@@ -411,4 +429,6 @@
 			</aside>
 		</div>
 	{/if}
+		</div>
+	{/key}
 </section>
