@@ -377,6 +377,15 @@ def trade_picker_keyboard(trades: list, prefix: str) -> dict:
     return {"inline_keyboard": rows}
 
 
+def closed_trade_actions_keyboard(trade_id: int) -> dict:
+    """Single-button keyboard for CLOSED/backfilled trades (BE/TSL/Close N/A)."""
+    return {
+        "inline_keyboard": [
+            [{"text": "📸 Attach Chart", "callback_data": f"photo:{trade_id}"}],
+        ]
+    }
+
+
 def describe_trade(t: Trade) -> str:
     return (
         f"{t.direction.upper()} {t.symbol} {t.size} @ {t.entry_price} "
@@ -575,7 +584,8 @@ HELP = (
     "(<code>date:</code> alone = open and close at the same time; seconds and MT5 zone supported)\n"
     "\n"
     "<b>CHART screenshots:</b> just send a photo — it attaches to your open trade "
-    "(you pick one if several are open).\n"
+    "(you pick one if several are open). Backfilled trades show a "
+    "📸 Attach Chart button — tap it, then send the photo.\n"
     "\n"
     "<b>COMMANDS:</b>\n"
     "/start — greeting · /help — this guide · /open — list open trades · "
@@ -617,12 +627,14 @@ async def do_past(chat_id: int, session: Session, args: dict) -> None:
     session.commit()
     trade = session.exec(select(Trade).where(Trade.ticket == ticket)).first()
     info = ""
+    keyboard: Optional[dict] = None
     if trade is not None:
         r_txt = f"{trade.r_multiple:+.2f}R" if trade.r_multiple is not None else "n/a"
         net_txt = f"{trade.net_pnl:+.2f}" if trade.net_pnl is not None else "n/a"
         dur = trade.duration_minutes if trade.duration_minutes is not None else 0
         info = f" {net_txt} ({r_txt}), {trade.session}, {dur}m"
-    await send_text(chat_id, f"📚 Backfilled {args['direction'].upper()} {args['symbol']} 🎫 {ticket}.{info}")
+        keyboard = closed_trade_actions_keyboard(trade.id)
+    await send_text(chat_id, f"📚 Backfilled {args['direction'].upper()} {args['symbol']} 🎫 {ticket}.{info}", keyboard)
 
 
 # Breakeven tolerance mirrors the analytics API: |net| <= 1 cent is BE.
