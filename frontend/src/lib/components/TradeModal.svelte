@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onDestroy, onMount } from 'svelte';
 	import { fade, fly } from 'svelte/transition';
 	import { ImagePlus, Trash2, X, ZoomIn } from 'lucide-svelte';
 	import { api, type ScreenshotDto } from '$lib/api';
@@ -47,6 +47,11 @@
 		}
 	});
 
+	onDestroy(() => {
+		if (notesTimer) clearTimeout(notesTimer);
+		if (tagsTimer) clearTimeout(tagsTimer);
+	});
+
 	function resetDrawerWidth(): void {
 		drawerW = null;
 		try {
@@ -84,9 +89,26 @@
 	}
 	let zoomShot: ScreenshotDto | null = $state(null);
 	let confirmDelete = $state(false);
-	let saving = $state(false);
+	let savingNotes = $state(false);
+	let savingTags = $state(false);
 	let savingEdits = $state(false);
 	let lastTradeId: number | null = $state(null);
+	// Autosave status for notes + tags (no toast spam — inline indicator only).
+	let notesState = $state<'idle' | 'saving' | 'saved' | 'error'>('idle');
+	let notesHint = $state('');
+	let tagsState = $state<'idle' | 'saving' | 'saved' | 'error'>('idle');
+	let tagsHint = $state('');
+	let notesTimer: ReturnType<typeof setTimeout> | null = $state(null);
+	let tagsTimer: ReturnType<typeof setTimeout> | null = $state(null);
+	const AUTOSAVE_MS = 900;
+
+	function autosaveStamp(): string {
+		try {
+			return new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+		} catch {
+			return '';
+		}
+	}
 
 	// Editable trade legs (strings so empty = clear nullable field).
 	let fSymbol = $state('');
@@ -133,6 +155,10 @@
 
 	$effect(() => {
 		if (trade && trade.id !== lastTradeId) {
+			if (notesTimer) clearTimeout(notesTimer);
+			if (tagsTimer) clearTimeout(tagsTimer);
+			notesTimer = null;
+			tagsTimer = null;
 			lastTradeId = trade.id;
 			thesis = trade.thesis ?? '';
 			notes = trade.review_notes ?? '';
@@ -151,6 +177,10 @@
 			fExitTime = timeToInput(trade.exit_time ?? trade.timestamp_close);
 			confirmDelete = false;
 			zoomShot = null;
+			notesState = 'idle';
+			notesHint = '';
+			tagsState = 'idle';
+			tagsHint = '';
 		}
 		if (!trade) lastTradeId = null;
 	});
@@ -193,14 +223,40 @@
 	);
 
 	function onBackdrop(e: MouseEvent): void {
-		if (e.target === e.currentTarget) closeTrade();
+		if (e.target === e.currentTarget) void flushAndClose();
 	}
 
 	function onBackdropKey(e: KeyboardEvent): void {
 		if (e.key === 'Escape') {
 			if (zoomShot) zoomShot = null;
-			else closeTrade();
+			else void flushAndClose();
 		}
+	}
+
+	/** Save any pending notes/tags autosaves, then close the drawer. */
+	async function flushPending(): Promise<void> {
+		if (notesTimer) {
+			clearTimeout(notesTimer);
+			notesTimer = null;
+		}
+		if (tagsTimer) {
+			clearTimeout(tagsTimer);
+			tagsTimer = null;
+		}
+		const jobs: Promise<unknown>[] = [];
+		if (dirty) jobs.push(saveNotes(true));
+		if (tagsDirty) jobs.push(saveTags(true));
+		if (jobs.length) await Promise.allSettled(jobs);
+	}
+
+	async function flushAndClose(): Promise<void> {
+		await flushPending();
+		closeTrade();
+	}
+
+	async function handleRequestClose(id: number): Promise<void> {
+		await flushPending();
+		requestClose(id);
 	}
 
 	function onZoomBackdrop(e: MouseEvent): void {
@@ -211,37 +267,72 @@
 		if (e.key === 'Escape') zoomShot = null;
 	}
 
-	async function saveNotes(): Promise<void> {
-		if (!trade || saving) return;
-		saving = true;
+	async function saveNotes(quiet = true): Promise<void> {
+		if (!trade || savingNotes) return;
+		if (thesis === (trade.thesis ?? '') && notes === (trade.review_notes ?? '')) return;
+		const tradeId = trade.id;
+		const payload = { thesis: thesis || null, review_notes: notes || null };
+		savingNotes = true;
+		notesState = 'saving';
+		notesHint = '';
 		try {
-			const updated = await api.patchTrade(trade.id, { thesis: thesis || null, review_notes: notes || null });
+			const updated = await api.patchTrade(tradeId, payload);
 			upsertTrade(updated);
-			toasts.push('success', 'Notes saved.');
+			notesState = 'saved';
+			notesHint = `Saved ${autosaveStamp()}`;
+			if (!quiet) toasts.push('success', 'Notes saved.');
 		} catch (err) {
+			notesState = 'error';
+			notesHint = err instanceof Error ? err.message : 'Save failed';
 			toasts.push('error', `Save failed — ${err instanceof Error ? err.message : 'unknown error'}`);
 		} finally {
-			saving = false;
+			savingNotes = false;
 		}
 	}
 
-	async function saveTags(): Promise<void> {
-		if (!trade || saving) return;
-		saving = true;
+	function scheduleNotesAutosave(): void {
+		if (notesTimer) clearTimeout(notesTimer);
+		notesTimer = setTimeout(() => {
+			notesTimer = null;
+			void saveNotes(true);
+		}, AUTOSAVE_MS);
+	}
+
+	async function saveTags(quiet = true): Promise<void> {
+		if (!trade || savingTags) return;
+		const current = trade.tags.map((t) => `${t.category === 'mistake' ? '!' : '#'}${t.name}`).join(' ');
+		if (tagInput.trim() === current) return;
+		const tradeId = trade.id;
+		const tokens = tagInput.split(/[\s,]+/).filter(Boolean);
+		savingTags = true;
+		tagsState = 'saving';
+		tagsHint = '';
 		try {
-			const tokens = tagInput.split(/[\s,]+/).filter(Boolean);
-			const updated = await api.patchTrade(trade.id, { tags: tokens });
+			const updated = await api.patchTrade(tradeId, { tags: tokens });
 			upsertTrade(updated);
-			toasts.push('success', 'Tags updated.');
+			tagsState = 'saved';
+			tagsHint = `Saved ${autosaveStamp()}`;
+			if (!quiet) toasts.push('success', 'Tags updated.');
 		} catch (err) {
+			tagsState = 'error';
+			tagsHint = err instanceof Error ? err.message : 'Tag update failed';
 			toasts.push('error', `Tag update failed — ${err instanceof Error ? err.message : 'unknown error'}`);
 		} finally {
-			saving = false;
+			savingTags = false;
 		}
+	}
+
+	function scheduleTagsAutosave(): void {
+		if (tagsTimer) clearTimeout(tagsTimer);
+		tagsTimer = setTimeout(() => {
+			tagsTimer = null;
+			void saveTags(true);
+		}, AUTOSAVE_MS);
 	}
 
 	async function saveEdits(): Promise<void> {
 		if (!trade || savingEdits) return;
+		const wasOpen = trade.status === 'OPEN';
 		const payload: Record<string, unknown> = {};
 		if (fSymbol.trim().toUpperCase() !== (trade.symbol ?? '')) {
 			if (!fSymbol.trim()) {
@@ -299,17 +390,32 @@
 			payload[key] = utc;
 		}
 		if (Object.keys(payload).length === 0) return;
+		// Saving exit details on an OPEN trade closes it — no extra manual
+		// close step. The backend also auto-closes as a safety net.
+		const exitInPayload = payload.exit_price !== undefined && payload.exit_price !== null;
+		const exitFilled = fExit.trim() !== '';
+		const willClose = wasOpen && (exitInPayload || exitFilled);
+		if (willClose) payload.status = 'CLOSED';
 		savingEdits = true;
 		try {
 			const updated = await api.patchTrade(trade.id, payload);
 			upsertTrade(updated);
-			toasts.push('success', 'Trade updated — net and R recomputed.');
+			if (wasOpen && updated.status === 'CLOSED') {
+				const net = updated.net_pnl === null ? 'n/a' : `${updated.net_pnl >= 0 ? '+' : ''}${updated.net_pnl.toFixed(2)}`;
+				toasts.push('success', `Trade closed ${net} (${updated.r_multiple === null ? 'n/a' : `${updated.r_multiple.toFixed(2)}R`}).`);
+			} else {
+				toasts.push('success', 'Trade updated — net and R recomputed.');
+			}
 		} catch (err) {
 			toasts.push('error', `Update failed — ${err instanceof Error ? err.message : 'unknown error'}`);
 		} finally {
 			savingEdits = false;
 		}
 	}
+
+	const willCloseOnSave = $derived(
+		trade !== null && trade.status === 'OPEN' && fExit.trim() !== ''
+	);
 
 	async function changeShotLabel(tradeId: number, shot: ScreenshotDto, select: HTMLSelectElement): Promise<void> {
 		if (select.value === shot.label) return;
@@ -463,13 +569,13 @@
 
 				<span class="ml-auto flex shrink-0 items-center gap-2">
 					{#if trade.status === 'OPEN'}
-						<button type="button" onclick={() => requestClose(trade.id)} class="btn btn-danger h-8 px-3 text-[13px]">
+						<button type="button" onclick={() => void handleRequestClose(trade.id)} class="btn btn-danger h-8 px-3 text-[13px]">
 							Close trade
 						</button>
 					{/if}
 					<button
 						type="button"
-						onclick={closeTrade}
+						onclick={() => void flushAndClose()}
 						aria-label="Close"
 						class="btn-icon h-8 w-8"
 					>
@@ -511,16 +617,21 @@
 
 				<!-- Trade details editor -->
 				<div class="mt-5">
-					<div class="mb-2 flex items-center justify-between">
+					<div class="mb-2 flex items-center justify-between gap-2">
 						<span class="eyebrow">Trade details</span>
-						<button
-							type="button"
-							onclick={() => void saveEdits()}
-							disabled={!editsDirty || savingEdits}
-							class="btn btn-ghost h-7 shrink-0 px-3 text-[12px]"
-						>
-							{savingEdits ? 'Saving…' : 'Save changes'}
-						</button>
+						<span class="flex shrink-0 items-center gap-2">
+							{#if willCloseOnSave}
+								<span class="num text-[11px] text-accent">Saving will close this trade</span>
+							{/if}
+							<button
+								type="button"
+								onclick={() => void saveEdits()}
+								disabled={!editsDirty || savingEdits}
+								class="btn h-7 shrink-0 px-3 text-[12px] {willCloseOnSave ? 'btn-danger' : 'btn-ghost'}"
+							>
+								{savingEdits ? 'Saving…' : willCloseOnSave ? 'Save & close trade' : 'Save changes'}
+							</button>
+						</span>
 					</div>
 					<div class="grid grid-cols-3 gap-2">
 						<label class="flex min-w-0 flex-col gap-1">
@@ -580,6 +691,9 @@
 					<p class="num mt-1.5 text-[11px] text-dim">
 						Net and R recompute automatically from prices and fees. Times are
 						{tzMode === 'mt5' ? 'MT5 —' : 'UTC —'} changing entry re-resolves session and duration.
+						{#if trade.status === 'OPEN'}
+							<span class="text-accent">Adding an exit price + saving closes the trade — no separate close step.</span>
+						{/if}
 						{#if tzMode === 'utc'}
 							<span>Calibrate with <span class="font-mono">/brokertime</span> to type MT5 times directly.</span>
 						{/if}
@@ -589,53 +703,64 @@
 				<!-- Editors -->
 				<div class="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2">
 					<label class="flex flex-col gap-1.5">
-						<span class="eyebrow">Thesis</span>
+						<span class="eyebrow">Thesis · <span class="normal-case text-mut">autosaves</span></span>
 						<textarea
 							bind:value={thesis}
+							oninput={scheduleNotesAutosave}
 							rows={4}
 							placeholder="Why did you take this trade?"
 							class="field resize-y text-[13px]"
 						></textarea>
 					</label>
 					<label class="flex flex-col gap-1.5">
-						<span class="eyebrow">Review notes</span>
+						<span class="eyebrow">Review notes · <span class="normal-case text-mut">autosaves</span></span>
 						<textarea
 							bind:value={notes}
+							oninput={scheduleNotesAutosave}
 							rows={4}
 							placeholder="What worked, what didn't?"
 							class="field resize-y text-[13px]"
 						></textarea>
 					</label>
 				</div>
-				<div class="mt-2 flex justify-end">
+				<div class="mt-2 flex items-center justify-between gap-2">
+					<span class="num text-[11px] {notesState === 'error' ? 'text-loss' : 'text-dim'}" aria-live="polite">
+						{#if savingNotes || notesState === 'saving'}Saving…{:else if notesState === 'saved'}{notesHint || 'Saved'}{:else if notesState === 'error'}Autosave failed — {notesHint}{:else if dirty}Unsaved changes…{/if}
+					</span>
 					<button
 						type="button"
-						onclick={() => void saveNotes()}
-						disabled={!dirty || saving}
-						class="btn btn-primary h-8 px-3.5 text-[13px]"
+						onclick={() => void saveNotes(false)}
+						disabled={!dirty || savingNotes}
+						class="btn btn-ghost h-8 shrink-0 px-3.5 text-[13px]"
 					>
-						{saving ? 'Saving…' : 'Save notes'}
+						{savingNotes ? 'Saving…' : 'Save now'}
 					</button>
 				</div>
 
 				<label class="mt-4 flex flex-col gap-1.5">
-					<span class="eyebrow">Tags — <span class="normal-case text-mut">#setup !mistake</span></span>
+					<span class="eyebrow">Tags · <span class="normal-case text-mut">#setup !mistake · autosaves</span></span>
 					<span class="flex gap-2">
 						<input
 							type="text"
 							bind:value={tagInput}
+							oninput={scheduleTagsAutosave}
 							placeholder="#fvg !early"
 							class="field h-9 flex-1 font-mono text-[13px]"
 						/>
 						<button
 							type="button"
-							onclick={() => void saveTags()}
-							disabled={!tagsDirty || saving}
+							onclick={() => void saveTags(false)}
+							disabled={!tagsDirty || savingTags}
 							class="btn btn-ghost h-9 shrink-0 px-3.5 text-[13px]"
 						>
-							Apply
+							{savingTags ? 'Saving…' : 'Apply'}
 						</button>
 					</span>
+					{#if savingTags || tagsState !== 'idle'}
+						<span class="num text-[11px] {tagsState === 'error' ? 'text-loss' : 'text-dim'}" aria-live="polite">
+							{#if savingTags || tagsState === 'saving'}Saving tags…{:else if tagsState === 'saved'}{tagsHint || 'Saved'}{:else if tagsState === 'error'}Autosave failed — {tagsHint}{/if}
+						</span>
+					{/if}
 				</label>
 
 				<!-- Upload zone -->

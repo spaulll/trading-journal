@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { onDestroy } from 'svelte';
 	import { fade, fly } from 'svelte/transition';
 	import { Trash2, X } from 'lucide-svelte';
 	import { api, type DailyNoteDto } from '$lib/api';
@@ -32,15 +33,35 @@
 	let preMarket = $state('');
 	let eod = $state('');
 	let lastDay = $state<string | null>(null);
+	let noteState = $state<'idle' | 'saving' | 'saved' | 'error'>('idle');
+	let noteHint = $state('');
+	let noteTimer: ReturnType<typeof setTimeout> | null = $state(null);
+	const NOTE_AUTOSAVE_MS = 900;
+
+	function noteStamp(): string {
+		try {
+			return new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+		} catch {
+			return '';
+		}
+	}
+
+	onDestroy(() => {
+		if (noteTimer) clearTimeout(noteTimer);
+	});
 
 	$effect(() => {
 		const key = $selectedDay;
 		if (key && key !== lastDay) {
+			if (noteTimer) clearTimeout(noteTimer);
+			noteTimer = null;
 			lastDay = key;
 			note = null;
 			preMarket = '';
 			eod = '';
 			confirmDelete = false;
+			noteState = 'idle';
+			noteHint = '';
 			loading = true;
 			void api
 				.getNote(key)
@@ -63,21 +84,47 @@
 	const dirty = $derived(preMarket !== (note?.pre_market ?? '') || eod !== (note?.eod_review ?? ''));
 
 	function onBackdrop(e: MouseEvent): void {
-		if (e.target === e.currentTarget) closeDay();
+		if (e.target === e.currentTarget) void flushAndClose();
 	}
 
 	function onKey(e: KeyboardEvent): void {
-		if (e.key === 'Escape') closeDay();
+		if (e.key === 'Escape') void flushAndClose();
 	}
 
-	async function saveNote(): Promise<void> {
+	/** Flush a pending day-note autosave, then close the panel. */
+	async function flushAndClose(): Promise<void> {
+		if (noteTimer) {
+			clearTimeout(noteTimer);
+			noteTimer = null;
+		}
+		if (dirty) await saveNote(true);
+		closeDay();
+	}
+
+	function scheduleNoteAutosave(): void {
+		if (noteTimer) clearTimeout(noteTimer);
+		noteTimer = setTimeout(() => {
+			noteTimer = null;
+			void saveNote(true);
+		}, NOTE_AUTOSAVE_MS);
+	}
+
+	async function saveNote(quiet = false): Promise<void> {
 		if (!day || saving) return;
+		if (preMarket === (note?.pre_market ?? '') && eod === (note?.eod_review ?? '')) return;
+		const key = day;
 		saving = true;
+		noteState = 'saving';
+		noteHint = '';
 		try {
-			note = await api.putNote(day, { pre_market: preMarket || null, eod_review: eod || null });
+			note = await api.putNote(key, { pre_market: preMarket || null, eod_review: eod || null });
 			bumpNotes();
-			toasts.push('success', 'Day note saved.');
+			noteState = 'saved';
+			noteHint = `Saved ${noteStamp()}`;
+			if (!quiet) toasts.push('success', 'Day note saved.');
 		} catch (err) {
+			noteState = 'error';
+			noteHint = err instanceof Error ? err.message : 'Save failed';
 			toasts.push('error', `Save failed — ${err instanceof Error ? err.message : 'unknown error'}`);
 		} finally {
 			saving = false;
@@ -105,8 +152,15 @@
 	}
 
 	function openTradeFromDay(id: number): void {
-		closeDay();
-		openTrade(id);
+		void (async () => {
+			if (noteTimer) {
+				clearTimeout(noteTimer);
+				noteTimer = null;
+			}
+			if (dirty) await saveNote(true);
+			closeDay();
+			openTrade(id);
+		})();
 	}
 </script>
 
@@ -135,7 +189,7 @@
 					</span>
 				{/if}
 				<span class="ml-auto flex shrink-0 items-center gap-2">
-					<button type="button" onclick={closeDay} aria-label="Close" class="btn-icon h-8 w-8">
+					<button type="button" onclick={() => void flushAndClose()} aria-label="Close" class="btn-icon h-8 w-8">
 						<X size={17} strokeWidth={1.8} aria-hidden="true" />
 					</button>
 				</span>
@@ -208,7 +262,7 @@
 				{/if}
 
 				<div class="mt-6 border-t border-line pt-4">
-					<p class="eyebrow mb-2">Day note</p>
+					<p class="eyebrow mb-2">Day note · <span class="normal-case text-mut">autosaves</span></p>
 					{#if loading}
 						<div class="skeleton h-20 rounded-xl" aria-hidden="true"></div>
 						<div class="skeleton mt-2 h-20 rounded-xl" aria-hidden="true"></div>
@@ -216,14 +270,14 @@
 						<div class="grid grid-cols-1 gap-3">
 							<label class="flex flex-col gap-1.5">
 								<span class="eyebrow">Pre-market</span>
-								<textarea bind:value={preMarket} rows={3} placeholder="Plan before the session…" class="field resize-y text-[13px]"></textarea>
+								<textarea bind:value={preMarket} oninput={scheduleNoteAutosave} rows={3} placeholder="Plan before the session…" class="field resize-y text-[13px]"></textarea>
 							</label>
 							<label class="flex flex-col gap-1.5">
 								<span class="eyebrow">EOD review</span>
-								<textarea bind:value={eod} rows={4} placeholder="How did the day go? (also settable via the bot's EOD reply)" class="field resize-y text-[13px]"></textarea>
+								<textarea bind:value={eod} oninput={scheduleNoteAutosave} rows={4} placeholder="How did the day go? (also settable via the bot's EOD reply)" class="field resize-y text-[13px]"></textarea>
 							</label>
 						</div>
-						<div class="mt-2 flex items-center justify-between">
+						<div class="mt-2 flex items-center justify-between gap-2">
 							{#if note}
 								<button
 									type="button"
@@ -236,16 +290,25 @@
 									{confirmDelete ? 'Confirm delete?' : 'Delete note'}
 								</button>
 							{:else}
-								<span></span>
+								<span class="num text-[11px] {noteState === 'error' ? 'text-loss' : 'text-dim'}" aria-live="polite">
+									{#if saving || noteState === 'saving'}Saving…{:else if noteState === 'saved'}{noteHint || 'Saved'}{:else if noteState === 'error'}Autosave failed — {noteHint}{:else if dirty}Unsaved changes…{/if}
+								</span>
 							{/if}
-							<button
-								type="button"
-								onclick={() => void saveNote()}
-								disabled={!dirty || saving}
-								class="btn btn-primary h-8 px-3.5 text-[13px]"
-							>
-								{saving ? 'Saving…' : 'Save note'}
-							</button>
+							<span class="flex shrink-0 items-center gap-2">
+								{#if note}
+									<span class="num text-[11px] {noteState === 'error' ? 'text-loss' : 'text-dim'}" aria-live="polite">
+										{#if saving || noteState === 'saving'}Saving…{:else if noteState === 'saved'}{noteHint || 'Saved'}{:else if noteState === 'error'}Autosave failed — {noteHint}{:else if dirty}Unsaved changes…{/if}
+									</span>
+								{/if}
+								<button
+									type="button"
+									onclick={() => void saveNote(false)}
+									disabled={!dirty || saving}
+									class="btn btn-ghost h-8 px-3.5 text-[13px]"
+								>
+									{saving ? 'Saving…' : 'Save now'}
+								</button>
+							</span>
 						</div>
 					{/if}
 				</div>

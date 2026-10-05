@@ -406,6 +406,7 @@ def patch_trade(trade_id: int, patch: TradePatch, session: Session = Depends(get
     trade = session.get(Trade, trade_id)
     if trade is None:
         raise HTTPException(status_code=404, detail="Trade not found")
+    orig_status = (trade.status or "OPEN").upper()
     data = patch.model_dump(exclude_unset=True, exclude={"tags"})
     data.pop("ticket", None)
     if "status" in data and data["status"]:
@@ -467,6 +468,39 @@ def patch_trade(trade_id: int, patch: TradePatch, session: Session = Depends(get
         if trade.gross_pnl is not None:
             trade.net_pnl = trade.gross_pnl - (trade.fees or 0.0)
             session.add(trade)
+    # Auto-close: saving exit details on an OPEN trade closes it — no extra
+    # manual close step. Triggers when exit_price is present (explicitly in
+    # this patch or already stored) and status is still OPEN.
+    if orig_status == "OPEN" and (trade.status or "OPEN").upper() == "OPEN" and trade.exit_price is not None:
+        trade.status = "CLOSED"
+        if not (trade.exit_time or trade.timestamp_close):
+            now_naive = as_naive_utc(_now())
+            assert now_naive is not None
+            trade.exit_time = now_naive
+            trade.timestamp_close = now_naive
+        elif trade.exit_time and not trade.timestamp_close:
+            trade.timestamp_close = trade.exit_time
+        elif trade.timestamp_close and not trade.exit_time:
+            trade.exit_time = trade.timestamp_close
+        entry = trade.entry_time or trade.timestamp_open
+        trade.duration_minutes = duration_minutes(entry, trade.exit_time or trade.timestamp_close)
+        if not trade.session:
+            trade.session = normalize_session(None, entry)
+        # Ensure gross/net exist on the auto-close path (e.g. only exit_time
+        # was added while exit_price was already stored).
+        if trade.gross_pnl is None:
+            estimated = estimate_gross_pnl(
+                trade.direction, trade.symbol, trade.size, trade.entry_price, trade.exit_price
+            )
+            if estimated is not None:
+                trade.gross_pnl = estimated
+        if trade.net_pnl is None and trade.gross_pnl is not None:
+            trade.net_pnl = trade.gross_pnl - (trade.fees or 0.0)
+        if trade.r_multiple is None:
+            trade.r_multiple = compute_r_multiple(
+                trade.direction, trade.entry_price, trade.initial_sl, trade.exit_price
+            )
+        session.add(trade)
     trade.updated_at = _now()
     session.add(trade)
     session.commit()
