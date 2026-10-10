@@ -526,6 +526,18 @@ async def edit_text(
 ACCOUNTS_PAGE_SIZE = 5
 
 
+STATUS_EMOJI = {"active": "🟢", "passed": "✅", "breach": "🚨", "archived": "🗄️"}
+
+
+def _bar(pct: Optional[float], width: int = 10) -> str:
+    """Target progress bar: ▓▓▓░░░░░░░ 32%. Empty when pct is None."""
+    if pct is None:
+        return ""
+    clamped = max(0.0, min(100.0, pct))
+    filled = 0 if clamped <= 0 else max(1, int(round(clamped / (100 / width))))
+    return "▓" * filled + "░" * (width - filled) + f" {clamped:.1f}%"
+
+
 def _fmt_left(v) -> str:
     """Compact number for TG lines: 500.0 → 500, else 2dp."""
     if v is None:
@@ -551,20 +563,19 @@ def accounts_page_content(session: Session, page: int = 0) -> tuple[str, Optiona
     page = max(0, min(page, pages - 1))
     chunk = accs[page * ACCOUNTS_PAGE_SIZE : (page + 1) * ACCOUNTS_PAGE_SIZE]
 
-    lines = [f"🏦 <b>Accounts ({len(accs)})</b>" + (f" — page {page + 1}/{pages}" if pages > 1 else "")]
+    lines = [f"🏦 <b>Prop Accounts</b> · {len(accs)}" + (f"  <i>({page + 1}/{pages})</i>" if pages > 1 else "")]
     for a in chunk:
         p = _prop_numbers(a, session)
-        flag = " 🚨" if p["breached"] else ""
-        daily = _fmt_left(p["daily_left"])
+        dot = STATUS_EMOJI.get(p["status"], "⚪")
         tgt = f"{p['target_pct']:.1f}%" if p["target_pct"] is not None else "—"
         lines.append(
-            f"• @{esc(a.alias)} · {esc(a.firm or '—')} {esc(a.phase)}{flag}\n"
-            f"  Bal {p['balance']:,.2f} ({p['total_net']:+,.2f}) · "
-            f"Daily left {daily} · Tgt {tgt}"
+            f"{dot} <b>@{esc(a.alias)}</b>  <i>{esc(a.firm or '—')} · {esc(a.phase)}</i>\n"
+            f"   💰 {p['balance']:,.2f} <i>({p['total_net']:+,.2f})</i>  ·  "
+            f"📉 Daily left <b>{_fmt_left(p['daily_left'])}</b>  ·  🎯 {tgt}"
         )
     unassigned = len(session.exec(select(Trade).where(Trade.account_id.is_(None))).all())
     if unassigned:
-        lines.append(f"\n📦 Unassigned: {unassigned} (Trades → filter → Move)")
+        lines.append(f"\n📦 <i>{unassigned} unassigned — move them via Trades → filter → Move</i>")
 
     rows = [[{"text": f"@{a.alias}", "callback_data": f"acc:{a.id}"}] for a in chunk]
     if pages > 1:
@@ -589,22 +600,23 @@ def account_detail_content(session: Session, account_id: int) -> tuple[str, Opti
     p = _prop_numbers(acc, session)
     open_n = p.get("open_trades", 0)
     total_n = p.get("total_trades", 0)
-    state = "🚨 BREACH" if p["breached"] else esc(p["status"])
+    state = "🚨 <b>BREACH</b>" if p["breached"] else f"{STATUS_EMOJI.get(p['status'], '⚪')} {esc(p['status']).upper()}"
     tgt_line = (
-        f"Target {p['profit_target']:,.2f} ({p['profit_target_pct']}%) → "
-        f"{p['target_pct'] if p['target_pct'] is not None else '—'}%"
+        f"🎯 Target  <b>{_bar(p['target_pct'])}</b>  <i>goal {p['profit_target']:,.2f} ({p['profit_target_pct']}%)</i>"
         if p["profit_target_pct"] is not None
-        else "Target —"
+        else "🎯 Target  <i>—</i>"
     )
     text = (
-        f"@{esc(p['alias'])} · {esc(acc.firm or '—')} {esc(acc.phase)} — {state}\n"
-        f"Balance {p['balance']:,.2f} ({p['total_net']:+,.2f} total)\n"
-        f"Daily {p['daily_pnl']:+,.2f} today · left {_fmt_left(p['daily_left'])} "
-        f"({p['daily_loss_pct']}% {esc(p['daily_basis'])})\n"
-        f"Max {esc(p['max_mode'])} {p['max_loss_pct']}% · floor "
-        f"{p['max_floor']:,.2f} · left {_fmt_left(p['max_left'])}\n"
+        f"🏦 <b>@{esc(p['alias'])}</b>\n"
+        f"<i>{esc(acc.firm or '—')} · {esc(acc.phase)}</i> — {state}\n"
+        f"━━━━━━━━━━━━\n"
+        f"💰 Balance  <b>{p['balance']:,.2f}</b> <i>({p['total_net']:+,.2f} total)</i>\n"
+        f"📉 Daily  {p['daily_pnl']:+,.2f} today · left <b>{_fmt_left(p['daily_left'])}</b> "
+        f"<i>({p['daily_loss_pct']}% {esc(p['daily_basis'])})</i>\n"
+        f"🛡️ Max  {esc(p['max_mode'])} {p['max_loss_pct']}% · floor "
+        f"{p['max_floor']:,.2f} · left <b>{_fmt_left(p['max_left'])}</b>\n"
         f"{tgt_line}\n"
-        f"Trades open {open_n} · total {total_n}"
+        f"📊 Trades  {open_n} open · {total_n} total"
     )
     return text, {"inline_keyboard": [[{"text": "◀ All accounts", "callback_data": "accs:0"}]]}
 
