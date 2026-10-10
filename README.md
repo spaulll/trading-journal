@@ -66,7 +66,7 @@ existing `tg-logger.service`. See `AGENTS.md` for service commands.
 
 - Timestamps are **naive UTC** (`app/services/timeutils.py` is the single
   source: `as_naive_utc`, `trade_close_day`).
-- Breakeven is `|net_pnl| <= 0.01` — applied in `summary`, `kpi-dashboard`,
+- Breakeven is `|net_pnl| <= 5.0` — applied in `summary`, `kpi-dashboard`,
   `long-short-stats`, monthly calendar, streaks, tag/radar stats.
 - Long ↔ `buy`, Short ↔ `sell` (`long`/`short` aliases accepted, unknown
   directions ignored).

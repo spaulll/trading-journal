@@ -2,7 +2,7 @@
 	import { ChevronDown, Search } from 'lucide-svelte';
 	import { slide } from 'svelte/transition';
 	import { openTrade, requestClose, trades } from '$lib/stores/trades';
-	import { fmtDateTime, fmtMoney, fmtR, pnlTone, toneBg, toneText } from '$lib/utils/format';
+	import { fmtDateTime, fmtMoney, fmtR, pnlTone, rTone, toneBg, toneText } from '$lib/utils/format';
 	import SegControl from '$lib/components/SegControl.svelte';
 	import type { TradeDto } from '$lib/api';
 
@@ -213,7 +213,7 @@
 									{fmtMoney(t.net_pnl)}
 								</span>
 							</span>
-							<span role="cell" class="px-3 py-2.5 text-right font-mono whitespace-nowrap text-[12.5px] tabular-nums {toneText[pnlTone(t.r_multiple)]}">
+							<span role="cell" class="px-3 py-2.5 text-right font-mono whitespace-nowrap text-[12.5px] tabular-nums {toneText[rTone(t.r_multiple)]}">
 								{fmtR(t.r_multiple)}
 							</span>
 							<span role="cell" class="min-w-0 px-3 py-2.5">
@@ -307,7 +307,7 @@
 					</div>
 					<div class="mt-1.5 flex items-center justify-between pl-1.5 text-xs">
 						<span class="text-dim">{fmtDateTime(t.timestamp_open)}</span>
-						<span class="font-mono tabular-nums {toneText[pnlTone(t.r_multiple)]}">{fmtR(t.r_multiple)}</span>
+						<span class="font-mono tabular-nums {toneText[rTone(t.r_multiple)]}">{fmtR(t.r_multiple)}</span>
 					</div>
 					{#if t.tags.length > 0}
 						<span class="mt-2 flex flex-wrap gap-1 pl-1.5">

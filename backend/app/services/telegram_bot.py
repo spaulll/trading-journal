@@ -637,8 +637,8 @@ async def do_past(chat_id: int, session: Session, args: dict) -> None:
     await send_text(chat_id, f"📚 Backfilled {args['direction'].upper()} {args['symbol']} 🎫 {ticket}.{info}", keyboard)
 
 
-# Breakeven tolerance mirrors the analytics API: |net| <= 1 cent is BE.
-BE_TOLERANCE = 0.01
+# Breakeven tolerance mirrors the analytics API: |net| <= $5 is BE.
+BE_TOLERANCE = 5.0
 
 
 def _is_win(net: float) -> bool:

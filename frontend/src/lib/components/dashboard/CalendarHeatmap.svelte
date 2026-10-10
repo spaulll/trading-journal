@@ -8,7 +8,7 @@
 	const byDate = $derived(new Map(days.map((d) => [d.date, d])));
 	const maxAbs = $derived(Math.max(1, ...days.map((d) => Math.abs(d.net_pnl))));
 
-	const BE_TOL = 0.01;
+	const BE_TOL = 5.0;
 
 	const MONTHS_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 	const WEEKDAYS = ['M', 'T', 'W', 'T', 'F', 'S', 'S']; // Monday-first, matches backend buckets

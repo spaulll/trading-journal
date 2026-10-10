@@ -14,7 +14,7 @@
 		upsertTrade
 	} from '$lib/stores/trades';
 	import { toasts } from '$lib/stores/toast';
-	import { fmtDateTime, fmtMoney, fmtNum, fmtR, mt5WallToUTC, parseStoredUTC, pnlTone, previewIST, previewMT5, toneText, utcToMT5Wall } from '$lib/utils/format';
+	import { fmtDateTime, fmtMoney, fmtNum, fmtR, mt5WallToUTC, parseStoredUTC, pnlTone, previewIST, previewMT5, rTone, toneText, utcToMT5Wall } from '$lib/utils/format';
 	import { brokerOffset } from '$lib/stores/broker';
 	import { DRAWER, FADE } from '$lib/utils/transitions';
 
@@ -601,7 +601,7 @@
 					</div>
 					<div>
 						<dt class="eyebrow">R</dt>
-						<dd class="num mt-1 text-sm font-semibold {toneText[pnlTone(trade.r_multiple)]}">
+						<dd class="num mt-1 text-sm font-semibold {toneText[rTone(trade.r_multiple)]}">
 							{fmtR(trade.r_multiple)}
 						</dd>
 					</div>

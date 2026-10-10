@@ -17,8 +17,8 @@
 <section class="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4" aria-label="Session performance">
 	{#each META as m, i (m.key)}
 		{@const s = kpi.sessions[m.key] ?? { net_pnl: 0, trade_count: 0, win_rate: 0, return_pct: 0 }}
-		{@const up = s.net_pnl > 0}
-		{@const flat = s.net_pnl === 0}
+		{@const up = s.net_pnl > 5}
+		{@const flat = Math.abs(s.net_pnl) <= 5}
 		<div
 			class="card card-hover relative overflow-hidden p-5"
 			style="animation: rise 0.6s cubic-bezier(0.22, 1, 0.36, 1) {i * 60}ms backwards;"

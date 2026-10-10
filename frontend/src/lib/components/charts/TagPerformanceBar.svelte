@@ -17,6 +17,7 @@
 	function render(list: TagPerf[]): void {
 		if (!canvas) return;
 		const p = palette();
+		const BE_TOL = 5.0;
 		Chart.defaults.color = p.axis;
 		Chart.defaults.borderColor = p.grid;
 		Chart.defaults.font.family = 'Geist, ui-sans-serif, sans-serif';
@@ -28,7 +29,9 @@
 				datasets: [
 					{
 						data: list.map((t) => t.net_pnl),
-						backgroundColor: list.map((t) => (t.net_pnl >= 0 ? p.win : p.loss)),
+						backgroundColor: list.map((t) =>
+							t.net_pnl > BE_TOL ? p.win : t.net_pnl < -BE_TOL ? p.loss : p.flat
+						),
 						borderRadius: 6,
 						borderSkipped: false
 					}

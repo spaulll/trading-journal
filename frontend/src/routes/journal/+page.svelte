@@ -12,7 +12,7 @@
 	import { notesVersion, openDay } from '$lib/stores/journal';
 	import { dayKeyOf, fmtDate, fmtMoney, pnlTone, toneText } from '$lib/utils/format';
 
-	const BE_TOL = 0.01;
+	const BE_TOL = 5.0;
 
 	let notes = $state<DailyNoteDto[]>([]);
 	let loading = $state(true);

@@ -2,7 +2,7 @@
 	import { onDestroy, onMount } from 'svelte';
 	import { Chart, registerables } from 'chart.js';
 	import type { KpiDashboard } from '$lib/api';
-	import { fmtMoney, fmtR, pnlTone, toneText } from '$lib/utils/format';
+	import { fmtMoney, fmtR, pnlTone, rTone, toneText } from '$lib/utils/format';
 	import { countup } from '$lib/utils/motion';
 	import { palette } from '$lib/utils/palette';
 	import { theme } from '$lib/stores/theme';
@@ -25,7 +25,6 @@
 			.join(' ');
 	});
 	const sparkId = 'kpi-spark-grad';
-	const up = $derived(kpi.net_pnl >= 0);
 
 	const deltaTxt = $derived(
 		kpi.net_pnl_change_pct === null
@@ -99,7 +98,7 @@
 			value: fmtR(kpi.avg_realized_rr.current),
 			raw: kpi.avg_realized_rr.current,
 			format: (v: number) => fmtR(v),
-			tone: toneText[pnlTone(kpi.avg_realized_rr.current)]
+			tone: toneText[rTone(kpi.avg_realized_rr.current)]
 		},
 		{
 			label: 'Win rate',
@@ -125,7 +124,7 @@
 	<!-- Hero: net P&L -->
 	<div class="card rise relative overflow-hidden p-5 sm:col-span-2 xl:col-span-2">
 		<span
-			class="pointer-events-none absolute inset-0 {up ? 'kpi-glow-win' : 'kpi-glow-loss'}"
+			class="pointer-events-none absolute inset-0 {tone === 'win' ? 'kpi-glow-win' : tone === 'loss' ? 'kpi-glow-loss' : ''}"
 			aria-hidden="true"
 		></span>
 		<div class="relative flex flex-wrap items-start justify-between gap-x-3 gap-y-2">
@@ -158,15 +157,15 @@
 			<svg viewBox="0 0 200 48" class="relative mt-3 h-14 w-full" aria-hidden="true" preserveAspectRatio="none">
 				<defs>
 					<linearGradient id={sparkId} x1="0" y1="0" x2="0" y2="1">
-						<stop offset="0%" stop-color={up ? 'rgb(var(--c-win))' : 'rgb(var(--c-loss))'} stop-opacity="0.38" />
-						<stop offset="100%" stop-color={up ? 'rgb(var(--c-win))' : 'rgb(var(--c-loss))'} stop-opacity="0" />
+						<stop offset="0%" stop-color={tone === 'win' ? 'rgb(var(--c-win))' : tone === 'loss' ? 'rgb(var(--c-loss))' : 'rgb(var(--c-flat))'} stop-opacity="0.38" />
+						<stop offset="100%" stop-color={tone === 'win' ? 'rgb(var(--c-win))' : tone === 'loss' ? 'rgb(var(--c-loss))' : 'rgb(var(--c-flat))'} stop-opacity="0" />
 					</linearGradient>
 				</defs>
 				<polygon points="0,48 {sparkPath} 200,48" fill="url(#{sparkId})" />
 				<polyline
 					points={sparkPath}
 					fill="none"
-					stroke={up ? 'rgb(var(--c-win))' : 'rgb(var(--c-loss))'}
+					stroke={tone === 'win' ? 'rgb(var(--c-win))' : tone === 'loss' ? 'rgb(var(--c-loss))' : 'rgb(var(--c-flat))'}
 					stroke-width="2"
 					pathLength="1"
 					stroke-linejoin="round"

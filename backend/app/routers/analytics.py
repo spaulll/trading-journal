@@ -67,10 +67,11 @@ def _session_of(t: Trade) -> str:
 
 
 # Breakeven rule (shared everywhere): |net_pnl| <= BE_TOLERANCE counts as
-# breakeven, not a win/loss. Dust-level residuals (fees rounding, FX
-# conversion) must not flip the outcome donut, monthly calendar, or
-# long/short stats. Tolerance is 1 cent — exact-zero and sub-cent nets are BE.
-BE_TOLERANCE = 0.01
+# breakeven, not a win/loss. Small wins/losses within the tolerance band
+# (commissions/slippage dust, scratch exits) must not flip the outcome
+# donut, monthly calendar, or long/short stats. Tolerance is $5 —
+# any trade netting 0–$5 profit or 0–$5 loss is BE.
+BE_TOLERANCE = 5.0
 
 
 def _is_win(net: float) -> bool:

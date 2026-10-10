@@ -2,7 +2,7 @@
 	import { Flag, X } from 'lucide-svelte';
 	import { fade, scale } from 'svelte/transition';
 	import { dismissLifecycle, lifecycleBusy, submitClose, trades } from '$lib/stores/trades';
-	import { fmtMoney, fmtR, mt5WallToUTC, pnlTone, previewIST, previewMT5, toneText } from '$lib/utils/format';
+	import { fmtMoney, fmtR, mt5WallToUTC, pnlTone, previewIST, previewMT5, rTone, toneText } from '$lib/utils/format';
 	import { brokerOffset } from '$lib/stores/broker';
 	import { FADE, MODAL } from '$lib/utils/transitions';
 
@@ -192,7 +192,7 @@
 						</span>
 						<span>
 							<span class="text-dim">R</span>
-							<span class="ml-1.5 font-bold {toneText[pnlTone(rPreview)]}">
+							<span class="ml-1.5 font-bold {toneText[rTone(rPreview)]}">
 								{rPreview === null ? '—' : fmtR(rPreview)}
 							</span>
 						</span>

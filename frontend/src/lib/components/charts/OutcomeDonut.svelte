@@ -12,7 +12,7 @@
 	let canvas: HTMLCanvasElement | null = null;
 	let chart: Chart | null = null;
 
-	// BE matches backend BE_TOLERANCE (|net| <= 0.01). The BE slice + legend
+	// BE matches backend BE_TOLERANCE (|net| <= 5). The BE slice + legend
 	// always render — a zero BE is a flat 0° arc, hidden only when total === 0.
 	const total = $derived(summary.wins + summary.losses + summary.breakeven);
 

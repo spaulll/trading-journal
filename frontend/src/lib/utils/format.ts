@@ -144,8 +144,18 @@ export function fmtDuration(min: number | null | undefined): string {
 	return m ? `${h}h ${m}m` : `${h}h`;
 }
 
-/** Win = jade, loss = coral, breakeven/missing = neutral (theme-aware tokens). */
+/** Shared breakeven tolerance ($): |net_pnl| <= BE_TOL is breakeven. Mirrors backend BE_TOLERANCE. */
+export const BE_TOL = 5.0;
+
+/** Win = jade, loss = coral, breakeven/missing = neutral (theme-aware tokens).
+ * Money P&L uses the $5 BE band; R multiples use plain sign (see rTone). */
 export function pnlTone(v: number | null | undefined): 'win' | 'loss' | 'be' {
+	if (v === null || v === undefined || Math.abs(v) <= BE_TOL) return 'be';
+	return v > 0 ? 'win' : 'loss';
+}
+
+/** Sign-based tone for R multiples (no dollar BE band). */
+export function rTone(v: number | null | undefined): 'win' | 'loss' | 'be' {
 	if (v === null || v === undefined || v === 0) return 'be';
 	return v > 0 ? 'win' : 'loss';
 }

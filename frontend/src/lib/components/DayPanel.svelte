@@ -6,10 +6,10 @@
 	import { bumpNotes, closeDay, selectedDay } from '$lib/stores/journal';
 	import { openTrade, openTrades, trades } from '$lib/stores/trades';
 	import { toasts } from '$lib/stores/toast';
-	import { dayKeyOf, fmtDate, fmtMoney, fmtR, pnlTone, toneText } from '$lib/utils/format';
+	import { dayKeyOf, fmtDate, fmtMoney, fmtR, pnlTone, rTone, toneText } from '$lib/utils/format';
 	import { DRAWER, FADE } from '$lib/utils/transitions';
 
-	const BE_TOL = 0.01;
+	const BE_TOL = 5.0;
 
 	const day = $derived($selectedDay);
 
@@ -203,7 +203,7 @@
 					</div>
 					<div>
 						<dt class="eyebrow">R</dt>
-						<dd class="num mt-1 text-sm font-semibold {toneText[pnlTone(rTotal)]}">{fmtR(rTotal)}</dd>
+						<dd class="num mt-1 text-sm font-semibold {toneText[rTone(rTotal)]}">{fmtR(rTotal)}</dd>
 					</div>
 					<div>
 						<dt class="eyebrow">W·L·BE</dt>

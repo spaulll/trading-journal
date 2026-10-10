@@ -29,10 +29,11 @@
 	const closed = $derived($trades.filter((t) => t.status !== 'OPEN'));
 
 	/** Client-side roll-up over the FULL trade set (loadTrades fetches all pages).
-	 * Total count comes from the API `total`, not items.length. */
+	 * Total count comes from the API `total`, not items.length.
+	 * BE rule mirrors backend: |net_pnl| <= $5 is breakeven. */
 	const stats = $derived.by(() => {
-		const wins = closed.filter((t) => (t.net_pnl ?? 0) > 0).length;
-		const losses = closed.filter((t) => (t.net_pnl ?? 0) < 0).length;
+		const wins = closed.filter((t) => (t.net_pnl ?? 0) > 5).length;
+		const losses = closed.filter((t) => (t.net_pnl ?? 0) < -5).length;
 		const net = closed.reduce((s, t) => s + (t.net_pnl ?? 0), 0);
 		const rs = closed
 			.map((t) => t.r_multiple)
