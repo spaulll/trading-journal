@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onDestroy } from 'svelte';
+	import { onDestroy, onMount } from 'svelte';
 	import { fade, fly } from 'svelte/transition';
 	import { Trash2, X } from 'lucide-svelte';
 	import { api, type DailyNoteDto } from '$lib/api';
@@ -37,6 +37,61 @@
 	let noteHint = $state('');
 	let noteTimer: ReturnType<typeof setTimeout> | null = $state(null);
 	const NOTE_AUTOSAVE_MS = 900;
+
+	let resizing = $state(false);
+	// Custom drawer width in px (null = default `max-w-md`, which is also the minimum).
+	let drawerW = $state<number | null>(null);
+
+	const DRAWER_MIN_W = 448; // max-w-md
+	const DRAWER_MAX_W = 960;
+	const DRAWER_WIDTH_KEY = 'day-drawer-width';
+
+	onMount(() => {
+		try {
+			const v = Number(localStorage.getItem(DRAWER_WIDTH_KEY));
+			if (Number.isFinite(v) && v > DRAWER_MIN_W) {
+				drawerW = Math.min(Math.round(v), window.innerWidth);
+			}
+		} catch {
+			// Private mode etc. — fall back to the default width.
+		}
+	});
+
+	function resetDrawerWidth(): void {
+		drawerW = null;
+		try {
+			localStorage.removeItem(DRAWER_WIDTH_KEY);
+		} catch {
+			// ignore
+		}
+	}
+
+	function onGripDown(e: PointerEvent): void {
+		(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+		resizing = true;
+		e.preventDefault();
+	}
+
+	function onGripMove(e: PointerEvent): void {
+		if (!resizing) return;
+		const vw = window.innerWidth;
+		const min = Math.min(DRAWER_MIN_W, vw);
+		const max = Math.min(DRAWER_MAX_W, vw);
+		const w = Math.round(Math.min(Math.max(vw - e.clientX, min), max));
+		// Dragging back to the minimum snaps to the default width.
+		drawerW = w <= min + 4 ? null : w;
+	}
+
+	function onGripUp(): void {
+		if (!resizing) return;
+		resizing = false;
+		try {
+			if (drawerW === null) localStorage.removeItem(DRAWER_WIDTH_KEY);
+			else localStorage.setItem(DRAWER_WIDTH_KEY, String(drawerW));
+		} catch {
+			// ignore
+		}
+	}
 
 	function noteStamp(): string {
 		try {
@@ -179,8 +234,32 @@
 	>
 		<div
 			transition:fly={DRAWER}
-			class="absolute inset-y-0 right-0 flex w-full max-w-md flex-col border-l border-line bg-panel shadow-pop"
+			style:width={drawerW === null ? undefined : `${drawerW}px`}
+			style:max-width={drawerW === null ? undefined : '100dvw'}
+			class="group absolute inset-y-0 right-0 flex w-full max-w-md flex-col border-l border-line bg-panel shadow-pop {resizing
+				? 'select-none'
+				: ''}"
 		>
+			<!-- Resize grip (desktop only) — double-click resets to default -->
+			<div
+				role="separator"
+				aria-orientation="vertical"
+				aria-label="Resize panel"
+				title="Drag to resize · double-click to reset"
+				onpointerdown={onGripDown}
+				onpointermove={onGripMove}
+				onpointerup={onGripUp}
+				onpointercancel={onGripUp}
+				ondblclick={resetDrawerWidth}
+				class="absolute inset-y-0 -left-1.5 z-10 hidden w-3 cursor-ew-resize touch-none sm:block"
+			>
+				<span
+					class="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 transition-opacity duration-150 {resizing
+						? 'bg-accent opacity-100'
+						: 'bg-accent opacity-0 group-hover:opacity-60'}"
+					aria-hidden="true"
+				></span>
+			</div>
 			<div class="flex shrink-0 items-center gap-2 border-b border-line px-5 py-4">
 				<span class="num text-lg font-semibold text-fg">{fmtDate(day)}</span>
 				{#if note?.discipline_breach}
