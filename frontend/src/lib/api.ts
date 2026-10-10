@@ -99,6 +99,8 @@ export interface PropStatusDto {
 	target_pct: number | null;
 	breached: boolean;
 	status: string;
+	open_trades: number;
+	total_trades: number;
 }
 
 export interface PagedTrades {

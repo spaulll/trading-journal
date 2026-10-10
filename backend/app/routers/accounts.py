@@ -249,6 +249,12 @@ def _prop_numbers(acc: Account, session: Session) -> dict:
         ((acc.daily_loss_pct or 0.0) and daily_pnl <= -daily_loss_usd)
         or (max_left is not None and max_left <= 0)
     )
+    open_trades = len(
+        session.exec(
+            select(Trade).where(Trade.account_id == acc.id, Trade.status == "OPEN")
+        ).all()
+    )
+    total_trades = len(session.exec(select(Trade).where(Trade.account_id == acc.id)).all())
     return {
         "account_id": acc.id,
         "alias": acc.alias,
@@ -269,6 +275,8 @@ def _prop_numbers(acc: Account, session: Session) -> dict:
         "target_pct": target_pct,
         "breached": breached,
         "status": "breach" if breached else acc.status,
+        "open_trades": open_trades,
+        "total_trades": total_trades,
     }
 
 

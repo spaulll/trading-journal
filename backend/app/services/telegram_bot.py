@@ -503,6 +503,121 @@ async def _answer_callback(callback_id: str, text: str = "") -> None:
         await client.post("/answerCallbackQuery", json={"callback_query_id": callback_id, "text": text})
 
 
+async def edit_text(
+    chat_id: int,
+    message_id: int,
+    text: str,
+    reply_markup: Optional[dict] = None,
+    parse_mode: Optional[str] = "HTML",
+) -> None:
+    """Edit a previously sent message (account pagination/detail views)."""
+    payload: dict[str, Any] = {"chat_id": chat_id, "message_id": message_id, "text": text}
+    if reply_markup:
+        payload["reply_markup"] = reply_markup
+    if parse_mode:
+        payload["parse_mode"] = parse_mode
+    async with _api() as client:
+        resp = await client.post("/editMessageText", json=payload)
+        resp.raise_for_status()
+
+
+# --- Accounts browser (/accounts, paginated inline navigation) ---
+
+ACCOUNTS_PAGE_SIZE = 5
+
+
+def _fmt_left(v) -> str:
+    """Compact number for TG lines: 500.0 → 500, else 2dp."""
+    if v is None:
+        return "—"
+    return f"{v:,.0f}" if float(v) == int(float(v)) else f"{v:,.2f}"
+
+
+def accounts_page_content(session: Session, page: int = 0) -> tuple[str, Optional[dict]] | None:
+    """Render one list page. Returns None when no accounts exist."""
+    from sqlmodel import select
+
+    from app.models import Account, Trade
+    from app.routers.accounts import _prop_numbers
+
+    accs = list(
+        session.exec(
+            select(Account).where(Account.status != "archived").order_by(Account.alias.asc())
+        ).all()
+    )
+    if not accs:
+        return None
+    pages = max(1, (len(accs) + ACCOUNTS_PAGE_SIZE - 1) // ACCOUNTS_PAGE_SIZE)
+    page = max(0, min(page, pages - 1))
+    chunk = accs[page * ACCOUNTS_PAGE_SIZE : (page + 1) * ACCOUNTS_PAGE_SIZE]
+
+    lines = [f"🏦 <b>Accounts ({len(accs)})</b>" + (f" — page {page + 1}/{pages}" if pages > 1 else "")]
+    for a in chunk:
+        p = _prop_numbers(a, session)
+        flag = " 🚨" if p["breached"] else ""
+        daily = _fmt_left(p["daily_left"])
+        tgt = f"{p['target_pct']:.1f}%" if p["target_pct"] is not None else "—"
+        lines.append(
+            f"• @{esc(a.alias)} · {esc(a.firm or '—')} {esc(a.phase)}{flag}\n"
+            f"  Bal {p['balance']:,.2f} ({p['total_net']:+,.2f}) · "
+            f"Daily left {daily} · Tgt {tgt}"
+        )
+    unassigned = len(session.exec(select(Trade).where(Trade.account_id.is_(None))).all())
+    if unassigned:
+        lines.append(f"\n📦 Unassigned: {unassigned} (Trades → filter → Move)")
+
+    rows = [[{"text": f"@{a.alias}", "callback_data": f"acc:{a.id}"}] for a in chunk]
+    if pages > 1:
+        nav = []
+        if page > 0:
+            nav.append({"text": "◀ Prev", "callback_data": f"accs:{page - 1}"})
+        if page < pages - 1:
+            nav.append({"text": "Next ▶", "callback_data": f"accs:{page + 1}"})
+        rows.append(nav)
+    return "\n".join(lines), {"inline_keyboard": rows}
+
+
+def account_detail_content(session: Session, account_id: int) -> tuple[str, Optional[dict]] | None:
+    """Full prop snapshot for one account. None when not found."""
+    from app.models import Account
+
+    acc = session.get(Account, account_id)
+    if acc is None:
+        return None
+    from app.routers.accounts import _prop_numbers
+
+    p = _prop_numbers(acc, session)
+    open_n = p.get("open_trades", 0)
+    total_n = p.get("total_trades", 0)
+    state = "🚨 BREACH" if p["breached"] else esc(p["status"])
+    tgt_line = (
+        f"Target {p['profit_target']:,.2f} ({p['profit_target_pct']}%) → "
+        f"{p['target_pct'] if p['target_pct'] is not None else '—'}%"
+        if p["profit_target_pct"] is not None
+        else "Target —"
+    )
+    text = (
+        f"@{esc(p['alias'])} · {esc(acc.firm or '—')} {esc(acc.phase)} — {state}\n"
+        f"Balance {p['balance']:,.2f} ({p['total_net']:+,.2f} total)\n"
+        f"Daily {p['daily_pnl']:+,.2f} today · left {_fmt_left(p['daily_left'])} "
+        f"({p['daily_loss_pct']}% {esc(p['daily_basis'])})\n"
+        f"Max {esc(p['max_mode'])} {p['max_loss_pct']}% · floor "
+        f"{p['max_floor']:,.2f} · left {_fmt_left(p['max_left'])}\n"
+        f"{tgt_line}\n"
+        f"Trades open {open_n} · total {total_n}"
+    )
+    return text, {"inline_keyboard": [[{"text": "◀ All accounts", "callback_data": "accs:0"}]]}
+
+
+async def handle_accounts(chat_id: int, session: Session) -> None:
+    rendered = accounts_page_content(session, 0)
+    if rendered is None:
+        await send_text(chat_id, "📭 No accounts yet — add one in the web UI under Accounts.")
+        return
+    text, keyboard = rendered
+    await send_text(chat_id, text, keyboard)
+
+
 # --- Command handlers ---
 
 
@@ -737,6 +852,7 @@ HELP = (
     "\n"
     "<b>COMMANDS:</b>\n"
     "/start — greeting · /help — this guide · /open — list open trades · "
+    "/accounts — prop accounts + status · "
     "/stats_daily — today's stats · /brokertime — set broker clock · /cancel — drop the pending question\n"
     "\n"
     "Buttons under each confirmation: Move to BE · Update TSL · Close Trade · "
@@ -912,6 +1028,9 @@ async def handle_text(chat_id: int, text: str, session: Session) -> None:
         return
     if cmd == "/open":
         await handle_open_command(chat_id, session)
+        return
+    if cmd == "/accounts":
+        await handle_accounts(chat_id, session)
         return
     if cmd == "/brokertime":
         await handle_broker_clock(chat_id, body, session)
@@ -1117,8 +1236,47 @@ async def handle_photo(chat_id: int, file_id: str, session: Session) -> None:
 # --- Callback queries (Task 2.2) ---
 
 
-async def handle_callback(chat_id: int, callback_id: str, data: str, session: Session) -> None:
+async def handle_callback(
+    chat_id: int, callback_id: str, data: str, session: Session, message_id: Optional[int] = None
+) -> None:
     from app.models import Trade
+
+    # Accounts browser: paginated list (accs:N) and per-account detail (acc:ID).
+    # Edits the same message; falls back to a new message if edit fails.
+    if data.startswith("accs:") or data.startswith("acc:"):
+        try:
+            kind, raw = data.split(":", 1)
+            num = int(raw)
+        except ValueError:
+            await _answer_callback(callback_id, "Bad button payload")
+            return
+        await _answer_callback(callback_id)
+        try:
+            rendered = (
+                accounts_page_content(session, num)
+                if kind == "accs"
+                else account_detail_content(session, num)
+            )
+            if rendered is None:
+                await send_text(
+                    chat_id,
+                    "📭 No accounts yet — add one in the web UI under Accounts."
+                    if kind == "accs"
+                    else "❌ Account not found.",
+                )
+                return
+            text, keyboard = rendered
+            if message_id is not None:
+                try:
+                    await edit_text(chat_id, message_id, text, keyboard)
+                    return
+                except Exception:
+                    log.warning("editMessageText failed, sending fresh message", exc_info=True)
+            await send_text(chat_id, text, keyboard)
+        except Exception:
+            log.exception("accounts browser failed")
+            await send_text(chat_id, "❌ Couldn't load accounts.")
+        return
 
     # Account-disambiguation picks carry the close/tsl intent in _pending.
     if data.startswith("closeid:") or data.startswith("tslid:"):
@@ -1235,8 +1393,9 @@ async def _process_update(update: dict) -> None:
             log.warning("ignoring callback from unauthorized user %s", from_id)
             return
         chat_id = cb["message"]["chat"]["id"]
+        message_id = (cb.get("message") or {}).get("message_id")
         with Session(engine) as session:
-            await handle_callback(chat_id, cb["id"], cb.get("data", ""), session)
+            await handle_callback(chat_id, cb["id"], cb.get("data", ""), session, message_id)
         return
 
     msg = update.get("message") or {}
@@ -1254,7 +1413,7 @@ async def _process_update(update: dict) -> None:
         if photos:
             await handle_photo(chat_id, photos[-1]["file_id"], session)
             # A captioned command still executes (photo already routed above).
-            if text.strip() and re.match(r"(?i)^\s*(buy|sell|tsl|close|past|/open|/cancel|/start|/help|/stats_daily|/stats)", text.strip()):
+            if text.strip() and re.match(r"(?i)^\s*(buy|sell|tsl|close|past|/open|/accounts|/cancel|/start|/help|/stats_daily|/stats)", text.strip()):
                 await handle_text(chat_id, text, session)
         elif text:
             # EOD review replies (Phase 3) are picked up there; ignore here
@@ -1278,6 +1437,7 @@ COMMAND_MENU = [
     {"command": "start", "description": "Greet and get started"},
     {"command": "help", "description": "Full trade entry syntax guide"},
     {"command": "open", "description": "List your open trades"},
+    {"command": "accounts", "description": "Prop accounts + status"},
     {"command": "stats_daily", "description": "Show today's trading stats"},
     {"command": "brokertime", "description": "Set broker clock offset (MT5 vs IST)"},
     {"command": "cancel", "description": "Drop the pending question"},
