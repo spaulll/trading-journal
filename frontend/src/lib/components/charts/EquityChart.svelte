@@ -28,6 +28,9 @@
 		const xs = points.map((p) => (storedMs(p.timestamp) ?? 0) / 1000);
 		const ys = points.map((p) => p.equity);
 		const w = wrap.clientWidth || 600;
+		// Line color follows the final total net (green/red), flat when |net| <= BE tol.
+		const endTone = pnlTone(ys.length ? ys[ys.length - 1] : null);
+		const line = endTone === 'win' ? pal.win : endTone === 'loss' ? pal.loss : pal.flat;
 		plot = new uPlot(
 			{
 				width: w,
@@ -59,12 +62,12 @@
 					{},
 					{
 						label: 'Equity',
-						stroke: pal.win,
+						stroke: line,
 						width: 2,
 						fill: (u, _si) => {
 							const g = u.ctx.createLinearGradient(0, 0, 0, u.bbox.height);
-							g.addColorStop(0, alpha(pal.win, 0.35));
-							g.addColorStop(1, alpha(pal.win, 0));
+							g.addColorStop(0, alpha(line, 0.35));
+							g.addColorStop(1, alpha(line, 0));
 							return g;
 						},
 						points: { show: false }
