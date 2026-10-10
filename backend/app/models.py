@@ -34,6 +34,7 @@ class Tag(SQLModel, table=True):
 class Trade(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     ticket: str = Field(unique=True, index=True)  # MT5 deal ID / bot ID
+    account_id: Optional[int] = Field(default=None, foreign_key="account.id", index=True)
     timestamp_open: Optional[datetime] = Field(default=None, index=True)
     timestamp_close: Optional[datetime] = None
     # Explicit lifecycle timestamps (backfill sets these directly; live flow
@@ -62,6 +63,7 @@ class Trade(SQLModel, table=True):
 
     tags: list[Tag] = Relationship(back_populates="trades", link_model=TradeTagLink)
     screenshots: list["Screenshot"] = Relationship(back_populates="trade")
+    account: Optional["Account"] = Relationship(back_populates="trades")
 
 
 class Screenshot(SQLModel, table=True):
@@ -88,6 +90,27 @@ class DailyNote(SQLModel, table=True):
     discipline_breach: bool = Field(default=False)
     created_at: datetime = Field(default_factory=_utcnow)
     updated_at: datetime = Field(default_factory=_utcnow)
+
+
+class Account(SQLModel, table=True):
+    __tablename__ = "account"
+    id: Optional[int] = Field(default=None, primary_key=True)
+    firm: str = Field(default="", index=True)  # e.g. FTMO, FundedNext
+    alias: str = Field(unique=True, index=True)  # lowercase handle, e.g. ftmo100k-f1
+    login: Optional[str] = Field(default=None, index=True)  # MT5 login, optional
+    phase: str = Field(default="personal", index=True)  # challenge1 | phase2 | funded | personal
+    start_balance: float = Field(default=0.0)
+    daily_loss_limit: float = Field(default=0.0)  # absolute $, % resolved at input time off start
+    daily_basis: str = Field(default="balance")  # balance (closed) | equity (incl. floating)
+    max_loss_limit: float = Field(default=0.0)  # absolute $
+    max_mode: str = Field(default="static")  # static | trailing
+    trailing_ref: str = Field(default="balance_peak")  # balance_peak | equity_peak
+    profit_target: Optional[float] = Field(default=None)
+    status: str = Field(default="active", index=True)  # active | breach | passed | archived
+    created_at: datetime = Field(default_factory=_utcnow)
+    updated_at: datetime = Field(default_factory=_utcnow)
+
+    trades: list["Trade"] = Relationship(back_populates="account")
 
 
 class AppSetting(SQLModel, table=True):
@@ -126,6 +149,7 @@ class TradeRead(SQLModel):
     # Deprecated v1 alias — equals ticket. Kept so the current
     # frontend (TradeDto.trade_id) keeps working until Phase 5.
     trade_id: str
+    account_id: Optional[int] = None
     timestamp_open: Optional[datetime] = None
     timestamp_close: Optional[datetime] = None
     entry_time: Optional[datetime] = None
@@ -154,6 +178,7 @@ class TradeRead(SQLModel):
 
 
 class TradePatch(SQLModel):
+    account_id: Optional[int] = None
     timestamp_open: Optional[datetime] = None
     timestamp_close: Optional[datetime] = None
     entry_time: Optional[datetime] = None
@@ -185,6 +210,7 @@ class TradeOpenRequest(SQLModel):
     initial_sl: float
     tp: Optional[float] = None
     ticket: Optional[str] = None
+    account_id: Optional[int] = None
     timestamp_open: Optional[datetime] = None
     entry_time: Optional[datetime] = None  # explicit entry (bot `time:` flag); defaults to now
     session: Optional[str] = None  # manual override; otherwise auto-resolved
@@ -215,6 +241,7 @@ class BackfillRecord(SQLModel):
     exit_price: float
     entry_time: datetime
     exit_time: datetime
+    account_id: Optional[int] = None
     initial_sl: Optional[float] = None
     tp: Optional[float] = None
     gross_pnl: Optional[float] = None
@@ -247,3 +274,53 @@ class DailyNoteUpsert(SQLModel):
     pre_market: Optional[str] = None
     eod_review: Optional[str] = None
     discipline_breach: Optional[bool] = None
+
+
+class AccountRead(SQLModel):
+    id: int
+    firm: str
+    alias: str
+    login: Optional[str] = None
+    phase: str
+    start_balance: float
+    daily_loss_limit: float
+    daily_basis: str
+    max_loss_limit: float
+    max_mode: str
+    trailing_ref: str
+    profit_target: Optional[float] = None
+    status: str
+    created_at: datetime
+    updated_at: datetime
+    open_trades: int = 0
+    total_trades: int = 0
+
+
+class AccountCreate(SQLModel):
+    firm: str = ""
+    alias: str
+    login: Optional[str] = None
+    phase: str = "personal"
+    start_balance: float = 0.0
+    daily_loss_limit: float = 0.0
+    daily_basis: str = "balance"
+    max_loss_limit: float = 0.0
+    max_mode: str = "static"
+    trailing_ref: str = "balance_peak"
+    profit_target: Optional[float] = None
+    status: str = "active"
+
+
+class AccountUpdate(SQLModel):
+    firm: Optional[str] = None
+    alias: Optional[str] = None
+    login: Optional[str] = None
+    phase: Optional[str] = None
+    start_balance: Optional[float] = None
+    daily_loss_limit: Optional[float] = None
+    daily_basis: Optional[str] = None
+    max_loss_limit: Optional[float] = None
+    max_mode: Optional[str] = None
+    trailing_ref: Optional[str] = None
+    profit_target: Optional[float] = None
+    status: Optional[str] = None

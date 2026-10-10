@@ -131,6 +131,17 @@ def _generate_ticket(symbol: str) -> str:
     return f"{(symbol or 'TRADE').upper()}-{stamp}"
 
 
+def _resolve_account_id(session: Session, account_id: Optional[int]) -> Optional[int]:
+    """Validate account_id when supplied; None stays unassigned (legacy rows)."""
+    if account_id is None:
+        return None
+    from app.models import Account
+
+    if session.get(Account, account_id) is None:
+        raise HTTPException(status_code=404, detail=f"Account not found: {account_id}")
+    return account_id
+
+
 @router.post("/open", response_model=TradeRead, status_code=201)
 def open_trade(payload: TradeOpenRequest, session: Session = Depends(get_session)):
     direction = payload.direction.lower()
@@ -138,6 +149,7 @@ def open_trade(payload: TradeOpenRequest, session: Session = Depends(get_session
         raise HTTPException(status_code=422, detail="direction must be buy or sell")
     if payload.size <= 0:
         raise HTTPException(status_code=422, detail="size must be positive")
+    account_id = _resolve_account_id(session, payload.account_id)
 
     ticket = (payload.ticket or "").strip() or _generate_ticket(payload.symbol)
     if session.exec(select(Trade).where(Trade.ticket == ticket)).first() is not None:
@@ -147,6 +159,7 @@ def open_trade(payload: TradeOpenRequest, session: Session = Depends(get_session
     assert opened_at is not None
     trade = Trade(
         ticket=ticket,
+        account_id=account_id,
         timestamp_open=opened_at,
         entry_time=opened_at,
         session=normalize_session(payload.session, opened_at),
@@ -306,6 +319,7 @@ def insert_backfill_record(session: Session, rec: BackfillRecord) -> tuple[str, 
     ticket = (rec.ticket or "").strip() or _backfill_ticket(session, rec.symbol, rec.entry_time)
     if session.exec(select(Trade).where(Trade.ticket == ticket)).first() is not None:
         return ticket, False
+    account_id = _resolve_account_id(session, rec.account_id)
 
     fees = rec.fees if rec.fees is not None else 0.0
     gross = rec.gross_pnl
@@ -317,6 +331,7 @@ def insert_backfill_record(session: Session, rec: BackfillRecord) -> tuple[str, 
     )
     trade = Trade(
         ticket=ticket,
+        account_id=account_id,
         timestamp_open=rec.entry_time,
         timestamp_close=rec.exit_time,
         entry_time=rec.entry_time,
@@ -365,6 +380,8 @@ def list_trades(
     tag: Optional[str] = Query(default=None, description="Tag name without #/! prefix"),
     date_from: Optional[datetime] = None,
     date_to: Optional[datetime] = None,
+    account_id: Optional[int] = Query(default=None, description="Filter to one account"),
+    unassigned: bool = Query(default=False, description="Only trades with no account"),
     page: int = Query(default=1, ge=1),
     # Large default so first-page clients (Trades page, bots) see the full
     # ledger without paginating; total is always the full filtered count
@@ -378,6 +395,10 @@ def list_trades(
         statement = statement.where(Trade.status == status.upper())
     if symbol:
         statement = statement.where(Trade.symbol == symbol.upper())
+    if account_id is not None:
+        statement = statement.where(Trade.account_id == account_id)
+    elif unassigned:
+        statement = statement.where(Trade.account_id.is_(None))
     if date_from:
         statement = statement.where(Trade.timestamp_open >= date_from)
     if date_to:
@@ -409,6 +430,8 @@ def patch_trade(trade_id: int, patch: TradePatch, session: Session = Depends(get
     orig_status = (trade.status or "OPEN").upper()
     data = patch.model_dump(exclude_unset=True, exclude={"tags"})
     data.pop("ticket", None)
+    if "account_id" in data:
+        _resolve_account_id(session, data["account_id"])
     if "status" in data and data["status"]:
         data["status"] = data["status"].upper()
     for key, value in data.items():
@@ -506,6 +529,38 @@ def patch_trade(trade_id: int, patch: TradePatch, session: Session = Depends(get
     session.commit()
     session.refresh(trade)
     return to_trade_read(trade)
+
+
+@router.post("/bulk-account")
+def bulk_assign_account(
+    payload: dict, session: Session = Depends(get_session)
+):
+    """Move many trades to one account (or back to unassigned with null).
+
+    Body: {"trade_ids": [1, 2], "account_id": 3 | null}
+    """
+    ids = payload.get("trade_ids") or []
+    account_id = payload.get("account_id")
+    if not isinstance(ids, list) or not ids:
+        raise HTTPException(status_code=422, detail="trade_ids must be a non-empty list")
+    if len(ids) > 500:
+        raise HTTPException(status_code=422, detail="Batch limit is 500 trades")
+    _resolve_account_id(session, account_id)
+    updated = 0
+    for tid in ids:
+        try:
+            tid_int = int(tid)
+        except (TypeError, ValueError):
+            continue
+        trade = session.get(Trade, tid_int)
+        if trade is None:
+            continue
+        trade.account_id = account_id
+        trade.updated_at = _now()
+        session.add(trade)
+        updated += 1
+    session.commit()
+    return {"updated": updated}
 
 
 @router.delete("/{trade_id}")

@@ -70,6 +70,85 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+# --- Account alias routing (@alias suffix, last-suffix-wins) ---
+
+ALIAS_TOKEN_RE = re.compile(r"@([A-Za-z0-9][A-Za-z0-9\-_]{1,23})")
+LAST_ALIAS_KEY = "tg_last_account_alias"
+
+
+def extract_alias(text: str) -> tuple[str, Optional[str]]:
+    """Pull trailing @alias tokens. Last token wins; tokens stripped."""
+    found = ALIAS_TOKEN_RE.findall(text or "")
+    alias = found[-1].lower() if found else None
+    cleaned = ALIAS_TOKEN_RE.sub("", text or "").strip()
+    cleaned = re.sub(r"[ \t]+", " ", cleaned).strip(" ,")
+    return cleaned, alias
+
+
+def get_account_by_alias(session: Session, alias: str):
+    from app.models import Account
+
+    return session.exec(
+        select(Account).where(Account.alias == (alias or "").strip().lower())
+    ).first()
+
+
+def list_account_aliases(session: Session) -> list[str]:
+    from app.models import Account
+
+    return [
+        a.alias
+        for a in session.exec(
+            select(Account).where(Account.status != "archived").order_by(Account.alias.asc())
+        ).all()
+    ]
+
+
+def get_last_alias(session: Session) -> Optional[str]:
+    from app.models import AppSetting
+
+    row = session.get(AppSetting, LAST_ALIAS_KEY)
+    val = (row.value or "").strip().lower() if row else ""
+    return val or None
+
+
+def set_last_alias(session: Session, alias: str) -> None:
+    from app.models import AppSetting
+
+    alias = (alias or "").strip().lower()
+    if not alias:
+        return
+    row = session.get(AppSetting, LAST_ALIAS_KEY)
+    if row is None:
+        row = AppSetting(key=LAST_ALIAS_KEY, value=alias)
+    else:
+        row.value = alias
+        row.updated_at = _now()
+    session.add(row)
+    session.commit()
+
+
+def account_alias_of(session: Session, account_id: Optional[int]) -> str:
+    if account_id is None:
+        return "unassigned"
+    from app.models import Account
+
+    acc = session.get(Account, account_id)
+    return acc.alias if acc else "unassigned"
+
+
+def open_trades_for_symbol(session: Session, symbol: str) -> list:
+    from app.models import Trade
+
+    return list(
+        session.exec(
+            select(Trade)
+            .where(Trade.status == "OPEN", Trade.symbol == symbol.upper())
+            .order_by(Trade.timestamp_open.desc())
+        ).all()
+    )
+
+
 # --- Pure parsers (unit-testable, no I/O) ---
 
 
@@ -406,14 +485,17 @@ def _open_trades(session: Session) -> list:
     )
 
 
-def resolve_open_trade(session: Session, symbol: str):
+def resolve_open_trade(session: Session, symbol: str, account_id: Optional[int] = None):
     from app.models import Trade
 
-    return session.exec(
+    stmt = (
         select(Trade)
         .where(Trade.status == "OPEN", Trade.symbol == symbol.upper())
         .order_by(Trade.timestamp_open.desc())
-    ).first()
+    )
+    if account_id is not None:
+        stmt = stmt.where(Trade.account_id == account_id)
+    return session.exec(stmt).first()
 
 
 async def _answer_callback(callback_id: str, text: str = "") -> None:
@@ -450,6 +532,7 @@ async def do_open(chat_id: int, session: Session, args: dict) -> None:
     opened_at = args.get("entry_time") or _now()
     trade = Trade(
         ticket=ticket,
+        account_id=args.get("account_id"),
         timestamp_open=opened_at,
         entry_time=opened_at,
         session=normalize_session(None, opened_at),
@@ -476,9 +559,10 @@ async def do_open(chat_id: int, session: Session, args: dict) -> None:
     session.add(trade)
     session.commit()
     session.refresh(trade)
+    acct = f" @{args.get('account_alias')}" if args.get("account_alias") else ""
     await send_text(
         chat_id,
-        f"✅ OPEN {describe_trade(trade)}",
+        f"✅ OPEN {describe_trade(trade)}{acct}",
         trade_actions_keyboard(trade.id),
     )
     if breached:
@@ -489,11 +573,40 @@ async def do_open(chat_id: int, session: Session, args: dict) -> None:
         )
 
 
-async def do_tsl(chat_id: int, session: Session, symbol: str, new_sl: float) -> None:
-    trade = resolve_open_trade(session, symbol)
-    if trade is None:
+async def do_tsl(
+    chat_id: int,
+    session: Session,
+    symbol: str,
+    new_sl: float,
+    account_id: Optional[int] = None,
+) -> None:
+    candidates = open_trades_for_symbol(session, symbol)
+    if not candidates:
         await send_text(chat_id, f"❌ No OPEN {symbol.upper()} trade to trail.")
         return
+    if account_id is not None:
+        candidates = [t for t in candidates if t.account_id == account_id]
+        if not candidates:
+            await send_text(chat_id, f"❌ No OPEN {symbol.upper()} trade on that account.")
+            return
+    if len(candidates) > 1:
+        _pending[chat_id] = {"action": "tsl_pick", "symbol": symbol.upper(), "new_sl": new_sl}
+        rows = [
+            [
+                {
+                    "text": f"{t.symbol} @{account_alias_of(session, t.account_id)} ({t.ticket})",
+                    "callback_data": f"tslid:{t.id}",
+                }
+            ]
+            for t in candidates
+        ]
+        await send_text(
+            chat_id,
+            f"Multiple OPEN {symbol.upper()} — pick the account:",
+            {"inline_keyboard": rows},
+        )
+        return
+    trade = candidates[0]
     trade.current_sl = new_sl
     trade.updated_at = _now()
     session.add(trade)
@@ -502,6 +615,38 @@ async def do_tsl(chat_id: int, session: Session, symbol: str, new_sl: float) -> 
 
 
 async def do_close(chat_id: int, session: Session, args: dict) -> None:
+    account_id = args.get("account_id")
+    candidates = open_trades_for_symbol(session, args["symbol"])
+    if not candidates:
+        await send_text(chat_id, f"❌ No OPEN {args['symbol'].upper()} trade to close.")
+        return
+    if account_id is not None:
+        candidates = [t for t in candidates if t.account_id == account_id]
+        if not candidates:
+            await send_text(chat_id, f"❌ No OPEN {args['symbol'].upper()} trade on that account.")
+            return
+    if len(candidates) > 1:
+        _pending[chat_id] = {"action": "close_pick", "args": args}
+        rows = [
+            [
+                {
+                    "text": f"{t.symbol} @{account_alias_of(session, t.account_id)} ({t.ticket})",
+                    "callback_data": f"closeid:{t.id}",
+                }
+            ]
+            for t in candidates
+        ]
+        await send_text(
+            chat_id,
+            f"Multiple OPEN {args['symbol'].upper()} — pick the account:",
+            {"inline_keyboard": rows},
+        )
+        return
+    await do_close_on_trade(chat_id, session, candidates[0].id, args)
+
+
+async def do_close_on_trade(chat_id: int, session: Session, trade_id: int, args: dict) -> None:
+    from app.models import Trade
     from app.routers.trades import _flag_breach_day, _guardrail_breached
     from app.services.migrate_csv import (
         compute_r_multiple,
@@ -510,9 +655,9 @@ async def do_close(chat_id: int, session: Session, args: dict) -> None:
         normalize_tag_list,
     )
 
-    trade = resolve_open_trade(session, args["symbol"])
-    if trade is None:
-        await send_text(chat_id, f"❌ No OPEN {args['symbol'].upper()} trade to close.")
+    trade = session.get(Trade, trade_id)
+    if trade is None or trade.status != "OPEN":
+        await send_text(chat_id, "❌ That trade is no longer open.")
         return
     fees = args["fees"] if args["fees"] is not None else (trade.fees or 0.0)
     if args["gross_pnl"] is not None:
@@ -563,9 +708,12 @@ START = (
 HELP = (
     "📒 <b>Trading Journal bot — syntax guide</b>\n"
     "\n"
+    "<b>Accounts:</b> append <code>@alias</code> (e.g. <code>@ftmo100k-f1</code>). "
+    "No suffix = last used account. Close/TSL without suffix + same symbol on 2 accounts → buttons.\n"
+    "\n"
     "<b>OPEN a trade:</b>\n"
-    "<code>buy SYMBOL, SIZE, ENTRY, SL, [TP], [#setup tags]</code>\n"
-    "e.g. <code>buy gold, 0.1, 4000, 3990, 4020, #fvg</code> (sell = short)\n"
+    "<code>buy SYMBOL, SIZE, ENTRY, SL, [TP], [#setup tags] [@alias]</code>\n"
+    "e.g. <code>buy gold, 0.1, 4000, 3990, 4020, #fvg @ftmo100k-f1</code> (sell = short)\n"
     "Open @ a past time: add <code>time: 14:30</code> or <code>time: 2026-09-20 14:30</code>\n"
     "Times take an optional zone: <code>time: 2026-09-28 16:01 IST</code> (bare = UTC).\n"
     "Broker times work too once calibrated: <code>time: 2026-09-28 19:31 MT5</code> — see /brokertime.\n"
@@ -609,6 +757,7 @@ async def do_past(chat_id: int, session: Session, args: dict) -> None:
         exit_price=args["exit_price"],
         entry_time=args["entry_time"],
         exit_time=args["exit_time"],
+        account_id=args.get("account_id"),
         initial_sl=args["initial_sl"],
         tp=args["tp"],
         gross_pnl=args["gross_pnl"],
@@ -791,12 +940,22 @@ async def handle_text(chat_id: int, text: str, session: Session) -> None:
             return
         if action == "close":
             try:
-                args = parse_close(f"close {state['symbol']}, {body}")
+                cleaned_body, body_alias = extract_alias(body)
+                args = parse_close(f"close {state['symbol']}, {cleaned_body}")
             except BotParseError as exc:
                 await send_text(chat_id, f"❌ {exc} — or /cancel.")
                 return
+            trade_id = state["trade_id"]
             _pending.pop(chat_id, None)
-            await do_close(chat_id, session, args)
+            if body_alias is not None:
+                acc = get_account_by_alias(session, body_alias)
+                if acc is None:
+                    await send_text(chat_id, f"❌ Unknown account @{esc(body_alias)}.")
+                    return
+                args["account_id"] = acc.id
+                await do_close(chat_id, session, args)
+            else:
+                await do_close_on_trade(chat_id, session, trade_id, args)
             return
         if action == "photo":
             await send_text(chat_id, "📸 Send the chart image now — or /cancel.")
@@ -804,18 +963,66 @@ async def handle_text(chat_id: int, text: str, session: Session) -> None:
 
     try:
         if re.match(r"(?i)^\s*past\s", body):
-            await do_past(chat_id, session, parse_past(body, _broker_offset(session)))
+            cleaned, alias = extract_alias(body)
+            account_id, account_alias = await _resolve_alias_for_text(chat_id, session, alias)
+            if account_id is False:  # unknown alias, error already sent
+                return
+            parsed = parse_past(cleaned, _broker_offset(session))
+            parsed["account_id"] = account_id
+            parsed["account_alias"] = account_alias
+            await do_past(chat_id, session, parsed)
         elif re.match(r"(?i)^\s*(buy|sell)\s", body):
-            await do_open(chat_id, session, parse_open(body, _broker_offset(session)))
+            cleaned, alias = extract_alias(body)
+            account_id, account_alias = await _resolve_alias_for_text(chat_id, session, alias)
+            if account_id is False:
+                return
+            parsed = parse_open(cleaned, _broker_offset(session))
+            parsed["account_id"] = account_id
+            parsed["account_alias"] = account_alias
+            await do_open(chat_id, session, parsed)
         elif re.match(r"(?i)^\s*tsl\s", body):
-            args = parse_tsl(body)
-            await do_tsl(chat_id, session, args["symbol"], args["current_sl"])
+            cleaned, alias = extract_alias(body)
+            account_id, _ = await _resolve_alias_for_text(chat_id, session, alias)
+            if account_id is False:
+                return
+            args = parse_tsl(cleaned)
+            await do_tsl(chat_id, session, args["symbol"], args["current_sl"], account_id)
         elif re.match(r"(?i)^\s*close\s", body):
-            await do_close(chat_id, session, parse_close(body))
+            cleaned, alias = extract_alias(body)
+            account_id, _ = await _resolve_alias_for_text(chat_id, session, alias)
+            if account_id is False:
+                return
+            args = parse_close(cleaned)
+            args["account_id"] = account_id
+            await do_close(chat_id, session, args)
         else:
             await send_text(chat_id, "❓ Unknown command. " + HELP)
     except BotParseError as exc:
         await send_text(chat_id, f"❌ {exc}")
+
+
+async def _resolve_alias_for_text(
+    chat_id: int, session: Session, alias: Optional[str]
+) -> tuple[Optional[int] | bool, Optional[str]]:
+    """Map @alias (or last alias) to account_id. Returns (False, None) on unknown."""
+    if alias is not None:
+        acc = get_account_by_alias(session, alias)
+        if acc is None:
+            valid = list_account_aliases(session)
+            hint = ", ".join(f"@{a}" for a in valid) if valid else "no accounts yet — create one in /accounts"
+            await send_text(chat_id, f"❌ Unknown account @{esc(alias)}. Valid: {esc(hint)}")
+            return False, None
+        set_last_alias(session, acc.alias)
+        assert acc.id is not None
+        return acc.id, acc.alias
+    last = get_last_alias(session)
+    if last is None:
+        return None, None
+    acc = get_account_by_alias(session, last)
+    if acc is None:
+        return None, None
+    assert acc.id is not None
+    return acc.id, acc.alias
 
 
 # --- Photo pipeline (Task 2.3) ---
@@ -912,6 +1119,34 @@ async def handle_photo(chat_id: int, file_id: str, session: Session) -> None:
 
 async def handle_callback(chat_id: int, callback_id: str, data: str, session: Session) -> None:
     from app.models import Trade
+
+    # Account-disambiguation picks carry the close/tsl intent in _pending.
+    if data.startswith("closeid:") or data.startswith("tslid:"):
+        try:
+            _action, raw_id = data.split(":", 1)
+            picked_id = int(raw_id)
+        except ValueError:
+            await _answer_callback(callback_id, "Bad button payload")
+            return
+        state = _pending.get(chat_id)
+        if not state or state.get("action") not in ("close_pick", "tsl_pick"):
+            await _answer_callback(callback_id, "Nothing pending")
+            return
+        _pending.pop(chat_id, None)
+        await _answer_callback(callback_id, "Got it")
+        if _action == "closeid":
+            await do_close_on_trade(chat_id, session, picked_id, state["args"])
+        else:
+            trade = session.get(Trade, picked_id)
+            if trade is None or trade.status != "OPEN":
+                await send_text(chat_id, "❌ That trade is no longer open.")
+                return
+            trade.current_sl = state["new_sl"]
+            trade.updated_at = _now()
+            session.add(trade)
+            session.commit()
+            await send_text(chat_id, f"🛡️ TSL updated: {describe_trade(trade)}")
+        return
 
     try:
         action, raw_id = data.split(":", 1)

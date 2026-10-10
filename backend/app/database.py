@@ -30,6 +30,53 @@ def create_db_and_tables() -> None:
 
     SQLModel.metadata.create_all(engine)
     _migrate_screenshot_columns()
+    _migrate_account_columns()
+
+
+def _migrate_account_columns() -> None:
+    """Create account table + trade.account_id on pre-existing DBs.
+
+    Leaves existing trades with NULL account_id — the user reassigns
+    them manually from the web UI. No backfill, no default account.
+    """
+    if not DATABASE_URL.startswith("sqlite"):
+        return
+    from sqlalchemy import text
+
+    with engine.begin() as conn:
+        conn.exec_driver_sql(
+            """CREATE TABLE IF NOT EXISTS account (
+            id INTEGER NOT NULL PRIMARY KEY,
+            firm VARCHAR NOT NULL,
+            alias VARCHAR NOT NULL,
+            login VARCHAR,
+            phase VARCHAR NOT NULL,
+            start_balance FLOAT NOT NULL,
+            daily_loss_limit FLOAT NOT NULL,
+            daily_basis VARCHAR NOT NULL,
+            max_loss_limit FLOAT NOT NULL,
+            max_mode VARCHAR NOT NULL,
+            trailing_ref VARCHAR NOT NULL,
+            profit_target FLOAT,
+            status VARCHAR NOT NULL,
+            created_at DATETIME NOT NULL,
+            updated_at DATETIME NOT NULL)"""
+        )
+        try:
+            conn.exec_driver_sql("CREATE UNIQUE INDEX IF NOT EXISTS ix_account_alias ON account (alias)")
+        except Exception:
+            pass
+        try:
+            conn.exec_driver_sql("CREATE INDEX IF NOT EXISTS ix_account_firm ON account (firm)")
+        except Exception:
+            pass
+        cols = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(trade)")}
+        if "account_id" not in cols:
+            conn.exec_driver_sql("ALTER TABLE trade ADD COLUMN account_id INTEGER")
+        try:
+            conn.exec_driver_sql("CREATE INDEX IF NOT EXISTS ix_trade_account_id ON trade (account_id)")
+        except Exception:
+            pass
 
 
 def _migrate_screenshot_columns() -> None:

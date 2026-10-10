@@ -22,12 +22,14 @@ from app.services.timeutils import as_naive_utc, trade_close_day
 router = APIRouter(prefix="/api/analytics", tags=["analytics"])
 
 
-def _closed_trades(session: Session) -> list[Trade]:
+def _closed_trades(session: Session, account_id: Optional[int] = None) -> list[Trade]:
     statement = (
         select(Trade)
         .where(Trade.status == "CLOSED")
         .order_by(Trade.timestamp_close.asc(), Trade.id.asc())
     )
+    if account_id is not None:
+        statement = statement.where(Trade.account_id == account_id)
     trades = list(session.exec(statement).all())
     # Rows without a close timestamp sort first under ASC with NULLs;
     # keep chronological order by pushing NULL timestamps to the end.
@@ -162,8 +164,8 @@ def _equity_points(trades: list[Trade]) -> list[dict]:
 
 
 @router.get("/summary")
-def summary(session: Session = Depends(get_session)):
-    trades = _closed_trades(session)
+def summary(account_id: Optional[int] = Query(default=None), session: Session = Depends(get_session)):
+    trades = _closed_trades(session, account_id)
     nets = [t.net_pnl if t.net_pnl is not None else 0.0 for t in trades]
     total = len(trades)
     wins = [n for n in nets if _is_win(n)]
@@ -180,9 +182,10 @@ def summary(session: Session = Depends(get_session)):
     points = _equity_points(trades)
     max_dd = min((p["drawdown"] for p in points), default=0.0)
 
-    open_count = len(
-        session.exec(select(Trade).where(Trade.status == "OPEN")).all()
-    )
+    open_stmt = select(Trade).where(Trade.status == "OPEN")
+    if account_id is not None:
+        open_stmt = open_stmt.where(Trade.account_id == account_id)
+    open_count = len(session.exec(open_stmt).all())
     return {
         "total_trades": total,
         "open_trades": open_count,
@@ -200,8 +203,8 @@ def summary(session: Session = Depends(get_session)):
 
 
 @router.get("/equity-curve")
-def equity_curve(session: Session = Depends(get_session)):
-    return {"points": _equity_points(_closed_trades(session))}
+def equity_curve(account_id: Optional[int] = Query(default=None), session: Session = Depends(get_session)):
+    return {"points": _equity_points(_closed_trades(session, account_id))}
 
 
 _R_BUCKETS = ["-2R", "-1R", "0R", "1R", "2R", "3R+"]
@@ -217,9 +220,9 @@ def _r_bucket(r: float) -> str:
 
 
 @router.get("/r-distribution")
-def r_distribution(session: Session = Depends(get_session)):
+def r_distribution(account_id: Optional[int] = Query(default=None), session: Session = Depends(get_session)):
     counts: dict[str, int] = {b: 0 for b in _R_BUCKETS}
-    for t in _closed_trades(session):
+    for t in _closed_trades(session, account_id):
         if t.r_multiple is None:
             continue
         counts[_r_bucket(t.r_multiple)] += 1
@@ -227,18 +230,19 @@ def r_distribution(session: Session = Depends(get_session)):
 
 
 @router.get("/tag-performance")
-def tag_performance(session: Session = Depends(get_session)):
+def tag_performance(account_id: Optional[int] = Query(default=None), session: Session = Depends(get_session)):
     tags = session.exec(select(Tag)).all()
     rows = []
     for tag in tags:
-        link_rows = session.exec(
-            select(Trade).where(
+        link_stmt = select(Trade).where(
                 Trade.id.in_(
                     select(TradeTagLink.trade_id).where(TradeTagLink.tag_id == tag.id)
                 ),
                 Trade.status == "CLOSED",
             )
-        ).all()
+        if account_id is not None:
+            link_stmt = link_stmt.where(Trade.account_id == account_id)
+        link_rows = session.exec(link_stmt).all()
         nets = [t.net_pnl if t.net_pnl is not None else 0.0 for t in link_rows]
         wins = sum(1 for n in nets if _is_win(n))
         rows.append(
@@ -257,11 +261,12 @@ def tag_performance(session: Session = Depends(get_session)):
 @router.get("/calendar")
 def calendar(
     year: Optional[int] = Query(default=None, description="Defaults to current year"),
+    account_id: Optional[int] = Query(default=None),
     session: Session = Depends(get_session),
 ):
     target_year = year or datetime.now().year
     daily: dict[str, dict] = defaultdict(lambda: {"net_pnl": 0.0, "trade_count": 0})
-    for t in _closed_trades(session):
+    for t in _closed_trades(session, account_id):
         # Naive-UTC close day (same helper as monthly-calendar / streaks) so
         # day boundaries never mix aware vs naive timestamps.
         day = _close_day(t)
@@ -281,8 +286,8 @@ def calendar(
 
 
 @router.get("/kpi-dashboard")
-def kpi_dashboard(session: Session = Depends(get_session)):
-    trades = _closed_trades(session)
+def kpi_dashboard(account_id: Optional[int] = Query(default=None), session: Session = Depends(get_session)):
+    trades = _closed_trades(session, account_id)
     nets = [t.net_pnl if t.net_pnl is not None else 0.0 for t in trades]
     net_pnl = round(sum(nets), 2)
     wins, losses, be = _win_loss_counts(nets)
@@ -348,6 +353,7 @@ def _cumulative(nets: list[float]) -> list[float]:
 def monthly_calendar(
     year: Optional[int] = Query(default=None),
     month: Optional[int] = Query(default=None, ge=1, le=12),
+    account_id: Optional[int] = Query(default=None),
     session: Session = Depends(get_session),
 ):
     now = datetime.now()
@@ -356,7 +362,7 @@ def monthly_calendar(
     month_end = date_type(y + (m == 12), (m % 12) + 1, 1)
 
     daily: dict[str, dict] = defaultdict(lambda: {"net_pnl": 0.0, "trade_count": 0})
-    for t in _closed_trades(session):
+    for t in _closed_trades(session, account_id):
         day = _close_day(t)
         if day is None or not (month_start <= day.date() < month_end):
             continue
@@ -414,8 +420,8 @@ def monthly_calendar(
 
 
 @router.get("/activity-and-streaks")
-def activity_and_streaks(session: Session = Depends(get_session)):
-    trades = _closed_trades(session)
+def activity_and_streaks(account_id: Optional[int] = Query(default=None), session: Session = Depends(get_session)):
+    trades = _closed_trades(session, account_id)
     nets = [t.net_pnl if t.net_pnl is not None else 0.0 for t in trades]
     signs = [_sign(n) for n in nets]
     win_runs, loss_runs = _streak_runs(signs)
@@ -447,7 +453,10 @@ def activity_and_streaks(session: Session = Depends(get_session)):
         prev = d
 
     wins, losses, _be = _win_loss_counts(nets)
-    open_count = len(session.exec(select(Trade).where(Trade.status == "OPEN")).all())
+    _open_stmt = select(Trade).where(Trade.status == "OPEN")
+    if account_id is not None:
+        _open_stmt = _open_stmt.where(Trade.account_id == account_id)
+    open_count = len(session.exec(_open_stmt).all())
     best = max(trades, key=lambda t: t.net_pnl or 0.0, default=None)
     worst = min(trades, key=lambda t: t.net_pnl or 0.0, default=None)
     return {
@@ -508,8 +517,8 @@ def _direction_stats(trades: list[Trade]) -> dict:
 
 
 @router.get("/long-short-stats")
-def long_short_stats(session: Session = Depends(get_session)):
-    trades = _closed_trades(session)
+def long_short_stats(account_id: Optional[int] = Query(default=None), session: Session = Depends(get_session)):
+    trades = _closed_trades(session, account_id)
     buys = [t for t in trades if _normalize_direction(t.direction) == "buy"]
     sells = [t for t in trades if _normalize_direction(t.direction) == "sell"]
     return {
@@ -520,8 +529,8 @@ def long_short_stats(session: Session = Depends(get_session)):
 
 
 @router.get("/radar-profiles")
-def radar_profiles(session: Session = Depends(get_session)):
-    trades = _closed_trades(session)
+def radar_profiles(account_id: Optional[int] = Query(default=None), session: Session = Depends(get_session)):
+    trades = _closed_trades(session, account_id)
     day_names = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
     weekday = []
     for i, name in enumerate(day_names):
