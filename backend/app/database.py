@@ -53,11 +53,14 @@ def _migrate_account_columns() -> None:
             phase VARCHAR NOT NULL,
             start_balance FLOAT NOT NULL,
             daily_loss_limit FLOAT NOT NULL,
+            daily_loss_pct FLOAT NOT NULL DEFAULT 0.0,
             daily_basis VARCHAR NOT NULL,
             max_loss_limit FLOAT NOT NULL,
+            max_loss_pct FLOAT NOT NULL DEFAULT 0.0,
             max_mode VARCHAR NOT NULL,
             trailing_ref VARCHAR NOT NULL,
             profit_target FLOAT,
+            profit_target_pct FLOAT,
             status VARCHAR NOT NULL,
             created_at DATETIME NOT NULL,
             updated_at DATETIME NOT NULL)"""
@@ -68,6 +71,28 @@ def _migrate_account_columns() -> None:
             pass
         try:
             conn.exec_driver_sql("CREATE INDEX IF NOT EXISTS ix_account_firm ON account (firm)")
+        except Exception:
+            pass
+        cols = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(account)")}
+        if "daily_loss_pct" not in cols:
+            conn.exec_driver_sql("ALTER TABLE account ADD COLUMN daily_loss_pct FLOAT NOT NULL DEFAULT 0.0")
+        if "max_loss_pct" not in cols:
+            conn.exec_driver_sql("ALTER TABLE account ADD COLUMN max_loss_pct FLOAT NOT NULL DEFAULT 0.0")
+        if "profit_target_pct" not in cols:
+            conn.exec_driver_sql("ALTER TABLE account ADD COLUMN profit_target_pct FLOAT")
+        # One-time backfill: % = $ / start * 100 for rows created with $ limits.
+        try:
+            conn.exec_driver_sql(
+                """UPDATE account SET daily_loss_pct =
+                   CASE WHEN start_balance > 0 AND (daily_loss_pct IS NULL OR daily_loss_pct = 0)
+                   THEN daily_loss_limit * 100.0 / start_balance ELSE daily_loss_pct END,
+                   max_loss_pct =
+                   CASE WHEN start_balance > 0 AND (max_loss_pct IS NULL OR max_loss_pct = 0)
+                   THEN max_loss_limit * 100.0 / start_balance ELSE max_loss_pct END,
+                   profit_target_pct =
+                   CASE WHEN start_balance > 0 AND profit_target_pct IS NULL AND profit_target IS NOT NULL
+                   THEN profit_target * 100.0 / start_balance ELSE profit_target_pct END"""
+            )
         except Exception:
             pass
         cols = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(trade)")}

@@ -77,20 +77,27 @@ def create_account(payload: AccountCreate, session: Session = Depends(get_sessio
         raise HTTPException(status_code=422, detail="trailing_ref must be balance_peak or equity_peak")
     if (payload.status or "active") not in STATUSES:
         raise HTTPException(status_code=422, detail=f"status must be one of {sorted(STATUSES)}")
-    if payload.start_balance < 0 or payload.daily_loss_limit < 0 or payload.max_loss_limit < 0:
-        raise HTTPException(status_code=422, detail="balances and limits must be >= 0")
+    if payload.start_balance < 0:
+        raise HTTPException(status_code=422, detail="start_balance must be >= 0")
+    for key in ("daily_loss_pct", "max_loss_pct"):
+        if not 0 <= getattr(payload, key):
+            raise HTTPException(status_code=422, detail=f"{key} must be >= 0")
+        if getattr(payload, key) > 100:
+            raise HTTPException(status_code=422, detail=f"{key} must be <= 100")
+    if payload.profit_target_pct is not None and not 0 <= payload.profit_target_pct <= 100:
+        raise HTTPException(status_code=422, detail="profit_target_pct must be 0-100")
     acc = Account(
         firm=(payload.firm or "").strip(),
         alias=alias,
         login=(payload.login or "").strip() or None,
         phase=phase,
         start_balance=payload.start_balance,
-        daily_loss_limit=payload.daily_loss_limit,
+        daily_loss_pct=payload.daily_loss_pct,
         daily_basis=payload.daily_basis,
-        max_loss_limit=payload.max_loss_limit,
+        max_loss_pct=payload.max_loss_pct,
         max_mode=payload.max_mode,
         trailing_ref=payload.trailing_ref,
-        profit_target=payload.profit_target,
+        profit_target_pct=payload.profit_target_pct,
         status=payload.status or "active",
     )
     session.add(acc)
@@ -140,10 +147,12 @@ def update_account(account_id: int, patch: AccountUpdate, session: Session = Dep
             if key == "status" and val not in STATUSES:
                 raise HTTPException(status_code=422, detail=f"status must be one of {sorted(STATUSES)}")
             setattr(acc, key, val.strip() if isinstance(val, str) else val)
-    for key in ("start_balance", "daily_loss_limit", "max_loss_limit", "profit_target"):
+    for key in ("start_balance", "daily_loss_pct", "max_loss_pct", "profit_target_pct"):
         if key in data and data[key] is not None:
-            if data[key] < 0:
+            if key == "start_balance" and data[key] < 0:
                 raise HTTPException(status_code=422, detail=f"{key} must be >= 0")
+            if key != "start_balance" and not 0 <= data[key] <= 100:
+                raise HTTPException(status_code=422, detail=f"{key} must be 0-100")
             setattr(acc, key, data[key])
     acc.updated_at = _now()
     session.add(acc)
@@ -181,8 +190,16 @@ def delete_account(
 
 
 def _prop_numbers(acc: Account, session: Session) -> dict:
-    """Per-account prop headroom. Naive-UTC day basis, % off start balance."""
+    """Per-account prop headroom. Naive-UTC day basis, % off start balance.
+
+    $ limits derive from pct × anchor: daily off start balance, max off
+    start (static) or peak closed balance (trailing), target off start.
+    """
     from app.services.timeutils import as_naive_utc
+
+    start = acc.start_balance or 0.0
+    daily_loss_usd = round(start * (acc.daily_loss_pct or 0.0) / 100, 2)
+    max_pct = acc.max_loss_pct or 0.0
 
     trades = list(
         session.exec(
@@ -212,18 +229,24 @@ def _prop_numbers(acc: Account, session: Session) -> dict:
         run += n
         peak = max(peak, run)
     anchor = peak if acc.max_mode == "trailing" else (acc.start_balance or 0.0)
-    max_floor = anchor - (acc.max_loss_limit or 0.0)
-    max_left = round(balance - max_floor, 2) if acc.max_loss_limit else None
-    daily_floor = -(acc.daily_loss_limit or 0.0)
-    daily_left = round(daily_pnl - daily_floor, 2) if acc.daily_loss_limit else None
+    max_loss_usd = round(anchor * max_pct / 100, 2)
+    max_floor = anchor - max_loss_usd
+    max_left = round(balance - max_floor, 2) if max_pct else None
+    daily_floor = -daily_loss_usd
+    daily_left = round(daily_pnl - daily_floor, 2) if (acc.daily_loss_pct or 0.0) else None
 
+    target_usd = (
+        round(start * acc.profit_target_pct / 100, 2)
+        if acc.profit_target_pct
+        else None
+    )
     target_pct = (
-        round(total_net / acc.profit_target * 100, 2)
-        if acc.profit_target
+        round(total_net / target_usd * 100, 2)
+        if target_usd
         else None
     )
     breached = bool(
-        (acc.daily_loss_limit and daily_pnl <= -acc.daily_loss_limit)
+        ((acc.daily_loss_pct or 0.0) and daily_pnl <= -daily_loss_usd)
         or (max_left is not None and max_left <= 0)
     )
     return {
@@ -232,14 +255,17 @@ def _prop_numbers(acc: Account, session: Session) -> dict:
         "balance": balance,
         "total_net": total_net,
         "daily_pnl": daily_pnl,
-        "daily_loss_limit": acc.daily_loss_limit,
+        "daily_loss_pct": acc.daily_loss_pct or 0.0,
+        "daily_loss_limit": daily_loss_usd,
         "daily_left": daily_left,
         "daily_basis": acc.daily_basis,
-        "max_loss_limit": acc.max_loss_limit,
+        "max_loss_pct": max_pct,
+        "max_loss_limit": max_loss_usd,
         "max_mode": acc.max_mode,
-        "max_floor": round(max_floor, 2) if acc.max_loss_limit else None,
+        "max_floor": round(max_floor, 2) if max_pct else None,
         "max_left": max_left,
-        "profit_target": acc.profit_target,
+        "profit_target_pct": acc.profit_target_pct,
+        "profit_target": target_usd,
         "target_pct": target_pct,
         "breached": breached,
         "status": "breach" if breached else acc.status,

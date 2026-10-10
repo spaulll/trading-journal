@@ -100,12 +100,19 @@ class Account(SQLModel, table=True):
     login: Optional[str] = Field(default=None, index=True)  # MT5 login, optional
     phase: str = Field(default="personal", index=True)  # challenge1 | phase2 | funded | personal
     start_balance: float = Field(default=0.0)
-    daily_loss_limit: float = Field(default=0.0)  # absolute $, % resolved at input time off start
+    # Limits are PERCENT (0-100) off the balance anchor — $ values are
+    # derived at read time so every size (1k/5k/10k/100k) just works.
+    # Legacy absolute-$ columns (daily_loss_limit, max_loss_limit,
+    # profit_target) are ignored by new code, kept for old rows.
+    daily_loss_limit: float = Field(default=0.0)
+    daily_loss_pct: float = Field(default=0.0)
     daily_basis: str = Field(default="balance")  # balance (closed) | equity (incl. floating)
-    max_loss_limit: float = Field(default=0.0)  # absolute $
+    max_loss_limit: float = Field(default=0.0)
+    max_loss_pct: float = Field(default=0.0)
     max_mode: str = Field(default="static")  # static | trailing
     trailing_ref: str = Field(default="balance_peak")  # balance_peak | equity_peak
     profit_target: Optional[float] = Field(default=None)
+    profit_target_pct: Optional[float] = Field(default=None)
     status: str = Field(default="active", index=True)  # active | breach | passed | archived
     created_at: datetime = Field(default_factory=_utcnow)
     updated_at: datetime = Field(default_factory=_utcnow)
@@ -283,12 +290,12 @@ class AccountRead(SQLModel):
     login: Optional[str] = None
     phase: str
     start_balance: float
-    daily_loss_limit: float
+    daily_loss_pct: float
     daily_basis: str
-    max_loss_limit: float
+    max_loss_pct: float
     max_mode: str
     trailing_ref: str
-    profit_target: Optional[float] = None
+    profit_target_pct: Optional[float] = None
     status: str
     created_at: datetime
     updated_at: datetime
@@ -302,12 +309,12 @@ class AccountCreate(SQLModel):
     login: Optional[str] = None
     phase: str = "personal"
     start_balance: float = 0.0
-    daily_loss_limit: float = 0.0
+    daily_loss_pct: float = 0.0
     daily_basis: str = "balance"
-    max_loss_limit: float = 0.0
+    max_loss_pct: float = 0.0
     max_mode: str = "static"
     trailing_ref: str = "balance_peak"
-    profit_target: Optional[float] = None
+    profit_target_pct: Optional[float] = None
     status: str = "active"
 
 
@@ -317,10 +324,10 @@ class AccountUpdate(SQLModel):
     login: Optional[str] = None
     phase: Optional[str] = None
     start_balance: Optional[float] = None
-    daily_loss_limit: Optional[float] = None
+    daily_loss_pct: Optional[float] = None
     daily_basis: Optional[str] = None
-    max_loss_limit: Optional[float] = None
+    max_loss_pct: Optional[float] = None
     max_mode: Optional[str] = None
     trailing_ref: Optional[str] = None
-    profit_target: Optional[float] = None
+    profit_target_pct: Optional[float] = None
     status: Optional[str] = None
