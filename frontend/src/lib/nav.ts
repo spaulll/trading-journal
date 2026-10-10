@@ -1,9 +1,10 @@
-import { Activity, ArrowLeftRight, NotebookPen } from 'lucide-svelte';
+import { Activity, ArrowLeftRight, NotebookPen, Wallet } from 'lucide-svelte';
 
 /** Single source of truth for primary navigation (top bar + mobile tab bar). */
 export const NAV_LINKS = [
 	{ href: '/', label: 'Trades', icon: ArrowLeftRight },
 	{ href: '/analytics', label: 'Analytics', icon: Activity },
+	{ href: '/accounts', label: 'Accounts', icon: Wallet },
 	{ href: '/journal', label: 'Journal', icon: NotebookPen }
 ] as const;
 

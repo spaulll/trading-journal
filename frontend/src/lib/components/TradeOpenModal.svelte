@@ -2,11 +2,22 @@
 	import { Plus, X } from 'lucide-svelte';
 	import { fade, scale } from 'svelte/transition';
 	import { dismissLifecycle, lifecycleBusy, submitBackfill, submitOpen } from '$lib/stores/trades';
+	import { accounts, loadAccounts } from '$lib/stores/accounts';
 	import { fmtMoney, mt5WallToUTC, previewIST, previewMT5 } from '$lib/utils/format';
 	import { brokerOffset } from '$lib/stores/broker';
 	import { FADE, MODAL, PANEL_FADE } from '$lib/utils/transitions';
 	import SegControl from '$lib/components/SegControl.svelte';
 	import { fluidHeight } from '$lib/utils/motion';
+	import { onMount } from 'svelte';
+
+	onMount(() => {
+		void loadAccounts();
+		try {
+			accountSel = localStorage.getItem('selected-account-id') ?? '';
+		} catch {
+			// ignore
+		}
+	});
 
 	/** Rough per-unit contract sizes for the risk preview (estimate only). */
 	const CONTRACT: { match: RegExp; size: number; unit: string }[] = [
@@ -23,6 +34,7 @@
 	let sl = $state('');
 	let tp = $state('');
 	let tags = $state('');
+	let accountSel = $state('');
 	let formError = $state<string | null>(null);
 	let mode = $state<'live' | 'backfill'>('live');
 	// Live explicit entry (UTC); empty = now.
@@ -163,6 +175,7 @@
 			initial_sl: slN,
 			tp: tpN,
 			entry_time: liveEntryIso,
+			account_id: accountSel ? Number(accountSel) : null,
 			tags: tags.split(/[\s,]+/).filter(Boolean)
 		});
 	}
@@ -209,6 +222,7 @@
 			initial_sl: slN,
 			tp: tpN,
 			net_pnl: netN,
+			account_id: accountSel ? Number(accountSel) : null,
 			tags: tags.split(/[\s,]+/).filter(Boolean)
 		});
 	}
@@ -304,6 +318,16 @@
 			<label class="{label} mt-3">
 				Setup tags <span class="normal-case tracking-normal text-mut">#fvg #bos</span>
 				<input type="text" bind:value={tags} placeholder="#breakout" autocomplete="off" class="field font-sans text-[13px]" />
+			</label>
+
+			<label class="{label} mt-3">
+				Account <span class="normal-case tracking-normal text-mut">@alias · empty = unassigned</span>
+				<select bind:value={accountSel} class={field}>
+					<option value="">Unassigned</option>
+					{#each $accounts as a (a.id)}
+						<option value={String(a.id)}>@{a.alias} · {a.firm} {a.phase}</option>
+					{/each}
+				</select>
 			</label>
 
 			{#key mode}

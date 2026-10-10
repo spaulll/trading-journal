@@ -1,10 +1,13 @@
 <script lang="ts">
 	import { ChevronDown, Search } from 'lucide-svelte';
 	import { slide } from 'svelte/transition';
-	import { openTrade, requestClose, trades } from '$lib/stores/trades';
+	import { onMount } from 'svelte';
+	import { api, type TradeDto } from '$lib/api';
+	import { aliasOf, accounts, accountMap, chipAlias, loadAccounts, selectedAccountId } from '$lib/stores/accounts';
+	import { loadTrades, openTrade, requestClose, trades, upsertTrade } from '$lib/stores/trades';
+	import { toasts } from '$lib/stores/toast';
 	import { fmtDateTime, fmtMoney, fmtR, pnlTone, rTone, toneBg, toneText } from '$lib/utils/format';
 	import SegControl from '$lib/components/SegControl.svelte';
-	import type { TradeDto } from '$lib/api';
 
 	type StatusFilter = 'ALL' | 'OPEN' | 'CLOSED';
 	type SortKey = 'newest' | 'oldest' | 'net-desc' | 'net-asc' | 'r-desc';
@@ -13,8 +16,23 @@
 	let query = $state('');
 	let tagQuery = $state('');
 	let sort: SortKey = $state('newest');
+	let accountFilter = $state('');
+	let moveTarget = $state('');
+	let moving = $state(false);
 	let searchEl: HTMLInputElement | null = $state(null);
 	let expanded = $state<Set<number>>(new Set());
+
+	onMount(() => {
+		void loadAccounts();
+		try {
+			accountFilter = localStorage.getItem('selected-account-id') ?? '';
+			selectedAccountId.subscribe((v) => {
+				accountFilter = v === null ? '' : String(v);
+			});
+		} catch {
+			// ignore
+		}
+	});
 
 	function onGlobalKey(e: KeyboardEvent): void {
 		const target = e.target as HTMLElement | null;
@@ -51,6 +69,11 @@
 		const tq = tagQuery.trim().toLowerCase().replace(/^[#!]/, '');
 		const list = $trades.filter((t) => {
 			if (status !== 'ALL' && t.status !== status) return false;
+			if (accountFilter === 'unassigned') {
+				if (t.account_id !== null && t.account_id !== undefined) return false;
+			} else if (accountFilter !== '' && String(t.account_id ?? '') !== accountFilter) {
+				return false;
+			}
 			if (q && !(t.symbol ?? '').toLowerCase().includes(q) && !(t.trade_id ?? '').toLowerCase().includes(q))
 				return false;
 			if (tq && !t.tags.some((tag) => tag.name.toLowerCase().includes(tq))) return false;
@@ -74,6 +97,25 @@
 		return `rounded-md px-1.5 py-0.5 font-mono text-[10.5px] ${
 			category === 'mistake' ? 'tag-mistake' : 'tag-setup'
 		}`;
+	}
+
+	async function moveFiltered(): Promise<void> {
+		if (filtered.length === 0 || moving) return;
+		moving = true;
+		try {
+			const target = moveTarget === 'unassigned' ? null : moveTarget ? Number(moveTarget) : null;
+			if (moveTarget === '') return;
+			const r = await api.bulkAccount(
+				filtered.map((t) => t.id),
+				target
+			);
+			await loadTrades(true);
+			toasts.push('success', `Moved ${r.updated} trade${r.updated === 1 ? '' : 's'} to ${moveTarget === 'unassigned' ? 'unassigned' : '@' + aliasOf(target)}.`);
+		} catch (e) {
+			toasts.push('error', `Move failed — ${e instanceof Error ? e.message : 'unknown error'}`);
+		} finally {
+			moving = false;
+		}
 	}
 
 </script>
@@ -121,6 +163,29 @@
 		<label
 			class="relative flex h-9 items-center gap-1.5 rounded-xl border border-line bg-raised/70 px-2.5 text-sm text-dim"
 		>
+			<span class="font-mono text-[10px] tracking-[0.16em] uppercase">Acct</span>
+			<select
+				bind:value={accountFilter}
+				class="h-full max-w-32 appearance-none border-0 bg-none bg-transparent py-0 pr-6 text-[13px] text-fg outline-none [color-scheme:inherit] [&>option]:bg-panel [&>option]:text-fg"
+				aria-label="Filter by account"
+			>
+				<option value="">All</option>
+				<option value="unassigned">Unassigned</option>
+				{#each $accounts as a (a.id)}
+					<option value={String(a.id)}>@{a.alias}</option>
+				{/each}
+			</select>
+			<ChevronDown
+				size={14}
+				strokeWidth={2}
+				aria-hidden="true"
+				class="pointer-events-none absolute right-2 text-dim"
+			/>
+		</label>
+
+		<label
+			class="relative flex h-9 items-center gap-1.5 rounded-xl border border-line bg-raised/70 px-2.5 text-sm text-dim"
+		>
 			<span class="font-mono text-[10px] tracking-[0.16em] uppercase">Sort</span>
 			<select
 				bind:value={sort}
@@ -141,6 +206,23 @@
 			/>
 		</label>
 	</div>
+
+	{#if filtered.length > 0}
+		<div class="mb-3 flex flex-wrap items-center gap-2 rounded-xl border border-line bg-raised/40 px-3 py-2">
+			<span class="num text-[12px] text-dim">{filtered.length} shown</span>
+			<span class="font-mono text-[10px] tracking-[0.16em] text-dim uppercase">Move shown to</span>
+			<select bind:value={moveTarget} class="h-8 rounded-lg border border-line bg-panel px-2 font-mono text-[12px] text-fg outline-none" aria-label="Move target account">
+				<option value="">Pick…</option>
+				<option value="unassigned">Unassigned</option>
+				{#each $accounts as a (a.id)}
+					<option value={String(a.id)}>@{a.alias}</option>
+				{/each}
+			</select>
+			<button type="button" onclick={() => void moveFiltered()} disabled={!moveTarget || moving} class="btn btn-ghost h-8 px-3 text-[12px]">
+				{moving ? 'Moving…' : 'Move'}
+			</button>
+		</div>
+	{/if}
 
 	{#if filtered.length === 0}
 		<div class="card border-dashed px-6 py-12 text-center">
@@ -198,6 +280,7 @@
 								>
 									{t.direction ?? ''}
 								</span>
+								<span class="ml-1.5 font-mono text-[10px] text-dim">@{chipAlias($accountMap, t.account_id)}</span>
 							</span>
 							<span role="cell" class="px-3 py-2.5 text-right font-mono whitespace-nowrap text-[12.5px] tabular-nums text-mut">
 								<span class="text-fg">{t.entry_price?.toFixed(2) ?? '—'}</span>
@@ -285,7 +368,7 @@
 						aria-hidden="true"
 					></span>
 					<div class="flex items-center justify-between gap-2 pl-1.5">
-						<span class="num text-sm font-semibold text-fg uppercase">{t.symbol ?? '—'}</span>
+						<span class="num text-sm font-semibold text-fg uppercase">{t.symbol ?? '—'} <span class="font-mono text-[10px] font-normal text-dim normal-case">@{chipAlias($accountMap, t.account_id)}</span></span>
 						<span class="flex items-center gap-2">
 							<span class="num text-sm font-semibold {toneText[pnlTone(t.net_pnl)]}">
 								{fmtMoney(t.net_pnl)}

@@ -21,6 +21,7 @@ export interface TradeDto {
 	id: number;
 	ticket: string;
 	trade_id: string; // deprecated v1 alias of ticket — remove in Phase 5
+	account_id: number | null;
 	timestamp_open: string | null;
 	timestamp_close: string | null;
 	entry_time: string | null;
@@ -56,6 +57,45 @@ export interface DailyNoteDto {
 	discipline_breach: boolean;
 	created_at: string;
 	updated_at: string;
+}
+
+export interface AccountDto {
+	id: number;
+	firm: string;
+	alias: string;
+	login: string | null;
+	phase: string;
+	start_balance: number;
+	daily_loss_limit: number;
+	daily_basis: string;
+	max_loss_limit: number;
+	max_mode: string;
+	trailing_ref: string;
+	profit_target: number | null;
+	status: string;
+	created_at: string;
+	updated_at: string;
+	open_trades: number;
+	total_trades: number;
+}
+
+export interface PropStatusDto {
+	account_id: number;
+	alias: string;
+	balance: number;
+	total_net: number;
+	daily_pnl: number;
+	daily_loss_limit: number;
+	daily_left: number | null;
+	daily_basis: string;
+	max_loss_limit: number;
+	max_mode: string;
+	max_floor: number | null;
+	max_left: number | null;
+	profit_target: number | null;
+	target_pct: number | null;
+	breached: boolean;
+	status: string;
 }
 
 export interface PagedTrades {
@@ -266,21 +306,56 @@ export const api = {
 			'/api/trades/backfill',
 			json({ method: 'POST', body: JSON.stringify(payload) })
 		),
-	summary: () => req<SummaryDto>('/api/analytics/summary'),
-	equityCurve: () => req<{ points: EquityPoint[] }>('/api/analytics/equity-curve'),
-	rDistribution: () => req<{ buckets: RBucket[] }>('/api/analytics/r-distribution'),
-	tagPerformance: () => req<{ tags: TagPerf[] }>('/api/analytics/tag-performance'),
-	calendar: (year?: number) =>
-		req<{ year: number; days: CalendarDay[] }>(`/api/analytics/calendar${year ? `?year=${year}` : ''}`),
-	kpi: () => req<KpiDashboard>('/api/analytics/kpi-dashboard'),
-	monthlyCalendar: (year: number, month: number) =>
-		req<MonthlyCalendarDto>(`/api/analytics/monthly-calendar?year=${year}&month=${month}`),
-	activity: () => req<ActivityStreaks>('/api/analytics/activity-and-streaks'),
-	longShort: () =>
-		req<{ buy: DirectionStats; sell: DirectionStats; all?: DirectionStats }>(
-			'/api/analytics/long-short-stats'
+	bulkAccount: (trade_ids: number[], account_id: number | null) =>
+		req<{ updated: number }>(
+			'/api/trades/bulk-account',
+			json({ method: 'POST', body: JSON.stringify({ trade_ids, account_id }) })
 		),
-	radar: () => req<RadarProfiles>('/api/analytics/radar-profiles'),
+	listAccounts: (includeArchived = false) =>
+		req<AccountDto[]>(`/api/accounts${includeArchived ? '?include_archived=true' : ''}`),
+	createAccount: (payload: Record<string, unknown>) =>
+		req<AccountDto>('/api/accounts', json({ method: 'POST', body: JSON.stringify(payload) })),
+	updateAccount: (id: number, patch: Record<string, unknown>) =>
+		req<AccountDto>(`/api/accounts/${id}`, json({ method: 'PATCH', body: JSON.stringify(patch) })),
+	deleteAccount: (id: number) => req<{ deleted: number }>(`/api/accounts/${id}`, { method: 'DELETE' }),
+	propStatus: (id: number) => req<PropStatusDto>(`/api/accounts/${id}/prop-status`),
+	summary: (accountId?: number | null) =>
+		req<SummaryDto>(`/api/analytics/summary${accountId ? `?account_id=${accountId}` : ''}`),
+	equityCurve: (accountId?: number | null) =>
+		req<{ points: EquityPoint[] }>(
+			`/api/analytics/equity-curve${accountId ? `?account_id=${accountId}` : ''}`
+		),
+	rDistribution: (accountId?: number | null) =>
+		req<{ buckets: RBucket[] }>(
+			`/api/analytics/r-distribution${accountId ? `?account_id=${accountId}` : ''}`
+		),
+	tagPerformance: (accountId?: number | null) =>
+		req<{ tags: TagPerf[] }>(
+			`/api/analytics/tag-performance${accountId ? `?account_id=${accountId}` : ''}`
+		),
+	calendar: (year?: number, accountId?: number | null) => {
+		const qs = new URLSearchParams();
+		if (year) qs.set('year', String(year));
+		if (accountId) qs.set('account_id', String(accountId));
+		const s = qs.toString() ? `?${qs}` : '';
+		return req<{ year: number; days: CalendarDay[] }>(`/api/analytics/calendar${s}`);
+	},
+	kpi: (accountId?: number | null) =>
+		req<KpiDashboard>(`/api/analytics/kpi-dashboard${accountId ? `?account_id=${accountId}` : ''}`),
+	monthlyCalendar: (year: number, month: number, accountId?: number | null) =>
+		req<MonthlyCalendarDto>(
+			`/api/analytics/monthly-calendar?year=${year}&month=${month}${accountId ? `&account_id=${accountId}` : ''}`
+		),
+	activity: (accountId?: number | null) =>
+		req<ActivityStreaks>(
+			`/api/analytics/activity-and-streaks${accountId ? `?account_id=${accountId}` : ''}`
+		),
+	longShort: (accountId?: number | null) =>
+		req<{ buy: DirectionStats; sell: DirectionStats; all?: DirectionStats }>(
+			`/api/analytics/long-short-stats${accountId ? `?account_id=${accountId}` : ''}`
+		),
+	radar: (accountId?: number | null) =>
+		req<RadarProfiles>(`/api/analytics/radar-profiles${accountId ? `?account_id=${accountId}` : ''}`),
 	uploadScreenshot: async (id: number, file: File, label: string): Promise<ScreenshotDto> => {
 		const form = new FormData();
 		form.append('file', file);

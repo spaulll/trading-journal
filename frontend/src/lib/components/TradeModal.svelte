@@ -16,6 +16,7 @@
 	import { toasts } from '$lib/stores/toast';
 	import { fmtDateTime, fmtMoney, fmtNum, fmtR, mt5WallToUTC, parseStoredUTC, pnlTone, previewIST, previewMT5, rTone, toneText, utcToMT5Wall } from '$lib/utils/format';
 	import { brokerOffset } from '$lib/stores/broker';
+	import { accounts, accountMap, chipAlias, loadAccounts } from '$lib/stores/accounts';
 	import { DRAWER, FADE } from '$lib/utils/transitions';
 
 	const LABELS = ['entry', 'exit', 'setup', 'mistake'] as const;
@@ -37,6 +38,7 @@
 	const DRAWER_WIDTH_KEY = 'trade-drawer-width';
 
 	onMount(() => {
+		void loadAccounts();
 		try {
 			const v = Number(localStorage.getItem(DRAWER_WIDTH_KEY));
 			if (Number.isFinite(v) && v > DRAWER_MIN_W) {
@@ -122,6 +124,7 @@
 	let fFees = $state('');
 	let fEntryTime = $state('');
 	let fExitTime = $state('');
+	let fAccount = $state('');
 	// Time-input zone: MT5 wall when the broker clock is calibrated, else UTC.
 	let tzMode = $state<'mt5' | 'utc'>('utc');
 
@@ -172,6 +175,7 @@
 			fTp = numStr(trade.tp);
 			fExit = numStr(trade.exit_price);
 			fFees = numStr(trade.fees);
+			fAccount = trade.account_id === null || trade.account_id === undefined ? '' : String(trade.account_id);
 			tzMode = $brokerOffset ? 'mt5' : 'utc';
 			fEntryTime = timeToInput(trade.entry_time ?? trade.timestamp_open);
 			fExitTime = timeToInput(trade.exit_time ?? trade.timestamp_close);
@@ -218,6 +222,7 @@
 				fTp.trim() !== numStr(trade.tp) ||
 				fExit.trim() !== numStr(trade.exit_price) ||
 				fFees.trim() !== numStr(trade.fees) ||
+				fAccount !== (trade.account_id === null || trade.account_id === undefined ? '' : String(trade.account_id)) ||
 				fEntryTime.trim() !== timeToInput(trade.entry_time ?? trade.timestamp_open) ||
 				fExitTime.trim() !== timeToInput(trade.exit_time ?? trade.timestamp_close))
 	);
@@ -334,6 +339,10 @@
 		if (!trade || savingEdits) return;
 		const wasOpen = trade.status === 'OPEN';
 		const payload: Record<string, unknown> = {};
+		const curAcc = trade.account_id === null || trade.account_id === undefined ? '' : String(trade.account_id);
+		if (fAccount !== curAcc) {
+			payload.account_id = fAccount ? Number(fAccount) : null;
+		}
 		if (fSymbol.trim().toUpperCase() !== (trade.symbol ?? '')) {
 			if (!fSymbol.trim()) {
 				toasts.push('error', 'Symbol cannot be empty.');
@@ -634,6 +643,15 @@
 						</span>
 					</div>
 					<div class="grid grid-cols-3 gap-2">
+						<label class="flex min-w-0 flex-col gap-1 col-span-3">
+							<span class="eyebrow">Account · @{chipAlias($accountMap, trade.account_id)}</span>
+							<select bind:value={fAccount} class="field h-9 font-mono text-[13px]">
+								<option value="">Unassigned</option>
+								{#each $accounts as a (a.id)}
+									<option value={String(a.id)}>@{a.alias} · {a.firm} {a.phase}</option>
+								{/each}
+							</select>
+						</label>
 						<label class="flex min-w-0 flex-col gap-1">
 							<span class="eyebrow">Symbol</span>
 							<input type="text" bind:value={fSymbol} class="field h-9 font-mono text-[13px]" />

@@ -17,6 +17,7 @@
 	import DayPanel from '$lib/components/DayPanel.svelte';
 	import TradeModal from '$lib/components/TradeModal.svelte';
 	import { loadTrades } from '$lib/stores/trades';
+	import { accounts, loadAccounts, selectedAccountId } from '$lib/stores/accounts';
 	import { markOffline, markOnline, snapshotAt } from '$lib/stores/offline';
 	import { SNAPSHOT_KEYS, readSnapshot, saveSnapshot } from '$lib/offline-snapshot';
 	import {
@@ -28,6 +29,7 @@
 		type EquityPoint,
 		type KpiDashboard,
 		type MonthlyCalendarDto,
+		type PropStatusDto,
 		type RadarProfiles,
 		type RBucket,
 		type SummaryDto,
@@ -49,6 +51,7 @@
 	let activity = $state<ActivityStreaks | null>(null);
 	let longShort = $state<{ buy: DirectionStats; sell: DirectionStats; all?: DirectionStats } | null>(null);
 	let radarData = $state<RadarProfiles | null>(null);
+	let prop = $state<PropStatusDto | null>(null);
 	let snapshotRestored = $state(false);
 
 	interface AnalyticsSnapshot {
@@ -83,7 +86,7 @@
 
 	async function loadYearDays(y: number): Promise<void> {
 		try {
-			const c = await api.calendar(y);
+			const c = await api.calendar(y, $selectedAccountId);
 			days = c.days;
 			year = c.year;
 		} catch (e) {
@@ -94,19 +97,25 @@
 	async function load(): Promise<void> {
 		loading = true;
 		error = null;
+		const acct = $selectedAccountId;
 		try {
 			const [s, e, t, c, k, mc, a, ls, rd, rb] = await Promise.all([
-				api.summary(),
-				api.equityCurve(),
-				api.tagPerformance(),
-				api.calendar(year),
-				api.kpi(),
-				api.monthlyCalendar(monthCursor.y, monthCursor.m),
-				api.activity(),
-				api.longShort(),
-				api.radar(),
-				api.rDistribution()
+				api.summary(acct),
+				api.equityCurve(acct),
+				api.tagPerformance(acct),
+				api.calendar(year, acct),
+				api.kpi(acct),
+				api.monthlyCalendar(monthCursor.y, monthCursor.m, acct),
+				api.activity(acct),
+				api.longShort(acct),
+				api.radar(acct),
+				api.rDistribution(acct)
 			]);
+			try {
+				prop = acct ? await api.propStatus(acct) : null;
+			} catch {
+				prop = null;
+			}
 			summary = s;
 			points = e.points;
 			tags = t.tags;
@@ -121,33 +130,37 @@
 			rBuckets = rb.buckets;
 			snapshotRestored = false;
 			markOnline();
-			snapshotAt.set(
-				saveSnapshot<AnalyticsSnapshot>(SNAPSHOT_KEYS.analytics, {
-					summary: s,
-					points: e.points,
-					tags: t.tags,
-					days: c.days,
-					year: c.year,
-					kpi: k,
-					monthData: mc,
-					monthCursor: { y: mc.year, m: mc.month },
-					activity: a,
-					longShort: ls,
-					radarData: rd,
-					rBuckets: rb.buckets
-				}) ?? null
-			);
-		} catch (e) {
-			// Server unreachable: restore the last labelled snapshot (read-only).
-			const snap = readSnapshot<AnalyticsSnapshot>(SNAPSHOT_KEYS.analytics);
-			if (snap && snap.data.summary) {
-				applySnapshot(snap.data);
-				snapshotRestored = true;
-				markOffline(snap.savedAt);
-				error = null;
-			} else {
-				error = errMsg(e);
+			if (!acct) {
+				snapshotAt.set(
+					saveSnapshot<AnalyticsSnapshot>(SNAPSHOT_KEYS.analytics, {
+						summary: s,
+						points: e.points,
+						tags: t.tags,
+						days: c.days,
+						year: c.year,
+						kpi: k,
+						monthData: mc,
+						monthCursor: { y: mc.year, m: mc.month },
+						activity: a,
+						longShort: ls,
+						radarData: rd,
+						rBuckets: rb.buckets
+					}) ?? null
+				);
 			}
+		} catch (e) {
+			// Server unreachable: restore the last labelled snapshot (overall only).
+			if (!acct) {
+				const snap = readSnapshot<AnalyticsSnapshot>(SNAPSHOT_KEYS.analytics);
+				if (snap && snap.data.summary) {
+					applySnapshot(snap.data);
+					snapshotRestored = true;
+					markOffline(snap.savedAt);
+					error = null;
+					return;
+				}
+			}
+			error = errMsg(e);
 		} finally {
 			loading = false;
 		}
@@ -165,7 +178,7 @@
 			y += 1;
 		}
 		try {
-			monthData = await api.monthlyCalendar(y, m);
+			monthData = await api.monthlyCalendar(y, m, $selectedAccountId);
 			monthCursor = { y: monthData.year, m: monthData.month };
 			if (monthData.year !== year) await loadYearDays(monthData.year);
 		} catch (e) {
@@ -177,7 +190,7 @@
 		const y = monthCursor.y + delta;
 		const m = monthCursor.m;
 		try {
-			monthData = await api.monthlyCalendar(y, m);
+			monthData = await api.monthlyCalendar(y, m, $selectedAccountId);
 			monthCursor = { y: monthData.year, m: monthData.month };
 			await loadYearDays(monthData.year);
 		} catch (e) {
@@ -186,14 +199,52 @@
 	}
 
 	onMount(() => {
+		void loadAccounts();
 		void load();
 		void loadTrades(true);
 	});
+
+	function onAccountChange(e: Event): void {
+		const v = (e.currentTarget as HTMLSelectElement).value;
+		selectedAccountId.set(v ? Number(v) : null);
+		void load();
+	}
 </script>
 
 <svelte:head>
 	<title>Analytics · Trading Journal</title>
 </svelte:head>
+
+{#snippet accountSwitcher()}
+	<label class="flex h-10 items-center gap-2 rounded-xl border border-line bg-raised/70 px-3 text-sm text-dim">
+		<span class="font-mono text-[10px] tracking-[0.16em] uppercase">Account</span>
+		<select
+			value={$selectedAccountId === null ? '' : String($selectedAccountId)}
+			onchange={onAccountChange}
+			class="h-full max-w-44 appearance-none border-0 bg-transparent text-[13px] text-fg outline-none [color-scheme:inherit] [&>option]:bg-panel [&>option]:text-fg"
+			aria-label="Analytics account"
+		>
+			<option value="">All accounts</option>
+			{#each $accounts as a (a.id)}
+				<option value={String(a.id)}>@{a.alias}</option>
+			{/each}
+		</select>
+	</label>
+{/snippet}
+
+{#snippet propStrip()}
+	{#if prop}
+		<section class="card rise px-5 py-4" style="animation-delay: 10ms" aria-label="Prop status for @{prop.alias}">
+			<div class="grid grid-cols-2 gap-px sm:grid-cols-5">
+				<div><p class="eyebrow">Balance</p><p class="num mt-1 text-lg font-semibold text-fg tabular-nums">{prop.balance.toLocaleString()}</p><p class="num mt-0.5 text-[11px] text-dim">{prop.total_net >= 0 ? '+' : ''}{prop.total_net.toLocaleString()} total</p></div>
+				<div><p class="eyebrow">Daily left</p><p class="num mt-1 text-lg font-semibold tabular-nums {(prop.daily_left ?? 0) < 0 ? 'text-loss' : 'text-fg'}">{prop.daily_left?.toLocaleString() ?? '—'}</p><p class="num mt-0.5 text-[11px] text-dim">{prop.daily_pnl >= 0 ? '+' : ''}{prop.daily_pnl.toLocaleString()} today ({prop.daily_basis})</p></div>
+				<div><p class="eyebrow">Max left</p><p class="num mt-1 text-lg font-semibold tabular-nums {(prop.max_left ?? 1) <= 0 ? 'text-loss' : 'text-fg'}">{prop.max_left?.toLocaleString() ?? '—'}</p><p class="num mt-0.5 text-[11px] text-dim">{prop.max_mode} floor {prop.max_floor?.toLocaleString() ?? '—'}</p></div>
+				<div><p class="eyebrow">Target</p><p class="num mt-1 text-lg font-semibold text-fg tabular-nums">{prop.target_pct === null ? '—' : `${prop.target_pct.toFixed(1)}%`}</p><p class="num mt-0.5 text-[11px] text-dim">goal {prop.profit_target?.toLocaleString() ?? '—'}</p></div>
+				<div><p class="eyebrow">Status</p><p class="mt-1 font-mono text-[12px] font-bold tracking-[0.14em] uppercase {prop.breached ? 'text-loss' : 'text-win'}">{prop.breached ? 'breach' : prop.status}</p><p class="num mt-0.5 text-[11px] text-dim">@{prop.alias}</p></div>
+			</div>
+		</section>
+	{/if}
+{/snippet}
 
 {#if loading}
 	<div class="flex flex-col gap-4" aria-hidden="true">
@@ -219,12 +270,26 @@
 		onAction={() => void load()}
 	/>
 {:else if summary.total_trades === 0}
-	<StateBlock
-		title="No closed trades yet"
-		body="Log trades with the Telegram bot to unlock performance analytics."
-		actionLabel="Back to trades"
-		onAction={() => (window.location.href = '/')}
-	/>
+	<div class="flex flex-col gap-4" transition:fade={{ duration: 150 }}>
+		<PageHead
+			eyebrow="Performance"
+			title="Analytics"
+			meta={$selectedAccountId === null ? 'overall · all accounts' : 'filtered · one account'}
+		>
+			{@render accountSwitcher()}
+		</PageHead>
+
+		{@render propStrip()}
+
+		<StateBlock
+			title="No closed trades yet"
+			body={$selectedAccountId === null
+				? 'Log trades with the Telegram bot to unlock performance analytics.'
+				: 'No closed trades on this account yet — move some over from the Trades page or log with @alias.'}
+			actionLabel="Back to trades"
+			onAction={() => (window.location.href = '/')}
+		/>
+	</div>
 {:else}
 	<div class="flex flex-col gap-4" transition:fade={{ duration: 150 }}>
 		<PageHead
@@ -233,7 +298,11 @@
 			meta="{summary.total_trades} closed trades · {year} · expectancy, risk &amp; distribution{snapshotRestored
 				? ' · offline snapshot'
 				: ''}"
-		/>
+		>
+			{@render accountSwitcher()}
+		</PageHead>
+
+		{@render propStrip()}
 
 		{#if kpi}
 			<KpiStrip {kpi} />
