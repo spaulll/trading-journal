@@ -408,6 +408,8 @@ export const api = {
 			json({ method: 'POST', body: JSON.stringify({ date_from: from ?? null, date_to: to ?? null }) })
 		),
 	listInsightReports: () => req<InsightReportDto[]>('/api/insights/reports'),
+	deleteInsightReport: (id: number) =>
+		req<{ deleted: number }>(`/api/insights/reports/${id}`, { method: 'DELETE' }),
 	thumbUrl: (assetId: string) => `${API_BASE}/api/screenshots/${assetId}/thumbnail`,
 	fullUrl: (assetId: string) => `${API_BASE}/api/screenshots/${assetId}/full`
 };
