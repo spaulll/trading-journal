@@ -1,15 +1,16 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { CalendarPlus } from 'lucide-svelte';
+	import { CalendarPlus, Sparkles } from 'lucide-svelte';
 	import PageHead from '$lib/components/PageHead.svelte';
 	import StateBlock from '$lib/components/StateBlock.svelte';
 	import DayPanel from '$lib/components/DayPanel.svelte';
 	import TradeModal from '$lib/components/TradeModal.svelte';
-	import { api, type DailyNoteDto } from '$lib/api';
+	import { api, errMsg, type DailyNoteDto, type InsightReportDto, type WeekendReviewResult } from '$lib/api';
 	import { SNAPSHOT_KEYS, readSnapshot, saveSnapshot } from '$lib/offline-snapshot';
 	import { markOffline, markOnline, snapshotAt } from '$lib/stores/offline';
 	import { loadTrades, trades } from '$lib/stores/trades';
 	import { notesVersion, openDay } from '$lib/stores/journal';
+	import { renderMiniMarkdown } from '$lib/utils/minimd';
 	import { dayKeyOf, fmtDate, fmtMoney, pnlTone, toneText } from '$lib/utils/format';
 
 	const BE_TOL = 5.0;
@@ -17,6 +18,57 @@
 	let notes = $state<DailyNoteDto[]>([]);
 	let loading = $state(true);
 	let error = $state<string | null>(null);
+
+	// --- Weekend review (LLM summary of errors + strengths) ---
+	let reports = $state<InsightReportDto[]>([]);
+	let generating = $state(false);
+	let reviewResult = $state<WeekendReviewResult | null>(null);
+	let reviewError = $state<string | null>(null);
+	let overrideFrom = $state('');
+	let overrideTo = $state('');
+	let expandedReport = $state<number | null>(null);
+
+	/** Last completed Mon–Fri, mirroring the backend default. */
+	function defaultWeek(today: Date = new Date()): { from: string; to: string } {
+		const wd = (today.getDay() + 6) % 7; // Mon=0
+		const monday = new Date(today);
+		monday.setDate(today.getDate() - (wd >= 5 ? wd : wd + 7));
+		const friday = new Date(monday);
+		friday.setDate(monday.getDate() + 4);
+		const iso = (d: Date) =>
+			`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+		return { from: iso(monday), to: iso(friday) };
+	}
+
+	const defaultRange = defaultWeek();
+	const defaultLabel = `${fmtDate(defaultRange.from)} – ${fmtDate(defaultRange.to)}`;
+
+	async function loadReports(): Promise<void> {
+		try {
+			reports = await api.listInsightReports();
+		} catch {
+			// History is a nice-to-have — never block the page on it.
+			reports = [];
+		}
+	}
+
+	async function generateReview(): Promise<void> {
+		if (generating) return;
+		if ((overrideFrom && !overrideTo) || (!overrideFrom && overrideTo)) {
+			reviewError = 'Pick both a from and a to date, or leave both empty for last week.';
+			return;
+		}
+		generating = true;
+		reviewError = null;
+		try {
+			reviewResult = await api.weekendReview(overrideFrom || undefined, overrideTo || undefined);
+			await loadReports();
+		} catch (e) {
+			reviewError = errMsg(e);
+		} finally {
+			generating = false;
+		}
+	}
 
 	const todayKey = (() => {
 		const d = new Date();
@@ -54,6 +106,7 @@
 
 	onMount(() => {
 		void loadTrades(true);
+		void loadReports();
 	});
 
 	$effect(() => {
@@ -68,6 +121,81 @@
 		Today
 	</button>
 </PageHead>
+
+<section aria-label="Weekend review" class="card rise p-5">
+	<div class="flex flex-wrap items-center gap-2">
+		<Sparkles size={16} strokeWidth={2} aria-hidden="true" class="text-accent" />
+		<h2 class="text-[15px] font-semibold text-fg">Weekend review</h2>
+		<span class="num text-[12px] text-dim">AI summary of errors + strengths · {defaultLabel}</span>
+	</div>
+	<div class="mt-3 flex flex-wrap items-center gap-2">
+		<label class="flex items-center gap-1.5 text-[12px] text-dim">
+			<span class="font-mono text-[10px] tracking-[0.14em] uppercase">From</span>
+			<input type="date" bind:value={overrideFrom} class="field h-9 px-2 font-mono text-[12px]" aria-label="Review range start" />
+		</label>
+		<label class="flex items-center gap-1.5 text-[12px] text-dim">
+			<span class="font-mono text-[10px] tracking-[0.14em] uppercase">To</span>
+			<input type="date" bind:value={overrideTo} class="field h-9 px-2 font-mono text-[12px]" aria-label="Review range end" />
+		</label>
+		<button
+			type="button"
+			onclick={() => void generateReview()}
+			disabled={generating}
+			class="btn btn-primary h-9 px-4 text-[13px] disabled:opacity-50"
+		>
+			{generating ? 'Summarizing…' : 'Summarize week'}
+		</button>
+		{#if generating}
+			<span class="text-[12px] text-dim">Reading trade + daily notes…</span>
+		{/if}
+	</div>
+
+	{#if generating}
+		<div class="skeleton card mt-3 h-28" aria-hidden="true"></div>
+	{:else if reviewError}
+		<p role="alert" class="mt-3 rounded-xl border border-loss/40 bg-loss/8 px-3 py-2 text-[13px] text-loss">
+			Summary failed — {reviewError}
+		</p>
+	{:else if reviewResult?.status === 'empty'}
+		<div class="card mt-3 border-dashed px-4 py-6 text-center">
+			<p class="text-sm font-medium text-fg">No notes to summarize ({fmtDate(reviewResult.date_from)} – {fmtDate(reviewResult.date_to)})</p>
+			<p class="mt-1 text-[13px] text-mut">Write EOD reviews or add trade notes with !mistake tags, then try again.</p>
+		</div>
+	{:else if reviewResult?.status === 'ok'}
+		<article class="mt-3 rounded-xl border border-accent/30 bg-raised/40 px-4 py-3" aria-label="Latest weekend review">
+			<p class="num text-[11px] tracking-wide text-dim uppercase">
+				{fmtDate(reviewResult.date_from)} – {fmtDate(reviewResult.date_to)} · {reviewResult.report.model}
+			</p>
+			<div class="prose-review">{@html renderMiniMarkdown(reviewResult.report.markdown)}</div>
+		</article>
+	{/if}
+
+	{#if reports.length > 0}
+		<div class="mt-4 border-t border-line pt-3">
+			<p class="font-mono text-[10px] tracking-[0.16em] text-dim uppercase">Past reviews ({reports.length})</p>
+			<ul class="mt-2 flex flex-col gap-1.5">
+				{#each reports as r (r.id)}
+					<li class="rounded-lg border border-line">
+						<button
+							type="button"
+							onclick={() => (expandedReport = expandedReport === r.id ? null : r.id)}
+							aria-expanded={expandedReport === r.id}
+							class="flex w-full items-center gap-2 px-3 py-2 text-left text-[13px] transition-colors hover:bg-raised/50"
+						>
+							<span class="num font-medium text-fg">{fmtDate(r.date_from)} – {fmtDate(r.date_to)}</span>
+							<span class="num ml-auto text-[11px] text-dim">{fmtDate(r.created_at.slice(0, 10))}</span>
+						</button>
+						{#if expandedReport === r.id}
+							<div class="border-t border-line px-4 py-3">
+								<div class="prose-review">{@html renderMiniMarkdown(r.markdown)}</div>
+							</div>
+						{/if}
+					</li>
+				{/each}
+			</ul>
+		</div>
+	{/if}
+</section>
 
 {#if loading}
 	<div class="flex flex-col gap-4">

@@ -129,6 +129,18 @@ class AppSetting(SQLModel, table=True):
     updated_at: datetime = Field(default_factory=_utcnow)
 
 
+class InsightReport(SQLModel, table=True):
+    """Stored LLM weekend-review summaries (one row per generated week)."""
+
+    __tablename__ = "insight_report"
+    id: Optional[int] = Field(default=None, primary_key=True)
+    date_from: date_type = Field(index=True)
+    date_to: date_type = Field(index=True)
+    markdown: str = Field(default="")
+    model: str = Field(default="")
+    created_at: datetime = Field(default_factory=_utcnow)
+
+
 # --- Read schemas (responses embed tags + screenshot metadata) ---
 
 
@@ -281,6 +293,20 @@ class DailyNoteUpsert(SQLModel):
     pre_market: Optional[str] = None
     eod_review: Optional[str] = None
     discipline_breach: Optional[bool] = None
+
+
+class InsightReportRead(SQLModel):
+    id: int
+    date_from: date_type
+    date_to: date_type
+    markdown: str
+    model: str
+    created_at: datetime
+
+
+class WeekendReviewRequest(SQLModel):
+    date_from: Optional[date_type] = None
+    date_to: Optional[date_type] = None
 
 
 class AccountRead(SQLModel):
