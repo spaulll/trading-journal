@@ -19,6 +19,7 @@
 	let accountFilter = $state('');
 	let moveTarget = $state('');
 	let moving = $state(false);
+	let moveOpen = $state(false);
 	let selectMode = $state(false);
 	let selected = $state<Set<number>>(new Set());
 	let searchEl: HTMLInputElement | null = $state(null);
@@ -238,53 +239,77 @@
 				class="pointer-events-none absolute right-2 text-dim"
 			/>
 		</label>
-	</div>
 
-	{#if filtered.length > 0}
-		<div class="mb-3 flex flex-wrap items-center gap-2 rounded-xl border border-line bg-raised/40 px-3 py-2">
-			<span class="num text-[12px] text-dim">{filtered.length} shown</span>
+		{#if filtered.length > 0}
 			<button
 				type="button"
-				onclick={toggleSelectMode}
-				aria-pressed={selectMode}
-				class="rounded-lg border px-2.5 py-1 font-mono text-[11px] font-bold tracking-[0.08em] uppercase transition-all active:scale-95 {selectMode
+				onclick={() => (moveOpen = !moveOpen)}
+				aria-expanded={moveOpen}
+				aria-controls="trade-move-panel"
+				class="flex h-9 items-center gap-1.5 rounded-xl border px-2.5 font-mono text-[11px] font-bold tracking-[0.08em] uppercase transition-all active:scale-95 {moveOpen
 					? 'border-accent/60 bg-accent/15 text-accent'
-					: 'border-line text-dim hover:border-accent/40 hover:text-fg'}"
+					: 'border-line bg-raised/70 text-dim hover:border-accent/40 hover:text-fg'}"
 			>
-				{selectMode ? 'Done' : 'Select'}
+				Move{#if selectMode && selectedVisibleCount > 0}&nbsp;({selectedVisibleCount}){/if}
+				<ChevronDown
+					size={14}
+					strokeWidth={2}
+					aria-hidden="true"
+					class="transition-transform duration-200 {moveOpen ? 'rotate-180' : ''}"
+				/>
 			</button>
-			{#if selectMode}
-				<span class="num text-[12px] font-semibold text-fg">{selectedVisibleCount} selected</span>
+		{/if}
+
+		{#if moveOpen && filtered.length > 0}
+			<div
+				id="trade-move-panel"
+				transition:slide={{ duration: 220 }}
+				class="flex basis-full flex-wrap items-center gap-2 rounded-xl border border-line bg-raised/40 px-3 py-2"
+			>
+				<span class="num text-[12px] text-dim">{filtered.length} shown</span>
 				<button
 					type="button"
-					onclick={selectAllFiltered}
-					disabled={allFilteredSelected}
-					class="rounded-lg px-2 py-1 font-mono text-[11px] tracking-[0.06em] uppercase text-dim transition-colors hover:text-fg disabled:opacity-40"
+					onclick={toggleSelectMode}
+					aria-pressed={selectMode}
+					class="rounded-lg border px-2.5 py-1 font-mono text-[11px] font-bold tracking-[0.08em] uppercase transition-all active:scale-95 {selectMode
+						? 'border-accent/60 bg-accent/15 text-accent'
+						: 'border-line text-dim hover:border-accent/40 hover:text-fg'}"
 				>
-					All
+					{selectMode ? 'Done' : 'Select'}
 				</button>
-				<button
-					type="button"
-					onclick={clearSelection}
-					disabled={selectedVisibleCount === 0}
-					class="rounded-lg px-2 py-1 font-mono text-[11px] tracking-[0.06em] uppercase text-dim transition-colors hover:text-fg disabled:opacity-40"
-				>
-					None
+				{#if selectMode}
+					<span class="num text-[12px] font-semibold text-fg">{selectedVisibleCount} selected</span>
+					<button
+						type="button"
+						onclick={selectAllFiltered}
+						disabled={allFilteredSelected}
+						class="rounded-lg px-2 py-1 font-mono text-[11px] tracking-[0.06em] uppercase text-dim transition-colors hover:text-fg disabled:opacity-40"
+					>
+						All
+					</button>
+					<button
+						type="button"
+						onclick={clearSelection}
+						disabled={selectedVisibleCount === 0}
+						class="rounded-lg px-2 py-1 font-mono text-[11px] tracking-[0.06em] uppercase text-dim transition-colors hover:text-fg disabled:opacity-40"
+					>
+						None
+					</button>
+				{/if}
+				<span class="font-mono text-[10px] tracking-[0.16em] text-dim uppercase">Move {selectMode ? 'selected' : 'shown'} to</span>
+				<select bind:value={moveTarget} class="h-8 rounded-lg border border-line bg-panel px-2 font-mono text-[12px] text-fg outline-none" aria-label="Move target account">
+					<option value="">Pick…</option>
+					<option value="unassigned">Unassigned</option>
+					{#each $accounts as a (a.id)}
+						<option value={String(a.id)}>@{a.alias}</option>
+					{/each}
+				</select>
+				<button type="button" onclick={() => void moveFiltered()} disabled={!moveTarget || moving || (selectMode && selectedVisibleCount === 0)} class="btn btn-ghost h-8 px-3 text-[12px] disabled:opacity-40">
+					{moving ? 'Moving…' : selectMode ? `Move ${selectedVisibleCount}` : 'Move'}
 				</button>
-			{/if}
-			<span class="font-mono text-[10px] tracking-[0.16em] text-dim uppercase">Move {selectMode ? 'selected' : 'shown'} to</span>
-			<select bind:value={moveTarget} class="h-8 rounded-lg border border-line bg-panel px-2 font-mono text-[12px] text-fg outline-none" aria-label="Move target account">
-				<option value="">Pick…</option>
-				<option value="unassigned">Unassigned</option>
-				{#each $accounts as a (a.id)}
-					<option value={String(a.id)}>@{a.alias}</option>
-				{/each}
-			</select>
-			<button type="button" onclick={() => void moveFiltered()} disabled={!moveTarget || moving || (selectMode && selectedVisibleCount === 0)} class="btn btn-ghost h-8 px-3 text-[12px] disabled:opacity-40">
-				{moving ? 'Moving…' : selectMode ? `Move ${selectedVisibleCount}` : 'Move'}
-			</button>
-		</div>
-	{/if}
+			</div>
+		{/if}
+	</div>
 
 	{#if filtered.length === 0}
 		<div class="card border-dashed px-6 py-12 text-center">
