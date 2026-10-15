@@ -19,6 +19,8 @@
 	let accountFilter = $state('');
 	let moveTarget = $state('');
 	let moving = $state(false);
+	let selectMode = $state(false);
+	let selected = $state<Set<number>>(new Set());
 	let searchEl: HTMLInputElement | null = $state(null);
 	let expanded = $state<Set<number>>(new Set());
 
@@ -100,16 +102,17 @@
 	}
 
 	async function moveFiltered(): Promise<void> {
-		if (filtered.length === 0 || moving) return;
+		const ids = selectMode
+			? filtered.filter((t) => selected.has(t.id)).map((t) => t.id)
+			: filtered.map((t) => t.id);
+		if (ids.length === 0 || moving) return;
 		moving = true;
 		try {
 			const target = moveTarget === 'unassigned' ? null : moveTarget ? Number(moveTarget) : null;
 			if (moveTarget === '') return;
-			const r = await api.bulkAccount(
-				filtered.map((t) => t.id),
-				target
-			);
+			const r = await api.bulkAccount(ids, target);
 			await loadTrades(true);
+			selected = new Set([...selected].filter((id) => !ids.includes(id)));
 			toasts.push('success', `Moved ${r.updated} trade${r.updated === 1 ? '' : 's'} to ${moveTarget === 'unassigned' ? 'unassigned' : '@' + aliasOf(target)}.`);
 		} catch (e) {
 			toasts.push('error', `Move failed — ${e instanceof Error ? e.message : 'unknown error'}`);
@@ -117,6 +120,36 @@
 			moving = false;
 		}
 	}
+
+	function toggleSelectMode(): void {
+		selectMode = !selectMode;
+		if (!selectMode) selected = new Set();
+	}
+
+	function toggleOne(id: number): void {
+		const next = new Set(selected);
+		if (next.has(id)) next.delete(id);
+		else next.add(id);
+		selected = next;
+	}
+
+	function selectAllFiltered(): void {
+		selected = new Set(filtered.map((t) => t.id));
+	}
+
+	function toggleAllFiltered(): void {
+		if (allFilteredSelected) selected = new Set();
+		else selected = new Set(filtered.map((t) => t.id));
+	}
+
+	function clearSelection(): void {
+		selected = new Set();
+	}
+
+	const selectedVisibleCount = $derived(filtered.filter((t) => selected.has(t.id)).length);
+	const allFilteredSelected = $derived(
+		filtered.length > 0 && filtered.every((t) => selected.has(t.id))
+	);
 
 </script>
 
@@ -210,7 +243,36 @@
 	{#if filtered.length > 0}
 		<div class="mb-3 flex flex-wrap items-center gap-2 rounded-xl border border-line bg-raised/40 px-3 py-2">
 			<span class="num text-[12px] text-dim">{filtered.length} shown</span>
-			<span class="font-mono text-[10px] tracking-[0.16em] text-dim uppercase">Move shown to</span>
+			<button
+				type="button"
+				onclick={toggleSelectMode}
+				aria-pressed={selectMode}
+				class="rounded-lg border px-2.5 py-1 font-mono text-[11px] font-bold tracking-[0.08em] uppercase transition-all active:scale-95 {selectMode
+					? 'border-accent/60 bg-accent/15 text-accent'
+					: 'border-line text-dim hover:border-accent/40 hover:text-fg'}"
+			>
+				{selectMode ? 'Done' : 'Select'}
+			</button>
+			{#if selectMode}
+				<span class="num text-[12px] font-semibold text-fg">{selectedVisibleCount} selected</span>
+				<button
+					type="button"
+					onclick={selectAllFiltered}
+					disabled={allFilteredSelected}
+					class="rounded-lg px-2 py-1 font-mono text-[11px] tracking-[0.06em] uppercase text-dim transition-colors hover:text-fg disabled:opacity-40"
+				>
+					All
+				</button>
+				<button
+					type="button"
+					onclick={clearSelection}
+					disabled={selectedVisibleCount === 0}
+					class="rounded-lg px-2 py-1 font-mono text-[11px] tracking-[0.06em] uppercase text-dim transition-colors hover:text-fg disabled:opacity-40"
+				>
+					None
+				</button>
+			{/if}
+			<span class="font-mono text-[10px] tracking-[0.16em] text-dim uppercase">Move {selectMode ? 'selected' : 'shown'} to</span>
 			<select bind:value={moveTarget} class="h-8 rounded-lg border border-line bg-panel px-2 font-mono text-[12px] text-fg outline-none" aria-label="Move target account">
 				<option value="">Pick…</option>
 				<option value="unassigned">Unassigned</option>
@@ -218,8 +280,8 @@
 					<option value={String(a.id)}>@{a.alias}</option>
 				{/each}
 			</select>
-			<button type="button" onclick={() => void moveFiltered()} disabled={!moveTarget || moving} class="btn btn-ghost h-8 px-3 text-[12px]">
-				{moving ? 'Moving…' : 'Move'}
+			<button type="button" onclick={() => void moveFiltered()} disabled={!moveTarget || moving || (selectMode && selectedVisibleCount === 0)} class="btn btn-ghost h-8 px-3 text-[12px] disabled:opacity-40">
+				{moving ? 'Moving…' : selectMode ? `Move ${selectedVisibleCount}` : 'Move'}
 			</button>
 		</div>
 	{/if}
@@ -234,7 +296,19 @@
 		<div class="card hidden overflow-x-auto md:block" role="table" aria-label="Trade history">
 			<div class="min-w-[940px]">
 				<div role="row" class="tgrid sticky top-0 z-10 border-b border-line bg-panel">
-					<span role="columnheader" class="px-2 py-2.5 text-center"><span class="sr-only">Expand</span></span>
+					<span role="columnheader" class="flex items-center justify-center gap-1 px-1 py-2.5 text-center">
+						{#if selectMode}
+							<input
+								type="checkbox"
+								checked={allFilteredSelected}
+								onchange={toggleAllFiltered}
+								aria-label="Select all shown trades"
+								class="h-4 w-4 shrink-0 cursor-pointer accent-[var(--c-accent)]"
+							/>
+						{:else}
+							<span class="sr-only">Expand</span>
+						{/if}
+					</span>
 					<span role="columnheader" class="thead px-3 py-2.5 text-left">Opened</span>
 					<span role="columnheader" class="thead px-3 py-2.5 text-left">Symbol</span>
 					<span role="columnheader" class="thead px-3 py-2.5 text-right">Entry → Exit</span>
@@ -247,18 +321,28 @@
 						<div
 							role="row"
 							tabindex={0}
-							onclick={() => openTrade(t.id)}
-							onkeydown={(e) => e.key === 'Enter' && openTrade(t.id)}
-							class="tgrid trow anim-fade cursor-pointer row-line transition-colors duration-200 hover:bg-raised/50 focus-visible:outline-none"
+							onclick={() => (selectMode ? toggleOne(t.id) : openTrade(t.id))}
+							onkeydown={(e) => e.key === 'Enter' && (selectMode ? toggleOne(t.id) : openTrade(t.id))}
+							class="tgrid trow anim-fade cursor-pointer row-line transition-colors duration-200 hover:bg-raised/50 focus-visible:outline-none {selectMode && selected.has(t.id) ? 'bg-accent/10' : ''}"
 							style="animation-delay: {Math.min(i, 29) * 20}ms"
 						>
-							<span role="cell" class="px-2 py-2.5 text-center">
+							<span role="cell" class="flex items-center justify-center gap-1 px-1 py-2.5 text-center">
+								{#if selectMode}
+									<input
+										type="checkbox"
+										checked={selected.has(t.id)}
+										onchange={() => toggleOne(t.id)}
+										onclick={(e) => e.stopPropagation()}
+										aria-label="Select trade {t.symbol ?? t.id}"
+										class="h-4 w-4 shrink-0 cursor-pointer accent-[var(--c-accent)]"
+									/>
+								{/if}
 								<button
 									type="button"
 									onclick={(e) => toggleExpand(t.id, e)}
 									aria-label="Preview"
 									aria-expanded={expanded.has(t.id)}
-									class="mx-auto grid h-6 w-6 place-items-center rounded-md text-dim transition-all duration-300 ease-spring hover:bg-raised hover:text-fg focus-visible:outline-none {expanded.has(
+									class="grid h-6 w-6 shrink-0 place-items-center rounded-md text-dim transition-all duration-300 ease-spring hover:bg-raised hover:text-fg focus-visible:outline-none {expanded.has(
 										t.id
 									)
 										? 'rotate-180 text-accent'
@@ -354,9 +438,9 @@
 				<div
 					role="button"
 					tabindex={0}
-					onclick={() => openTrade(t.id)}
-					onkeydown={(e) => e.key === 'Enter' && openTrade(t.id)}
-					class="card card-hover rise relative overflow-hidden p-3.5 text-left focus-visible:outline-none active:scale-[0.99]"
+					onclick={() => (selectMode ? toggleOne(t.id) : openTrade(t.id))}
+					onkeydown={(e) => e.key === 'Enter' && (selectMode ? toggleOne(t.id) : openTrade(t.id))}
+					class="card card-hover rise relative overflow-hidden p-3.5 text-left focus-visible:outline-none active:scale-[0.99] {selectMode && selected.has(t.id) ? 'border-accent/60' : ''}"
 					style="animation-delay: {Math.min(i, 14) * 40}ms"
 				>
 					<span
@@ -368,7 +452,19 @@
 						aria-hidden="true"
 					></span>
 					<div class="flex items-center justify-between gap-2 pl-1.5">
-						<span class="num text-sm font-semibold text-fg uppercase">{t.symbol ?? '—'} <span class="font-mono text-[10px] font-normal text-dim normal-case">@{chipAlias($accountMap, t.account_id)}</span></span>
+						<span class="flex items-center gap-2">
+							{#if selectMode}
+								<input
+									type="checkbox"
+									checked={selected.has(t.id)}
+									onchange={() => toggleOne(t.id)}
+									onclick={(e) => e.stopPropagation()}
+									aria-label="Select trade {t.symbol ?? t.id}"
+									class="h-4 w-4 shrink-0 cursor-pointer accent-[var(--c-accent)]"
+								/>
+							{/if}
+							<span class="num text-sm font-semibold text-fg uppercase">{t.symbol ?? '—'} <span class="font-mono text-[10px] font-normal text-dim normal-case">@{chipAlias($accountMap, t.account_id)}</span></span>
+						</span>
 						<span class="flex items-center gap-2">
 							<span class="num text-sm font-semibold {toneText[pnlTone(t.net_pnl)]}">
 								{fmtMoney(t.net_pnl)}
