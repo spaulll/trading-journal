@@ -146,10 +146,13 @@ def _notes_block(notes: list[DailyNote]) -> str:
 SYSTEM_PROMPT = (
     "You are a trading coach reviewing a retail trader's week. "
     "Be direct, specific, and reference their actual trades and notes — "
-    "no generic advice. Format the response in markdown with exactly "
-    "these sections: ### Top errors (with trade evidence), "
-    "### What worked (strengths to keep), ### One fix for next week "
-    "(a single concrete behavior change). Keep it under 500 words."
+    "no generic advice. Format the response in markdown using ONLY "
+    "### headings, **bold**, and - bullet lists: no tables, no code "
+    "blocks, no horizontal rules. Use exactly these sections: "
+    "### Top errors (bullets with trade evidence), "
+    "### What worked (bullets of strengths to keep), "
+    "### One fix for next week (a single concrete behavior change). "
+    "Keep it under 350 words."
 )
 
 
@@ -171,9 +174,9 @@ def _build_prompt(trades: list[Trade], notes: list[DailyNote]) -> str:
 def _call_llm(prompt: str) -> str:
     base, key, model = _llm_settings()
     try:
-        max_tokens = int(os.getenv("LLM_MAX_TOKENS", "900"))
+        max_tokens = int(os.getenv("LLM_MAX_TOKENS", "1200"))
     except ValueError:
-        max_tokens = 900
+        max_tokens = 1200
     try:
         timeout_s = float(os.getenv("LLM_TIMEOUT_S", "120"))
     except ValueError:
