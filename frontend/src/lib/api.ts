@@ -116,6 +116,19 @@ export interface SyncResult {
 	total: number;
 }
 
+export interface InsightReportDto {
+	id: number;
+	date_from: string;
+	date_to: string;
+	markdown: string;
+	model: string;
+	created_at: string;
+}
+
+export type WeekendReviewResult =
+	| { status: 'ok'; date_from: string; date_to: string; report: InsightReportDto }
+	| { status: 'empty'; date_from: string; date_to: string; detail: string };
+
 export interface SummaryDto {
 	total_trades: number;
 	open_trades: number;
@@ -389,6 +402,12 @@ export const api = {
 	putNote: (day: string, patch: { pre_market?: string | null; eod_review?: string | null }) =>
 		req<DailyNoteDto>(`/api/daily-notes/${day}`, json({ method: 'PUT', body: JSON.stringify(patch) })),
 	deleteNote: (day: string) => req<{ deleted: string }>(`/api/daily-notes/${day}`, { method: 'DELETE' }),
+	weekendReview: (from?: string, to?: string) =>
+		req<WeekendReviewResult>(
+			'/api/insights/weekend-review',
+			json({ method: 'POST', body: JSON.stringify({ date_from: from ?? null, date_to: to ?? null }) })
+		),
+	listInsightReports: () => req<InsightReportDto[]>('/api/insights/reports'),
 	thumbUrl: (assetId: string) => `${API_BASE}/api/screenshots/${assetId}/thumbnail`,
 	fullUrl: (assetId: string) => `${API_BASE}/api/screenshots/${assetId}/full`
 };
