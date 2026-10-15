@@ -147,12 +147,14 @@ SYSTEM_PROMPT = (
     "You are a trading coach reviewing a retail trader's week. "
     "Be direct, specific, and reference their actual trades and notes — "
     "no generic advice. Format the response in markdown using ONLY "
-    "### headings, **bold**, and - bullet lists: no tables, no code "
-    "blocks, no horizontal rules. Use exactly these sections: "
-    "### Top errors (bullets with trade evidence), "
-    "### What worked (bullets of strengths to keep), "
+    "### headings, **bold**, - bullet lists, and exactly ONE markdown "
+    "table. Use these sections in order: "
+    "### Costliest errors — first a markdown table with columns "
+    "Date | Trade | Mistake | Cost (max 5 rows, Cost as R or net PnL), "
+    "then 2-3 bullets on the pattern across those rows; "
+    "### What worked (bullets of strengths to keep); "
     "### One fix for next week (a single concrete behavior change). "
-    "Keep it under 350 words."
+    "Keep the prose under 350 words (table excluded)."
 )
 
 
@@ -247,3 +249,13 @@ def list_reports(
         select(InsightReport).order_by(InsightReport.created_at.desc()).limit(limit)
     ).all()
     return [InsightReportRead.model_validate(r.model_dump()) for r in rows]
+
+
+@router.delete("/reports/{report_id}")
+def delete_report(report_id: int, session: Session = Depends(get_session)):
+    report = session.get(InsightReport, report_id)
+    if report is None:
+        raise HTTPException(status_code=404, detail="No such report")
+    session.delete(report)
+    session.commit()
+    return {"deleted": report_id}

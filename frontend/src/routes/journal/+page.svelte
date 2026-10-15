@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { CalendarPlus, Sparkles } from 'lucide-svelte';
+	import { CalendarPlus, Sparkles, X } from 'lucide-svelte';
 	import PageHead from '$lib/components/PageHead.svelte';
 	import StateBlock from '$lib/components/StateBlock.svelte';
 	import DayPanel from '$lib/components/DayPanel.svelte';
@@ -70,6 +70,17 @@
 		}
 	}
 
+	async function deleteReport(id: number): Promise<void> {
+		try {
+			await api.deleteInsightReport(id);
+			reports = reports.filter((r) => r.id !== id);
+			if (expandedReport === id) expandedReport = null;
+			if (reviewResult?.status === 'ok' && reviewResult.report.id === id) reviewResult = null;
+		} catch (e) {
+			reviewError = errMsg(e);
+		}
+	}
+
 	const todayKey = (() => {
 		const d = new Date();
 		return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -122,7 +133,7 @@
 	</button>
 </PageHead>
 
-<section aria-label="Weekend review" class="card rise p-5">
+<section aria-label="Weekend review" class="card rise mb-4 p-5">
 	<div class="flex flex-wrap items-center gap-2">
 		<Sparkles size={16} strokeWidth={2} aria-hidden="true" class="text-accent" />
 		<h2 class="text-[15px] font-semibold text-fg">Weekend review</h2>
@@ -176,15 +187,25 @@
 			<ul class="mt-2 flex flex-col gap-1.5">
 				{#each reports as r (r.id)}
 					<li class="rounded-lg border border-line">
-						<button
-							type="button"
-							onclick={() => (expandedReport = expandedReport === r.id ? null : r.id)}
-							aria-expanded={expandedReport === r.id}
-							class="flex w-full items-center gap-2 px-3 py-2 text-left text-[13px] transition-colors hover:bg-raised/50"
-						>
-							<span class="num font-medium text-fg">{fmtDate(r.date_from)} – {fmtDate(r.date_to)}</span>
-							<span class="num ml-auto text-[11px] text-dim">{fmtDate(r.created_at.slice(0, 10))}</span>
-						</button>
+						<div class="flex items-center gap-1 px-1 py-1">
+							<button
+								type="button"
+								onclick={() => (expandedReport = expandedReport === r.id ? null : r.id)}
+								aria-expanded={expandedReport === r.id}
+								class="flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-left text-[13px] transition-colors hover:bg-raised/50"
+							>
+								<span class="num truncate font-medium text-fg">{fmtDate(r.date_from)} – {fmtDate(r.date_to)}</span>
+								<span class="num ml-auto shrink-0 text-[11px] text-dim">{fmtDate(r.created_at.slice(0, 10))}</span>
+							</button>
+							<button
+								type="button"
+								onclick={() => void deleteReport(r.id)}
+								aria-label="Delete review {r.date_from} to {r.date_to}"
+								class="grid h-7 w-7 shrink-0 place-items-center rounded-md text-dim transition-colors hover:bg-loss/12 hover:text-loss"
+							>
+								<X size={14} strokeWidth={2.2} aria-hidden="true" />
+							</button>
+						</div>
 						{#if expandedReport === r.id}
 							<div class="border-t border-line px-4 py-3">
 								<div class="prose-review">{@html renderMiniMarkdown(r.markdown)}</div>
