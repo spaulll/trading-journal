@@ -35,6 +35,7 @@ from sqlmodel import Session  # noqa: E402
 
 from app.database import create_db_and_tables, engine  # noqa: E402
 from app.main import app  # noqa: E402
+from app.services.symbol_registry import seed_specs  # noqa: E402
 
 # Tables truncated between tests, in dependency order.
 _TABLES = (
@@ -46,6 +47,7 @@ _TABLES = (
     "account",
     "app_setting",
     "insight_report",
+    "symbol_spec",
 )
 
 
@@ -63,10 +65,16 @@ def _database():
 
 @pytest.fixture(autouse=True)
 def _reset_db():
-    """Truncate every table before each test."""
+    """Truncate every table before each test, then restore the seed data."""
     with engine.begin() as conn:
         for table in _TABLES:
             conn.exec_driver_sql(f"DELETE FROM {table}")
+    # The symbol registry is seeded data, not a fixture of the test: a test
+    # that truncates it would price every trade as unpriced. Re-seed it so
+    # each test starts from the shipped default registry.
+    with Session(engine) as db:
+        seed_specs(db)
+        db.commit()
     yield
 
 

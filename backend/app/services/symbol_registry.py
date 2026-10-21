@@ -1,0 +1,135 @@
+"""Symbol contract registry — the one place that knows how big a lot is.
+
+A price distance is not money. Ten points on EURUSD and ten points on NAS100
+are wildly different dollars, and the only way to know which is which is the
+contract size: the number of quote-currency units one lot controls.
+
+    dollars = price_distance x contract_size x size
+
+``contract_size`` therefore means "units per 1.0 lot" and is 100000 for FX
+majors, 100 for gold ounces, 5000 for silver ounces, 1 for crypto coins and
+1 for index contracts.
+
+Quote currency
+--------------
+``quote_currency`` names the currency the price is quoted in. USD instruments
+need no conversion. A JPY-quoted instrument (USDJPY) is converted at the
+exit rate, so the P&L is stated in dollars rather than yen. Phase 4 replaces
+this with the daily FX rate table.
+
+Fallback
+--------
+A symbol that is not in the registry has no contract, so it cannot be
+priced. The pricing helpers return ``None`` for it — never a guess. The
+ledger flags such a trade as unpriced instead of scoring it as a scratch.
+"""
+
+from __future__ import annotations
+
+from typing import Optional
+
+from sqlmodel import Session, select
+
+from app.models import SymbolSpec
+
+# Canonical categories. A spec outside this set is rejected by the API.
+SYMBOL_CATEGORIES = ("fx", "metal", "crypto", "index", "future")
+
+# The seeded registry. Contract sizes follow the broker convention the
+# frontend already used for its risk preview; pip_size is the price
+# increment the instrument quotes in.
+DEFAULT_SPECS: tuple[dict, ...] = (
+    # --- FX majors: 100k units per lot -------------------------------
+    {"symbol": "EURUSD", "display": "EUR/USD", "contract_size": 100000.0,
+     "pip_size": 0.0001, "quote_currency": "USD", "category": "fx"},
+    {"symbol": "GBPUSD", "display": "GBP/USD", "contract_size": 100000.0,
+     "pip_size": 0.0001, "quote_currency": "USD", "category": "fx"},
+    {"symbol": "AUDUSD", "display": "AUD/USD", "contract_size": 100000.0,
+     "pip_size": 0.0001, "quote_currency": "USD", "category": "fx"},
+    {"symbol": "NZDUSD", "display": "NZD/USD", "contract_size": 100000.0,
+     "pip_size": 0.0001, "quote_currency": "USD", "category": "fx"},
+    {"symbol": "USDCHF", "display": "USD/CHF", "contract_size": 100000.0,
+     "pip_size": 0.0001, "quote_currency": "USD", "category": "fx"},
+    {"symbol": "USDCAD", "display": "USD/CAD", "contract_size": 100000.0,
+     "pip_size": 0.0001, "quote_currency": "USD", "category": "fx"},
+    {"symbol": "USDJPY", "display": "USD/JPY", "contract_size": 100000.0,
+     "pip_size": 0.01, "quote_currency": "JPY", "category": "fx"},
+    # --- Metals -------------------------------------------------------
+    {"symbol": "GOLD", "display": "Gold (XAU/USD)", "contract_size": 100.0,
+     "pip_size": 0.01, "quote_currency": "USD", "category": "metal"},
+    {"symbol": "XAUUSD", "display": "Gold (XAU/USD)", "contract_size": 100.0,
+     "pip_size": 0.01, "quote_currency": "USD", "category": "metal"},
+    {"symbol": "XAGUSD", "display": "Silver (XAG/USD)", "contract_size": 5000.0,
+     "pip_size": 0.001, "quote_currency": "USD", "category": "metal"},
+    {"symbol": "PAXG", "display": "PAX Gold (PAXG/USD)", "contract_size": 100.0,
+     "pip_size": 0.01, "quote_currency": "USD", "category": "metal"},
+    # --- Crypto: one coin per lot -------------------------------------
+    {"symbol": "BTCUSD", "display": "Bitcoin (BTC/USD)", "contract_size": 1.0,
+     "pip_size": 1.0, "quote_currency": "USD", "category": "crypto"},
+    {"symbol": "BTC", "display": "Bitcoin (BTC/USD)", "contract_size": 1.0,
+     "pip_size": 1.0, "quote_currency": "USD", "category": "crypto"},
+    {"symbol": "XBTUSD", "display": "Bitcoin (BTC/USD)", "contract_size": 1.0,
+     "pip_size": 1.0, "quote_currency": "USD", "category": "crypto"},
+    {"symbol": "ETHUSD", "display": "Ethereum (ETH/USD)", "contract_size": 1.0,
+     "pip_size": 0.1, "quote_currency": "USD", "category": "crypto"},
+    {"symbol": "SOLUSD", "display": "Solana (SOL/USD)", "contract_size": 1.0,
+     "pip_size": 0.01, "quote_currency": "USD", "category": "crypto"},
+    # --- Index CFDs: one contract per lot, one point per dollar -------
+    {"symbol": "NAS100", "display": "Nasdaq 100", "contract_size": 1.0,
+     "pip_size": 1.0, "quote_currency": "USD", "category": "index"},
+    {"symbol": "US30", "display": "Dow Jones 30", "contract_size": 1.0,
+     "pip_size": 1.0, "quote_currency": "USD", "category": "index"},
+    {"symbol": "SPX500", "display": "S&P 500", "contract_size": 1.0,
+     "pip_size": 1.0, "quote_currency": "USD", "category": "index"},
+    {"symbol": "DE40", "display": "DAX 40", "contract_size": 1.0,
+     "pip_size": 1.0, "quote_currency": "USD", "category": "index"},
+)
+
+
+def normalize_symbol(raw: object) -> str:
+    """Canonical lookup key for a symbol.
+
+    Uppercase, trimmed, and stripped of the trailing dot some bots append
+    (``EURUSD.`` is the same instrument as ``EURUSD``).
+    """
+    return str(raw or "").strip().upper().rstrip(".")
+
+
+def find_spec(session: Session, symbol: object) -> Optional[SymbolSpec]:
+    """The enabled spec for a symbol, or None when it is not registered."""
+    key = normalize_symbol(symbol)
+    if not key:
+        return None
+    spec = session.exec(select(SymbolSpec).where(SymbolSpec.symbol == key)).first()
+    if spec is None or not spec.enabled:
+        return None
+    return spec
+
+
+def list_specs(session: Session, include_disabled: bool = False) -> list[SymbolSpec]:
+    """Every spec, ordered by category then symbol."""
+    statement = select(SymbolSpec)
+    if not include_disabled:
+        statement = statement.where(SymbolSpec.enabled == True)  # noqa: E712
+    statement = statement.order_by(SymbolSpec.category.asc(), SymbolSpec.symbol.asc())
+    return list(session.exec(statement).all())
+
+
+def seed_specs(session: Session, specs: tuple[dict, ...] = DEFAULT_SPECS) -> int:
+    """Insert the default specs that are missing. Never overwrites a row.
+
+    A user-edited contract size survives a restart; only symbols that were
+    never registered are added. Returns the number of rows inserted.
+    """
+    existing = {row.symbol for row in session.exec(select(SymbolSpec)).all()}
+    added = 0
+    for spec in specs:
+        symbol = normalize_symbol(spec["symbol"])
+        if not symbol or symbol in existing:
+            continue
+        session.add(SymbolSpec(**{**spec, "symbol": symbol}))
+        existing.add(symbol)
+        added += 1
+    if added:
+        session.flush()
+    return added

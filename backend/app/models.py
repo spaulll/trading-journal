@@ -81,6 +81,33 @@ class Screenshot(SQLModel, table=True):
     trade: Optional[Trade] = Relationship(back_populates="screenshots")
 
 
+class SymbolSpec(SQLModel, table=True):
+    """Contract specification for one tradable symbol.
+
+    The registry is the single source of truth for how big a lot is. A
+    price distance alone says nothing about money: 10 points on EURUSD and
+    10 points on NAS100 are wildly different dollars. `contract_size`
+    bridges the gap — it is the number of quote-currency units one lot
+    controls, so `price_distance x contract_size x size` is the money.
+
+    `quote_currency` names the currency the price is quoted in. A USD
+    instrument needs no conversion; a JPY-quoted one is converted at the
+    exit rate (Phase 4 replaces this with the daily FX table).
+    """
+
+    __tablename__ = "symbol_spec"
+    id: Optional[int] = Field(default=None, primary_key=True)
+    symbol: str = Field(index=True, unique=True)  # uppercase canonical name
+    display: str = Field(default="")  # label for the UI
+    contract_size: float = Field(default=1.0)  # quote-currency units per 1.0 lot
+    pip_size: float = Field(default=0.01)  # price increment (one pip)
+    quote_currency: str = Field(default="USD", index=True)
+    category: str = Field(default="fx", index=True)  # fx | metal | crypto | index | future
+    enabled: bool = Field(default=True, index=True)
+    created_at: datetime = Field(default_factory=_utcnow)
+    updated_at: datetime = Field(default_factory=_utcnow)
+
+
 class DailyNote(SQLModel, table=True):
     __tablename__ = "daily_note"
     id: Optional[int] = Field(default=None, primary_key=True)
