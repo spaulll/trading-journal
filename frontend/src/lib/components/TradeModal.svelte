@@ -399,12 +399,10 @@
 			payload[key] = utc;
 		}
 		if (Object.keys(payload).length === 0) return;
-		// Saving exit details on an OPEN trade closes it — no extra manual
-		// close step. The backend also auto-closes as a safety net.
-		const exitInPayload = payload.exit_price !== undefined && payload.exit_price !== null;
-		const exitFilled = fExit.trim() !== '';
-		const willClose = wasOpen && (exitInPayload || exitFilled);
-		if (willClose) payload.status = 'CLOSED';
+		// Saving exit details on an OPEN trade closes it. Send the exit and
+		// let the server close it — sending status='CLOSED' here made the
+		// server skip the close record, so the trade landed with a null
+		// close timestamp.
 		savingEdits = true;
 		try {
 			const updated = await api.patchTrade(trade.id, payload);
