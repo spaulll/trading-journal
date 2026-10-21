@@ -655,7 +655,7 @@ async def do_open(chat_id: int, session: Session, args: dict) -> None:
     if args["size"] <= 0:
         await send_text(chat_id, "❌ Size must be positive.")
         return
-    ticket = _generate_ticket(args["symbol"])
+    ticket = _generate_ticket(session, args["symbol"])
     opened_at = args.get("entry_time") or _now()
     trade = Trade(
         ticket=ticket,
