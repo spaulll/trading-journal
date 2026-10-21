@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { Flag, X } from 'lucide-svelte';
+	import { untrack } from 'svelte';
 	import { fade, scale } from 'svelte/transition';
 	import { dismissLifecycle, lifecycleBusy, submitClose, trades } from '$lib/stores/trades';
 	import { fmtMoney, fmtR, mt5WallToUTC, pnlTone, previewIST, previewMT5, rTone, toneText } from '$lib/utils/format';
@@ -19,9 +20,23 @@
 	let exitAt = $state('');
 	let formError = $state<string | null>(null);
 
+	// Prefill once per trade. The form fields are read untracked on purpose:
+	// reading them made this effect re-run the moment the user cleared the
+	// exit price and put the entry price straight back, so submitting an
+	// untouched form booked a 0 P&L trade instead of asking for an exit.
+	const tradeIdOf = $derived(trade?.id ?? null);
+	let prefilledFor = $state<number | null>(null);
+
 	$effect(() => {
-		if (trade && exit === '' && trade.entry_price !== null) exit = String(trade.entry_price);
-		if (trade && fees === '') fees = String(trade.fees ?? 0);
+		const id = tradeIdOf;
+		if (id === null) return;
+		untrack(() => {
+			if (prefilledFor === id) return;
+			prefilledFor = id;
+			const entry = trade?.entry_price;
+			if (entry !== null && entry !== undefined) exit = String(entry);
+			fees = String(trade?.fees ?? 0);
+		});
 	});
 
 	const num = (v: string): number | null => {
