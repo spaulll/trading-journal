@@ -27,6 +27,11 @@
 
 	let loading = $state(false);
 	let saving = $state(false);
+	// Chained saves. A request that arrives while another is running waits
+	// for it instead of being dropped, and the counter keeps the spinner up
+	// until the last queued write has landed.
+	let noteInFlight: Promise<void> | null = null;
+	let noteActive = 0;
 	let confirmDelete = $state(false);
 	let note = $state<DailyNoteDto | null>(null);
 	let preMarket = $state('');
@@ -163,10 +168,11 @@
 		}, NOTE_AUTOSAVE_MS);
 	}
 
-	async function saveNote(quiet = false): Promise<void> {
-		if (!day || saving) return;
+	async function doSaveNote(quiet: boolean): Promise<void> {
+		if (!day) return;
 		if (preMarket === (note?.pre_market ?? '') && eod === (note?.eod_review ?? '')) return;
 		const key = day;
+		noteActive += 1;
 		saving = true;
 		noteState = 'saving';
 		noteHint = '';
@@ -181,8 +187,23 @@
 			noteHint = err instanceof Error ? err.message : 'Save failed';
 			toasts.push('error', `Save failed — ${err instanceof Error ? err.message : 'unknown error'}`);
 		} finally {
-			saving = false;
+			noteActive -= 1;
+			saving = noteActive > 0;
 		}
+	}
+
+	/**
+	 * Queue a day-note save behind whatever is already in flight.
+	 *
+	 * The old guard returned early when a request was running, so a
+	 * keystroke that landed mid-request was dropped with no timer left to
+	 * pick it up. Chaining keeps every write and reads the payload when
+	 * the request actually runs, so the last one always wins.
+	 */
+	function saveNote(quiet = false): Promise<void> {
+		const run = (noteInFlight ?? Promise.resolve()).then(() => doSaveNote(quiet));
+		noteInFlight = run.catch(() => {});
+		return run;
 	}
 
 	async function doDelete(): Promise<void> {
