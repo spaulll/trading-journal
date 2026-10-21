@@ -126,6 +126,15 @@ def _alert_guardrail(text: str) -> None:
         pass
 
 
+def _guardrail_breach_message(guard: dict, ticket: str, action: str) -> str:
+    """One wording for every guardrail alert, whatever closed the trade."""
+    return (
+        f"🚨 GUARDRAIL BREACH on {action} {ticket}: "
+        f"day PnL {guard['daily_pnl']:+.2f} (cap {guard['max_loss']:+.2f}), "
+        f"{guard['trades']} trades (cap {guard['max_trades']}). Walk away from the screen!"
+    )
+
+
 def _generate_ticket(symbol: str) -> str:
     stamp = _now().strftime("%Y%m%dT%H%M%S")
     return f"{(symbol or 'TRADE').upper()}-{stamp}"
@@ -271,11 +280,7 @@ def close_trade(trade_id: int, payload: TradeCloseRequest, session: Session = De
     session.commit()
     session.refresh(trade)
     if guard["breached"]:
-        _alert_guardrail(
-            f"🚨 GUARDRAIL BREACH on close {trade.ticket}: "
-            f"day PnL {guard['daily_pnl']:+.2f} (cap {guard['max_loss']:+.2f}), "
-            f"{guard['trades']} trades (cap {guard['max_trades']}). Walk away from the screen!"
-        )
+        _alert_guardrail(_guardrail_breach_message(guard, trade.ticket, "close"))
     return to_trade_read(trade)
 
 
@@ -501,7 +506,9 @@ def patch_trade(trade_id: int, patch: TradePatch, session: Session = Depends(get
     # timestamp_close, so it vanished from /stats_daily and the EOD recap and
     # was bucketed into the calendar by its open day.
     keep_open = "status" in data and (trade.status or "").upper() == "OPEN"
+    closed_now = False
     if orig_status == "OPEN" and trade.exit_price is not None and not keep_open:
+        closed_now = True
         trade.status = "CLOSED"
         if not (trade.exit_time or trade.timestamp_close):
             now_naive = as_naive_utc(_now())
@@ -533,8 +540,19 @@ def patch_trade(trade_id: int, patch: TradePatch, session: Session = Depends(get
         session.add(trade)
     trade.updated_at = _now()
     session.add(trade)
+    # Closing from the web drawer is a close like any other: the daily loss
+    # and trade-count guardrails have to run here too, or a breach raised in
+    # the browser never raises the alert and never flags the day note.
+    guard: Optional[dict] = None
+    if closed_now:
+        session.flush()
+        guard = _guardrail_status(session)
+        if guard["breached"]:
+            _flag_breach_day(session)
     session.commit()
     session.refresh(trade)
+    if guard and guard["breached"]:
+        _alert_guardrail(_guardrail_breach_message(guard, trade.ticket, "close"))
     return to_trade_read(trade)
 
 
