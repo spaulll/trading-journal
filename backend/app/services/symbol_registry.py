@@ -1,4 +1,4 @@
-"""Symbol contract registry — the one place that knows how big a lot is.
+"""Symbol contract registry and the money math that depends on it.
 
 A price distance is not money. Ten points on EURUSD and ten points on NAS100
 are wildly different dollars, and the only way to know which is which is the
@@ -16,6 +16,11 @@ Quote currency
 need no conversion. A JPY-quoted instrument (USDJPY) is converted at the
 exit rate, so the P&L is stated in dollars rather than yen. Phase 4 replaces
 this with the daily FX rate table.
+
+The R-multiple
+--------------
+R is the price move over the risk the trade actually carried. A trailed
+stop shrinks that risk, so it changes the R — see :func:`effective_stop`.
 
 Fallback
 --------
@@ -253,7 +258,74 @@ def apply_trade_risk(session: Session, trade) -> None:
     trade.initial_risk = risk_amount(
         spec, trade.size, trade.entry_price, trade.initial_sl
     )
-    stop = trade.current_sl or trade.initial_sl
+    # The same stop the R is scored against, so the recorded risk and the
+    # recorded R can never disagree about what the trade carried.
+    stop = effective_stop(
+        trade.direction, trade.entry_price, trade.initial_sl, trade.current_sl
+    )
     trade.realized_risk = risk_amount(spec, trade.size, trade.entry_price, stop)
     trade.risk_unit = "USD" if trade.initial_risk is not None else None
+
+
+def effective_stop(
+    direction: object,
+    entry: Optional[float],
+    initial_sl: Optional[float],
+    current_sl: Optional[float],
+) -> Optional[float]:
+    """The stop a trade's R is scored against.
+
+    A trailed stop shrinks the risk the trade actually carried, so the R
+    has to be scored against it — that is the whole point of the realized
+    risk. Two cases fall back to the planned stop:
+
+    - the stop was moved to breakeven (or onto the wrong side of the
+      entry), so the trade carried no risk and has no realized R to
+      report;
+    - there is no current stop at all.
+
+    A stop that was *widened* is honoured: that is the risk the trade
+    really took, and it makes the R smaller.
+    """
+    if current_sl is None or entry is None:
+        return initial_sl
+    sign = direction_sign(direction)
+    if sign == 0:
+        return current_sl
+    if abs(entry - current_sl) == 0:
+        return initial_sl
+    # The stop has to sit on the risk side of the entry.
+    if sign > 0 and current_sl >= entry:
+        return initial_sl
+    if sign < 0 and current_sl <= entry:
+        return initial_sl
+    return current_sl
+
+
+def compute_r_multiple(
+    direction: object,
+    entry: Optional[float],
+    initial_sl: Optional[float],
+    current_sl: Optional[float],
+    exit_price: Optional[float],
+) -> Optional[float]:
+    """R-multiple: the price move over the risk the trade actually took.
+
+    The denominator is the effective stop (see :func:`effective_stop`), so
+    a trailed stop produces a different R than the initial stop would.
+    """
+    if entry is None or exit_price is None:
+        return None
+    sign = direction_sign(direction)
+    if sign == 0:
+        return None
+    stop = effective_stop(direction, entry, initial_sl, current_sl)
+    if stop is None:
+        return None
+    risk = abs(entry - stop)
+    if risk == 0:
+        return None
+    move = (exit_price - entry) * sign
+    return move / risk
+
 

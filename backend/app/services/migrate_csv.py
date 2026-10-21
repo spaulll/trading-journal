@@ -20,6 +20,8 @@ from typing import Optional
 import pandas as pd
 from sqlmodel import Session, select
 
+from app.services.symbol_registry import compute_r_multiple
+
 TAG_RE = re.compile(r"[#!][\w\-/]+")
 
 
@@ -84,22 +86,6 @@ def _to_str(value: object) -> Optional[str]:
     return text or None
 
 
-def compute_r_multiple(
-    direction: Optional[str],
-    entry: Optional[float],
-    stop: Optional[float],
-    exit_price: Optional[float],
-) -> Optional[float]:
-    if entry is None or stop is None or exit_price is None:
-        return None
-    risk = abs(entry - stop)
-    if risk == 0:
-        return None
-    if (direction or "").lower().startswith("sell"):
-        return (entry - exit_price) / risk
-    return (exit_price - entry) / risk
-
-
 def get_or_create_tag(session: Session, name: str, category: str):
     from app.models import Tag
 
@@ -127,7 +113,9 @@ def row_to_trade_fields(row: pd.Series) -> dict:
 
     r_multiple = _to_float(get("r_multiple"))
     if r_multiple is None:
-        r_multiple = compute_r_multiple(direction, entry, stop, exit_price)
+        r_multiple = compute_r_multiple(
+            direction, entry, stop, _to_float(get("current_sl")), exit_price
+        )
 
     status = _to_str(get("status"))
     if status is None:
