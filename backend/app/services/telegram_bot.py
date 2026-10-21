@@ -781,6 +781,7 @@ async def do_close_on_trade(chat_id: int, session: Session, trade_id: int, args:
         get_or_create_tag,
         normalize_tag_list,
     )
+    from app.services.session_resolver import duration_minutes
 
     trade = session.get(Trade, trade_id)
     if trade is None or trade.status != "OPEN":
@@ -802,7 +803,17 @@ async def do_close_on_trade(chat_id: int, session: Session, trade_id: int, args:
     trade.fees = fees or 0.0
     trade.net_pnl = net
     trade.r_multiple = r
-    trade.timestamp_close = _now()
+    # Same close record as the API and the web drawer: the close time, the
+    # mirrored exit time and the holding duration. The bot used to set only
+    # timestamp_close, so a trade closed from Telegram had no duration and
+    # the day drawer showed a blank exit time.
+    closed_at = as_naive_utc(_now())
+    assert closed_at is not None
+    trade.timestamp_close = closed_at
+    trade.exit_time = closed_at
+    trade.duration_minutes = duration_minutes(
+        trade.entry_time or trade.timestamp_open, closed_at
+    )
     trade.status = "CLOSED"
     trade.updated_at = _now()
     if args["review_notes"]:
