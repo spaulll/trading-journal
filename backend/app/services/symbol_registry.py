@@ -237,3 +237,23 @@ def estimate_gross_pnl(
         return None
     return price_gross(spec, direction, size, entry, exit_price)
 
+
+def apply_trade_risk(session: Session, trade) -> None:
+    """Record the planned and the carried risk of a trade, in dollars.
+
+    ``initial_risk`` is the risk the plan committed to — the distance from
+    the entry to the *initial* stop. ``realized_risk`` is the risk actually
+    carried — the distance from the entry to the *current* stop, so a
+    trailed stop shows a smaller number than the plan did.
+
+    Both are None for a symbol with no contract: an unpriced trade has no
+    known risk, and guessing one would be worse than admitting it.
+    """
+    spec = find_spec(session, trade.symbol)
+    trade.initial_risk = risk_amount(
+        spec, trade.size, trade.entry_price, trade.initial_sl
+    )
+    stop = trade.current_sl or trade.initial_sl
+    trade.realized_risk = risk_amount(spec, trade.size, trade.entry_price, stop)
+    trade.risk_unit = "USD" if trade.initial_risk is not None else None
+

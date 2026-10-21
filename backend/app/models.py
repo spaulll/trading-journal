@@ -55,6 +55,12 @@ class Trade(SQLModel, table=True):
     fees: float = Field(default=0.0)
     net_pnl: Optional[float] = None
     r_multiple: Optional[float] = None
+    # Dollar risk, from the symbol registry's contract size.
+    # initial_risk  — the risk the plan committed to (the initial stop).
+    # realized_risk — the risk actually carried (the current stop).
+    initial_risk: Optional[float] = None
+    realized_risk: Optional[float] = None
+    risk_unit: Optional[str] = None  # USD for now; Phase 4 adds currencies
     status: str = Field(default="OPEN", index=True)  # OPEN | CLOSED
     thesis: Optional[str] = None
     review_notes: Optional[str] = None
@@ -214,6 +220,9 @@ class TradeRead(SQLModel):
     fees: Optional[float] = None
     net_pnl: Optional[float] = None
     r_multiple: Optional[float] = None
+    initial_risk: Optional[float] = None
+    realized_risk: Optional[float] = None
+    risk_unit: Optional[str] = None
     status: str
     thesis: Optional[str] = None
     review_notes: Optional[str] = None

@@ -36,7 +36,7 @@ from app.services.migrate_csv import (
     parse_tags,
 )
 from app.services.session_resolver import duration_minutes, normalize_session
-from app.services.symbol_registry import estimate_gross_pnl
+from app.services.symbol_registry import apply_trade_risk, estimate_gross_pnl
 from app.services.timeutils import as_naive_utc, trade_close_day
 
 router = APIRouter(prefix="/api/trades", tags=["trades"])
@@ -204,6 +204,8 @@ def open_trade(payload: TradeOpenRequest, session: Session = Depends(get_session
             tag_pairs.append(("discipline_breach", "mistake"))
         _flag_breach_day(session)
     trade.tags = [get_or_create_tag(session, name, cat) for name, cat in tag_pairs]
+    # The plan's risk: the entry-to-stop distance, in dollars.
+    apply_trade_risk(session, trade)
     trade.updated_at = _now()
     session.add(trade)
     session.commit()
@@ -226,6 +228,8 @@ def update_tsl(trade_id: int, payload: TradeTSLRequest, session: Session = Depen
         raise HTTPException(status_code=422, detail="Only OPEN trades accept TSL updates")
     # initial_sl is immutable — only current_sl moves.
     trade.current_sl = payload.current_sl
+    # Moving the stop changes the risk actually carried.
+    apply_trade_risk(session, trade)
     trade.updated_at = _now()
     session.add(trade)
     session.commit()
@@ -272,6 +276,8 @@ def close_trade(trade_id: int, payload: TradeCloseRequest, session: Session = De
     )
     if not trade.session:
         trade.session = normalize_session(None, trade.entry_time or trade.timestamp_open)
+    # Final risk: the stop the trade was actually carried to.
+    apply_trade_risk(session, trade)
     trade.status = "CLOSED"
     trade.updated_at = _now()
     if payload.review_notes is not None:
@@ -388,6 +394,7 @@ def insert_backfill_record(session: Session, rec: BackfillRecord) -> tuple[str, 
     trade.tags = [
         get_or_create_tag(session, name, cat) for name, cat in normalize_tag_list(rec.tags)
     ]
+    apply_trade_risk(session, trade)
     session.add(trade)
     return ticket, True
 
@@ -500,6 +507,13 @@ def patch_trade(trade_id: int, patch: TradePatch, session: Session = Depends(get
         trade.r_multiple = compute_r_multiple(
             trade.direction, trade.entry_price, trade.initial_sl, trade.exit_price
         )
+        session.add(trade)
+    # The risk follows the price legs: a new entry, stop or size changes the
+    # dollars at risk, so the recorded risk has to move with them.
+    if any(
+        k in data for k in ("symbol", "size", "entry_price", "initial_sl", "current_sl")
+    ):
+        apply_trade_risk(session, trade)
         session.add(trade)
     # Keep gross/net consistent: re-estimate gross when price legs change
     # unless the caller explicitly supplied gross_pnl; net follows from

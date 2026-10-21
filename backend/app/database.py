@@ -7,7 +7,7 @@ All paths come from env — never hardcode /opt here.
 import os
 
 from sqlalchemy import event
-from sqlmodel import Session, SQLModel, create_engine
+from sqlmodel import Session, SQLModel, create_engine, select
 
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./journal.db")
 
@@ -32,6 +32,56 @@ def create_db_and_tables() -> None:
     _migrate_screenshot_columns()
     _migrate_account_columns()
     _migrate_symbol_spec()
+    _migrate_trade_risk_columns()
+
+
+def _migrate_trade_risk_columns() -> None:
+    """Add the risk columns to a pre-existing trade table and fill them.
+
+    The columns record how many dollars a trade risked. Existing rows get
+    them filled in from the symbol registry so the history is not half
+    populated; a trade with no stop keeps a null risk, because an unknown
+    risk is not a zero risk.
+    """
+    if not DATABASE_URL.startswith("sqlite"):
+        return
+    wanted = {
+        "initial_risk": "FLOAT",
+        "realized_risk": "FLOAT",
+        "risk_unit": "VARCHAR",
+    }
+    with engine.begin() as conn:
+        cols = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(trade)")}
+        for name, ddl in wanted.items():
+            if name not in cols:
+                conn.exec_driver_sql(f"ALTER TABLE trade ADD COLUMN {name} {ddl}")
+    _backfill_trade_risk()
+
+
+def _backfill_trade_risk() -> None:
+    """Fill the risk columns for trades that predate them."""
+    from app.models import Trade
+    from app.services.symbol_registry import find_spec, risk_amount
+
+    with Session(engine) as session:
+        rows = session.exec(
+            select(Trade).where(
+                Trade.initial_risk.is_(None),
+                Trade.entry_price.is_not(None),
+                Trade.initial_sl.is_not(None),
+            )
+        ).all()
+        if not rows:
+            return
+        for trade in rows:
+            spec = find_spec(session, trade.symbol)
+            trade.initial_risk = risk_amount(
+                spec, trade.size, trade.entry_price, trade.initial_sl
+            )
+            stop = trade.current_sl or trade.initial_sl
+            trade.realized_risk = risk_amount(spec, trade.size, trade.entry_price, stop)
+            trade.risk_unit = "USD" if trade.initial_risk is not None else None
+        session.commit()
 
 
 def _migrate_symbol_spec() -> None:
