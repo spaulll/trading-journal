@@ -113,6 +113,24 @@ npm run build
 PORT=3000 ORIGIN=http://127.0.0.1:3000 node build
 ```
 
+### Tests
+
+The backend suite runs against a throwaway SQLite database, so it never
+touches your journal and needs no secrets.
+
+```bash
+cd backend
+./venv/bin/pip install -r requirements-dev.txt
+./venv/bin/pytest -q          # close pipeline, parsers, analytics, API
+```
+
+```bash
+cd frontend
+npm run check                 # svelte-check, the type gate
+```
+
+Both run in CI on every push and pull request (`.github/workflows/checks.yml`).
+
 ### LAN access
 
 Browsers fetch the API directly, so to use the app from other devices on your network:
