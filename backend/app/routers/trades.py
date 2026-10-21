@@ -135,9 +135,20 @@ def _guardrail_breach_message(guard: dict, ticket: str, action: str) -> str:
     )
 
 
-def _generate_ticket(symbol: str) -> str:
-    stamp = _now().strftime("%Y%m%dT%H%M%S")
-    return f"{(symbol or 'TRADE').upper()}-{stamp}"
+def _generate_ticket(session: Session, symbol: str) -> str:
+    """Unique ticket from symbol + timestamp, numeric suffix on clash.
+
+    The stamp has second precision, so two opens of the same symbol inside
+    the same second used to collide on the unique ticket index — the API
+    answered 409 and the Telegram bot raised an IntegrityError. Mirrors
+    _backfill_ticket.
+    """
+    base = f"{(symbol or 'TRADE').upper()}-{_now().strftime('%Y%m%dT%H%M%S')}"
+    ticket, n = base, 2
+    while session.exec(select(Trade).where(Trade.ticket == ticket)).first() is not None:
+        ticket = f"{base}-{n}"
+        n += 1
+    return ticket
 
 
 def _resolve_account_id(session: Session, account_id: Optional[int]) -> Optional[int]:
@@ -160,7 +171,7 @@ def open_trade(payload: TradeOpenRequest, session: Session = Depends(get_session
         raise HTTPException(status_code=422, detail="size must be positive")
     account_id = _resolve_account_id(session, payload.account_id)
 
-    ticket = (payload.ticket or "").strip() or _generate_ticket(payload.symbol)
+    ticket = (payload.ticket or "").strip() or _generate_ticket(session, payload.symbol)
     if session.exec(select(Trade).where(Trade.ticket == ticket)).first() is not None:
         raise HTTPException(status_code=409, detail=f"ticket already exists: {ticket}")
 
