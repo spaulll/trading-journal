@@ -3,7 +3,7 @@
 	import { Chart, registerables } from 'chart.js';
 	import type { CalendarDay, MonthlyCalendarDto } from '$lib/api';
 	import CalendarHeatmap from '$lib/components/dashboard/CalendarHeatmap.svelte';
-	import { fmtMoney } from '$lib/utils/format';
+	import { BE_TOL, fmtMoney } from '$lib/utils/format';
 	import { openDay } from '$lib/stores/journal';
 	import { palette } from '$lib/utils/palette';
 	import { theme } from '$lib/stores/theme';
@@ -38,8 +38,6 @@
 	let unit = $state<'usd' | 'pct'>('usd');
 	let tab = $state<'month' | 'year'>('month');
 
-	// Shared BE rule with backend BE_TOLERANCE (|net| <= 5 → breakeven).
-	const BE_TOL = 5.0;
 
 	const monthNet = $derived(data.weeks.reduce((a, w) => a + w.net_pnl, 0));
 	const todayKey = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}-${String(new Date().getDate()).padStart(2, '0')}`;
