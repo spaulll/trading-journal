@@ -340,9 +340,21 @@ def insert_backfill_record(session: Session, rec: BackfillRecord) -> tuple[str, 
 
     fees = rec.fees if rec.fees is not None else 0.0
     gross = rec.gross_pnl
-    net = rec.net_pnl if rec.net_pnl is not None else (
-        (gross - (fees or 0.0)) if gross is not None else None
-    )
+    net = rec.net_pnl
+    if gross is None and net is None:
+        # The trader gave no P&L at all: price the trade from the symbol
+        # registry, the same estimator the close path uses. A history row
+        # with no net is an unpriced trade, and an unpriced trade silently
+        # scores as a scratch.
+        gross = estimate_gross_pnl(
+            session, direction, rec.symbol, rec.size, rec.entry_price, rec.exit_price
+        )
+    if net is None:
+        net = (gross - (fees or 0.0)) if gross is not None else None
+    elif gross is None:
+        # The trader reported a net but no gross: recover the gross so the
+        # row keeps the net = gross - fees invariant.
+        gross = net + (fees or 0.0)
     r = rec.r_multiple if rec.r_multiple is not None else compute_r_multiple(
         direction, rec.entry_price, rec.initial_sl, rec.exit_price
     )
