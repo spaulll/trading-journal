@@ -314,6 +314,37 @@ class BackfillRequest(SQLModel):
     records: list[BackfillRecord]
 
 
+class SymbolSpecRead(SQLModel):
+    id: int
+    symbol: str
+    display: str
+    contract_size: float
+    pip_size: float
+    quote_currency: str
+    category: str
+    enabled: bool
+
+
+class SymbolSpecCreate(SQLModel):
+    symbol: str
+    display: str = ""
+    contract_size: float = 1.0
+    pip_size: float = 0.01
+    quote_currency: str = "USD"
+    category: str = "fx"
+    enabled: bool = True
+
+
+class SymbolSpecUpdate(SQLModel):
+    symbol: Optional[str] = None
+    display: Optional[str] = None
+    contract_size: Optional[float] = None
+    pip_size: Optional[float] = None
+    quote_currency: Optional[str] = None
+    category: Optional[str] = None
+    enabled: Optional[bool] = None
+
+
 class DailyNoteRead(SQLModel):
     id: int
     date: date_type

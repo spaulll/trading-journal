@@ -40,6 +40,9 @@ export interface TradeDto {
 	fees: number | null;
 	net_pnl: number | null;
 	r_multiple: number | null;
+	initial_risk: number | null;
+	realized_risk: number | null;
+	risk_unit: string | null;
 	status: string;
 	thesis: string | null;
 	review_notes: string | null;
@@ -47,6 +50,17 @@ export interface TradeDto {
 	updated_at: string;
 	tags: TagDto[];
 	screenshots: ScreenshotDto[];
+}
+
+export interface SymbolSpecDto {
+	id: number;
+	symbol: string;
+	display: string;
+	contract_size: number;
+	pip_size: number;
+	quote_currency: string;
+	category: string;
+	enabled: boolean;
 }
 
 export interface DailyNoteDto {
@@ -371,6 +385,12 @@ export const api = {
 		req<AccountDto>(`/api/accounts/${id}`, json({ method: 'PATCH', body: JSON.stringify(patch) })),
 	deleteAccount: (id: number) => req<{ deleted: number }>(`/api/accounts/${id}`, { method: 'DELETE' }),
 	propStatus: (id: number) => req<PropStatusDto>(`/api/accounts/${id}/prop-status`),
+	listSymbols: (includeDisabled = false) =>
+		req<SymbolSpecDto[]>(`/api/symbols${includeDisabled ? '?include_disabled=true' : ''}`),
+	createSymbol: (payload: Record<string, unknown>) =>
+		req<SymbolSpecDto>('/api/symbols', json({ method: 'POST', body: JSON.stringify(payload) })),
+	updateSymbol: (id: number, patch: Record<string, unknown>) =>
+		req<SymbolSpecDto>(`/api/symbols/${id}`, json({ method: 'PATCH', body: JSON.stringify(patch) })),
 	summary: (accountId?: number | null) =>
 		req<SummaryDto>(`/api/analytics/summary${accountId ? `?account_id=${accountId}` : ''}`),
 	equityCurve: (accountId?: number | null) =>

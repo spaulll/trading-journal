@@ -5,6 +5,7 @@
 	import { accounts, loadAccounts } from '$lib/stores/accounts';
 	import { fmtMoney, mt5WallToUTC, previewIST, previewMT5 } from '$lib/utils/format';
 	import { brokerOffset } from '$lib/stores/broker';
+	import { loadSymbols, specFor, symbolMap, symbols } from '$lib/stores/symbols';
 	import { FADE, MODAL, PANEL_FADE } from '$lib/utils/transitions';
 	import SegControl from '$lib/components/SegControl.svelte';
 	import { fluidHeight } from '$lib/utils/motion';
@@ -12,20 +13,13 @@
 
 	onMount(() => {
 		void loadAccounts();
+		void loadSymbols();
 		try {
 			accountSel = localStorage.getItem('selected-account-id') ?? '';
 		} catch {
 			// ignore
 		}
 	});
-
-	/** Rough per-unit contract sizes for the risk preview (estimate only). */
-	const CONTRACT: { match: RegExp; size: number; unit: string }[] = [
-		{ match: /^(xau|gold|paxg)/i, size: 100, unit: 'oz' },
-		{ match: /^(xag|silver)/i, size: 5000, unit: 'oz' },
-		{ match: /^(eur|gbp|aud|nzd|usd|jpy|chf|cad)/i, size: 100000, unit: 'units' },
-		{ match: /^(btc|eth|sol)/i, size: 1, unit: 'coin' }
-	];
 
 	let symbol = $state('');
 	let direction = $state<'buy' | 'sell'>('buy');
@@ -104,9 +98,10 @@
 		return v.trim() === '' || Number.isNaN(n) ? null : n;
 	};
 
-	const contract = $derived(
-		CONTRACT.find((c) => c.match.test(symbol.trim())) ?? { size: 1, unit: 'units' }
-	);
+	// The contract comes from the server's registry — the same table the
+	// backend prices every trade from. An unregistered symbol has no
+	// contract, so it has no risk to show.
+	const spec = $derived(specFor(symbol, $symbolMap));
 	const entryN = $derived(num(entry));
 	const slN = $derived(num(sl));
 	const tpN = $derived(num(tp));
@@ -114,11 +109,13 @@
 
 	const riskDist = $derived(entryN !== null && slN !== null ? Math.abs(entryN - slN) : null);
 	const riskEst = $derived(
-		riskDist !== null && sizeN !== null && sizeN > 0 ? riskDist * sizeN * contract.size : null
+		riskDist !== null && sizeN !== null && sizeN > 0 && spec !== null
+			? riskDist * sizeN * spec.contract_size
+			: null
 	);
 	const rewardEst = $derived(
-		entryN !== null && tpN !== null && sizeN !== null && sizeN > 0
-			? Math.abs(tpN - entryN) * sizeN * contract.size
+		entryN !== null && tpN !== null && sizeN !== null && sizeN > 0 && spec !== null
+			? Math.abs(tpN - entryN) * sizeN * spec.contract_size
 			: null
 	);
 	const rr = $derived(
@@ -126,6 +123,18 @@
 			? Math.abs(tpN - entryN) / riskDist
 			: null
 	);
+	// The stop distance, in the unit the trader reads it in: pips for FX,
+	// points for everything else. The registry's pip size makes the FX
+	// number exact instead of a float artefact.
+	const distLabel = $derived.by(() => {
+		if (riskDist === null) return null;
+		if (spec !== null && spec.category === 'fx' && spec.pip_size > 0) {
+			const pips = riskDist / spec.pip_size;
+			const rounded = Math.round(pips * 100) / 100;
+			if (Math.abs(pips - rounded) < 1e-9) return `${rounded} pips`;
+		}
+		return `${Number(riskDist.toPrecision(6))} pts`;
+	});
 	const slSideOk = $derived(
 		entryN === null || slN === null
 			? true
@@ -259,7 +268,12 @@
 			</button>
 		</div>
 
-		<form class="px-5 py-4" onsubmit={submit}>
+	<form class="px-5 py-4" onsubmit={submit}>
+			<datalist id="symbol-registry">
+				{#each $symbols as s (s.id)}
+					<option value={s.symbol}>{s.display}</option>
+				{/each}
+			</datalist>
 			<div class="mb-4">
 				<SegControl
 					label="Entry mode"
@@ -275,7 +289,7 @@
 			<div class="grid grid-cols-2 gap-3">
 				<label class={label}>
 					Symbol
-					<input type="text" bind:value={symbol} placeholder="GOLD" autocomplete="off" class="{field} uppercase" />
+					<input type="text" bind:value={symbol} list="symbol-registry" placeholder="GOLD" autocomplete="off" class="{field} uppercase" />
 				</label>
 				<span class={label}>
 					Direction
@@ -390,17 +404,28 @@
 						<span class="font-bold text-fg">{liveSession}</span> (auto)
 					</p>
 				{/if}
+				{#if symbol.trim() && spec === null}
+					<p class="num mt-1.5 text-[11.5px] text-loss">
+						{symbol.trim().toUpperCase()} has no contract registered — it cannot be priced.
+					</p>
+				{:else if spec !== null}
+					<p class="num mt-1.5 text-[11.5px] text-dim">
+						{spec.display} · {spec.contract_size} per lot · 1 pip = {spec.pip_size}
+					</p>
+				{/if}
 				{#if riskEst !== null && riskDist !== null}
-					<p class="num mt-1.5 text-sm">
-						Risk <span class="font-bold text-loss">{fmtMoney(riskEst)}</span>
-						<span class="text-dim">· {riskDist} pts</span>
+					<div class="num mt-1.5 flex flex-wrap items-baseline gap-x-2.5 gap-y-1 text-sm">
+						<span>
+							Risk <span class="font-bold text-loss">{fmtMoney(riskEst)}</span>
+						</span>
+						<span class="text-dim">{distLabel}</span>
 						{#if rewardEst !== null}
-							<span class="text-dim"> · Reward {fmtMoney(rewardEst)}</span>
+							<span class="text-dim">Reward {fmtMoney(rewardEst)}</span>
 						{/if}
 						{#if rr !== null}
-							<span class="font-bold text-win"> · {rr.toFixed(2)}R</span>
+							<span class="font-bold text-win">{rr.toFixed(2)}R</span>
 						{/if}
-					</p>
+					</div>
 				{:else}
 					<p class="mt-1.5 text-[13px] text-dim">Type entry, stop and size to preview risk.</p>
 				{/if}
