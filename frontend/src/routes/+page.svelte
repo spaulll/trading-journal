@@ -19,7 +19,7 @@
 		tradesLoading,
 		tradesTotal
 	} from '$lib/stores/trades';
-	import { fmtMoney, fmtR, pnlTone, toneText } from '$lib/utils/format';
+	import { BE_TOL, fmtMoney, fmtR, pnlTone, toneText } from '$lib/utils/format';
 	import { countup } from '$lib/utils/motion';
 
 	onMount(() => {
@@ -30,17 +30,19 @@
 
 	/** Client-side roll-up over the FULL trade set (loadTrades fetches all pages).
 	 * Total count comes from the API `total`, not items.length.
-	 * BE rule mirrors backend: |net_pnl| <= $5 is breakeven. */
+	 * BE rule and win-rate denominator mirror the API: |net_pnl| <= $5 is
+	 * breakeven, and the rate is wins / decided trades. */
 	const stats = $derived.by(() => {
-		const wins = closed.filter((t) => (t.net_pnl ?? 0) > 5).length;
-		const losses = closed.filter((t) => (t.net_pnl ?? 0) < -5).length;
+		const wins = closed.filter((t) => (t.net_pnl ?? 0) > BE_TOL).length;
+		const losses = closed.filter((t) => (t.net_pnl ?? 0) < -BE_TOL).length;
+		const be = closed.length - wins - losses;
 		const net = closed.reduce((s, t) => s + (t.net_pnl ?? 0), 0);
 		const rs = closed
 			.map((t) => t.r_multiple)
 			.filter((v): v is number => v !== null && v !== undefined);
 		const avgR = rs.length ? rs.reduce((a, b) => a + b, 0) / rs.length : null;
 		const wr = wins + losses > 0 ? (wins / (wins + losses)) * 100 : null;
-		return { net, wr, avgR, closed: closed.length, wins, losses };
+		return { net, wr, avgR, closed: closed.length, wins, losses, be };
 	});
 
 	const ribbon = $derived([
@@ -56,7 +58,7 @@
 			value: stats.wr ?? 0,
 			format: (v: number) => `${v.toFixed(1)}%`,
 			tone: 'text-fg',
-			hint: `${stats.wins}W · ${stats.losses}L`
+			hint: `${stats.wins}W · ${stats.losses}L · ${stats.be}BE`
 		},
 		{
 			label: 'Average R',

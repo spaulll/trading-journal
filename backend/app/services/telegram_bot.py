@@ -914,16 +914,14 @@ async def do_past(chat_id: int, session: Session, args: dict) -> None:
     await send_text(chat_id, f"📚 Backfilled {args['direction'].upper()} {args['symbol']} 🎫 {ticket}.{info}", keyboard)
 
 
-# Breakeven tolerance mirrors the analytics API: |net| <= $5 is BE.
-BE_TOLERANCE = 5.0
-
-
-def _is_win(net: float) -> bool:
-    return net > BE_TOLERANCE
-
-
-def _is_loss(net: float) -> bool:
-    return net < -BE_TOLERANCE
+# Breakeven tolerance and the win-rate denominator come from the shared
+# rules module, so the bot and the analytics API never disagree.
+from app.services.analytics_rules import (  # noqa: E402
+    is_loss as _is_loss,
+    is_win as _is_win,
+    win_loss_counts,
+    win_rate,
+)
 
 
 def daily_stats_text(session: Session, today: Optional[date_type] = None) -> str:
@@ -937,11 +935,9 @@ def daily_stats_text(session: Session, today: Optional[date_type] = None) -> str
         if start <= (as_naive_utc(t.timestamp_close) or datetime.min) < end
     ]
     nets = [t.net_pnl if t.net_pnl is not None else 0.0 for t in closed]
-    wins = sum(1 for n in nets if _is_win(n))
-    losses = sum(1 for n in nets if _is_loss(n))
-    be = len(nets) - wins - losses
+    wins, losses, be = win_loss_counts(nets)
     total = len(closed)
-    wr = f"{wins / total * 100:.0f}%" if total else "n/a"
+    wr = f"{win_rate(wins, losses):.0f}%" if wins + losses else "n/a"
     r_total = sum(t.r_multiple for t in closed if t.r_multiple is not None)
     opens = session.exec(select(Trade).where(Trade.status == "OPEN")).all()
     lines = [

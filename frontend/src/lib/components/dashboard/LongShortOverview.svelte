@@ -33,7 +33,6 @@
 		const wins = b.wins + s.wins;
 		const losses = b.losses + s.losses;
 		const be = b.breakeven + s.breakeven;
-		const total = wins + losses + be;
 		const best =
 			(b.best?.net_pnl ?? -Infinity) >= (s.best?.net_pnl ?? -Infinity) ? b.best : s.best;
 		const worst =
@@ -51,7 +50,7 @@
 			wins,
 			losses,
 			breakeven: be,
-			win_rate: total ? (wins / total) * 100 : 0,
+			win_rate: wins + losses > 0 ? (wins / (wins + losses)) * 100 : 0,
 			avg_win: wins ? (b.avg_win * b.wins + s.avg_win * s.wins) / wins : 0,
 			avg_loss: losses ? (b.avg_loss * b.losses + s.avg_loss * s.losses) / losses : 0,
 			best,
