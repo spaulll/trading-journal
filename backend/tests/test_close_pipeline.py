@@ -181,3 +181,57 @@ def test_trades_keep_their_ticket_after_a_close(client, session):
     stored = session.get(Trade, trade["id"])
     assert stored is not None
     assert stored.ticket == trade["ticket"]
+
+
+# --- every close path writes the same record --------------------------------
+
+
+def test_the_bot_close_writes_the_same_record_as_the_api(client, session):
+    """Telegram, the API and the drawer must all leave the same shape.
+
+    The bot close used to set only timestamp_close, so a trade closed
+    from Telegram had no exit time and no holding duration.
+    """
+    import asyncio
+
+    from app.services.telegram_bot import do_close_on_trade
+
+    sent: list[tuple[int, str]] = []
+    trade = _open(client)
+
+    async def fake_send(chat_id: int, text: str, *args, **kwargs) -> int:
+        sent.append((chat_id, text))
+        return 1
+
+    import app.services.telegram_bot as bot
+
+    original = bot.send_text
+    bot.send_text = fake_send
+    try:
+        asyncio.run(
+            do_close_on_trade(
+                1,
+                session,
+                trade["id"],
+                {
+                    "exit_price": 4020.0,
+                    "gross_pnl": 200.0,
+                    "fees": 0.0,
+                    "review_notes": None,
+                    "mistake_tags": [],
+                },
+            )
+        )
+    finally:
+        bot.send_text = original
+
+    session.expire_all()
+    stored = session.get(Trade, trade["id"])
+    assert stored is not None
+    assert stored.status == "CLOSED"
+    assert stored.timestamp_close is not None
+    assert stored.exit_time == stored.timestamp_close
+    assert stored.duration_minutes is not None
+    assert stored.duration_minutes >= 0
+    assert stored.net_pnl == 200.0
+    assert stored.r_multiple == 2.0
