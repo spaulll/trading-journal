@@ -10,9 +10,11 @@ never leave the server — the frontend only receives rendered markdown.
 """
 
 import os
+import re
+import time
 from datetime import date as date_type
 from datetime import timedelta
-from typing import Optional
+from typing import Any, Optional
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -23,6 +25,37 @@ from app.models import DailyNote, InsightReport, InsightReportRead, Trade, Weeke
 from app.services.timeutils import trade_close_day
 
 router = APIRouter(prefix="/api/insights", tags=["insights"])
+
+# Reasoning models (gpt-oss, r1, o-series) emit a hidden reasoning trace that
+# counts against `max_tokens`. The visible answer can be squeezed to zero, and
+# the provider still answers HTTP 200 — so an empty summary is a *budget*
+# problem, not a random failure.
+_REASONING_HINTS = ("gpt-oss", "reason")
+_RETRYABLE_STATUS = {408, 409, 425, 429, 500, 502, 503, 504}
+# Keep the escalation under the provider's per-minute token budget: a request
+# for 8192 tokens would always trip a 8000 tokens/min rate limit.
+_MAX_ESCALATED_TOKENS = 6000
+
+
+def _is_reasoning_model(model: str) -> bool:
+    m = model.lower()
+    if any(h in m for h in _REASONING_HINTS):
+        return True
+    return bool(re.search(r"(?:^|[-/:_])(?:o[134]|r\d+)(?:-|$)", m))
+
+
+def _env_int(name: str, default: int) -> int:
+    try:
+        return int(os.getenv(name, "").strip() or default)
+    except ValueError:
+        return default
+
+
+def _env_float(name: str, default: float) -> float:
+    try:
+        return float(os.getenv(name, "").strip() or default)
+    except ValueError:
+        return default
 
 
 def _llm_settings() -> tuple[str, str, str]:
@@ -173,42 +206,112 @@ def _build_prompt(trades: list[Trade], notes: list[DailyNote]) -> str:
     return "\n".join(parts)
 
 
+def _retry_delay(attempt: int, resp: Optional[httpx.Response]) -> float:
+    """Back off before retrying — Groq answers 429 with a "try again in Ns" body."""
+    if resp is not None:
+        header = resp.headers.get("retry-after")
+        if header:
+            try:
+                return min(30.0, float(header))
+            except ValueError:
+                pass
+        match = re.search(r"try again in ([\d.]+)s", resp.text[:400])
+        if match:
+            try:
+                return min(30.0, float(match.group(1)) + 1.0)
+            except ValueError:
+                pass
+    return float(min(20.0, 4.0 * attempt))
+
+
+def _content_text(message: dict[str, Any]) -> str:
+    content = message.get("content")
+    if isinstance(content, list):  # providers that return content parts
+        content = "".join(
+            part.get("text", "") for part in content if isinstance(part, dict)
+        )
+    if not isinstance(content, str):
+        return ""
+    return content.strip()
+
+
 def _call_llm(prompt: str) -> str:
     base, key, model = _llm_settings()
-    try:
-        max_tokens = int(os.getenv("LLM_MAX_TOKENS", "1200"))
-    except ValueError:
-        max_tokens = 1200
-    try:
-        timeout_s = float(os.getenv("LLM_TIMEOUT_S", "120"))
-    except ValueError:
-        timeout_s = 120.0
-    try:
-        resp = httpx.post(
-            f"{base}/chat/completions",
-            headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
-            json={
-                "model": model,
-                "messages": [
-                    {"role": "system", "content": SYSTEM_PROMPT},
-                    {"role": "user", "content": prompt},
-                ],
-                "temperature": 0.3,
-                "max_tokens": max_tokens,
-            },
-            timeout=timeout_s,
-        )
-    except httpx.HTTPError as e:
-        raise HTTPException(status_code=502, detail=f"LLM request failed: {e}") from e
-    if resp.status_code != 200:
-        raise HTTPException(
-            status_code=502, detail=f"LLM API error ({resp.status_code}): {resp.text[:300]}"
-        )
-    try:
-        text = resp.json()["choices"][0]["message"]["content"]
-    except (KeyError, IndexError, ValueError) as e:
-        raise HTTPException(status_code=502, detail="LLM API returned an unexpected shape") from e
-    return (text or "").strip()
+    max_tokens = _env_int("LLM_MAX_TOKENS", 3000)
+    timeout_s = _env_float("LLM_TIMEOUT_S", 120.0)
+    attempts = max(1, _env_int("LLM_RETRIES", 2) + 1)
+    effort = os.getenv("LLM_REASONING_EFFORT", "low").strip().lower()
+
+    payload: dict[str, Any] = {
+        "model": model,
+        "messages": [
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": prompt},
+        ],
+        "temperature": 0.3,
+        "max_tokens": max_tokens,
+    }
+    # Pin the reasoning trace short so it cannot eat the whole budget.
+    if effort and _is_reasoning_model(model):
+        payload["reasoning_effort"] = effort
+
+    budget = max_tokens
+    for attempt in range(1, attempts + 1):
+        payload["max_tokens"] = budget
+        try:
+            resp = httpx.post(
+                f"{base}/chat/completions",
+                headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+                json=payload,
+                timeout=timeout_s,
+            )
+        except httpx.HTTPError as e:
+            if attempt < attempts:
+                time.sleep(_retry_delay(attempt, None))
+                continue
+            raise HTTPException(status_code=502, detail=f"LLM request failed: {e}") from e
+
+        if resp.status_code in _RETRYABLE_STATUS and attempt < attempts:
+            time.sleep(_retry_delay(attempt, resp))
+            continue
+        if resp.status_code != 200:
+            raise HTTPException(
+                status_code=502, detail=f"LLM API error ({resp.status_code}): {resp.text[:300]}"
+            )
+
+        try:
+            choice = resp.json()["choices"][0]
+            message = choice["message"]
+        except (KeyError, IndexError, TypeError, ValueError) as e:
+            raise HTTPException(status_code=502, detail="LLM API returned an unexpected shape") from e
+
+        finish = choice.get("finish_reason")
+        text = _content_text(message)
+
+        if not text or finish == "length":
+            # Empty or cut-off answer: give the model a bigger budget once
+            # before giving up, then fail loudly instead of storing a blank.
+            if attempt < attempts and budget < _MAX_ESCALATED_TOKENS:
+                budget = min(_MAX_ESCALATED_TOKENS, budget * 2)
+                time.sleep(1.0)
+                continue
+            if not text:
+                detail = (
+                    "The model spent its whole token budget on reasoning and returned nothing. "
+                    "Raise LLM_MAX_TOKENS (or lower LLM_REASONING_EFFORT) and try again."
+                    if finish == "length"
+                    else "The model returned an empty summary — nothing was saved."
+                )
+            else:
+                detail = (
+                    "The summary was cut off by the token limit — "
+                    "raise LLM_MAX_TOKENS and try again."
+                )
+            raise HTTPException(status_code=502, detail=detail)
+
+        return text
+
+    raise HTTPException(status_code=502, detail="LLM request failed after retries")
 
 
 @router.post("/weekend-review")
@@ -228,6 +331,11 @@ def weekend_review(payload: WeekendReviewRequest, session: Session = Depends(get
         }
     _base, _key, model = _llm_settings()  # fail fast before the call, no secret leakage
     markdown = _call_llm(_build_prompt(trades, notes))
+    if not markdown.strip():
+        # Never persist a blank review — it renders as an empty box with no error.
+        raise HTTPException(
+            status_code=502, detail="The model returned an empty summary — nothing was saved."
+        )
     report = InsightReport(date_from=date_from, date_to=date_to, markdown=markdown, model=model)
     session.add(report)
     session.commit()
