@@ -781,7 +781,7 @@ async def do_close_on_trade(chat_id: int, session: Session, trade_id: int, args:
         normalize_tag_list,
     )
     from app.services.session_resolver import duration_minutes
-    from app.services.symbol_registry import estimate_gross_pnl
+    from app.services.symbol_registry import apply_trade_risk, estimate_gross_pnl
 
     trade = session.get(Trade, trade_id)
     if trade is None or trade.status != "OPEN":
@@ -814,6 +814,8 @@ async def do_close_on_trade(chat_id: int, session: Session, trade_id: int, args:
     trade.duration_minutes = duration_minutes(
         trade.entry_time or trade.timestamp_open, closed_at
     )
+    # Same risk record as the API and the web drawer.
+    apply_trade_risk(session, trade)
     trade.status = "CLOSED"
     trade.updated_at = _now()
     if args["review_notes"]:
