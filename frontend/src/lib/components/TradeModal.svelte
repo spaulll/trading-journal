@@ -93,6 +93,13 @@
 	let confirmDelete = $state(false);
 	let savingNotes = $state(false);
 	let savingTags = $state(false);
+	// Chained saves. A request that arrives while another is running waits
+	// for it instead of being dropped, and the counter keeps the spinner up
+	// until the last queued write has landed.
+	let notesInFlight: Promise<void> | null = null;
+	let tagsInFlight: Promise<void> | null = null;
+	let notesActive = 0;
+	let tagsActive = 0;
 	let savingEdits = $state(false);
 	let lastTradeId: number | null = $state(null);
 	// Autosave status for notes + tags (no toast spam — inline indicator only).
@@ -272,11 +279,12 @@
 		if (e.key === 'Escape') zoomShot = null;
 	}
 
-	async function saveNotes(quiet = true): Promise<void> {
-		if (!trade || savingNotes) return;
+	async function doSaveNotes(quiet: boolean): Promise<void> {
+		if (!trade) return;
 		if (thesis === (trade.thesis ?? '') && notes === (trade.review_notes ?? '')) return;
 		const tradeId = trade.id;
 		const payload = { thesis: thesis || null, review_notes: notes || null };
+		notesActive += 1;
 		savingNotes = true;
 		notesState = 'saving';
 		notesHint = '';
@@ -291,8 +299,23 @@
 			notesHint = err instanceof Error ? err.message : 'Save failed';
 			toasts.push('error', `Save failed — ${err instanceof Error ? err.message : 'unknown error'}`);
 		} finally {
-			savingNotes = false;
+			notesActive -= 1;
+			savingNotes = notesActive > 0;
 		}
+	}
+
+	/**
+	 * Queue a notes save behind whatever is already in flight.
+	 *
+	 * The old guard returned early when a request was running, so a
+	 * keystroke that landed mid-request was dropped with no timer left to
+	 * pick it up. Chaining instead keeps every write, and the payload is
+	 * read when the request actually runs, so the last one always wins.
+	 */
+	function saveNotes(quiet = true): Promise<void> {
+		const run = (notesInFlight ?? Promise.resolve()).then(() => doSaveNotes(quiet));
+		notesInFlight = run.catch(() => {});
+		return run;
 	}
 
 	function scheduleNotesAutosave(): void {
@@ -303,12 +326,13 @@
 		}, AUTOSAVE_MS);
 	}
 
-	async function saveTags(quiet = true): Promise<void> {
-		if (!trade || savingTags) return;
+	async function doSaveTags(quiet: boolean): Promise<void> {
+		if (!trade) return;
 		const current = trade.tags.map((t) => `${t.category === 'mistake' ? '!' : '#'}${t.name}`).join(' ');
 		if (tagInput.trim() === current) return;
 		const tradeId = trade.id;
 		const tokens = tagInput.split(/[\s,]+/).filter(Boolean);
+		tagsActive += 1;
 		savingTags = true;
 		tagsState = 'saving';
 		tagsHint = '';
@@ -323,8 +347,16 @@
 			tagsHint = err instanceof Error ? err.message : 'Tag update failed';
 			toasts.push('error', `Tag update failed — ${err instanceof Error ? err.message : 'unknown error'}`);
 		} finally {
-			savingTags = false;
+			tagsActive -= 1;
+			savingTags = tagsActive > 0;
 		}
+	}
+
+	/** Queue a tags save behind whatever is already in flight. */
+	function saveTags(quiet = true): Promise<void> {
+		const run = (tagsInFlight ?? Promise.resolve()).then(() => doSaveTags(quiet));
+		tagsInFlight = run.catch(() => {});
+		return run;
 	}
 
 	function scheduleTagsAutosave(): void {
