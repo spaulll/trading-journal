@@ -50,8 +50,19 @@
 	});
 
 	onDestroy(() => {
-		if (notesTimer) clearTimeout(notesTimer);
-		if (tagsTimer) clearTimeout(tagsTimer);
+		// The drawer is going away. Save whatever the debounce was still
+		// holding instead of dropping it — navigating within the debounce
+		// window used to lose the note entirely.
+		if (notesTimer) {
+			clearTimeout(notesTimer);
+			notesTimer = null;
+			if (dirty) void saveNotes(true);
+		}
+		if (tagsTimer) {
+			clearTimeout(tagsTimer);
+			tagsTimer = null;
+			if (tagsDirty) void saveTags(true);
+		}
 	});
 
 	function resetDrawerWidth(): void {
@@ -256,6 +267,10 @@
 			tagsTimer = null;
 		}
 		const jobs: Promise<unknown>[] = [];
+		// Await the requests already in flight as well — closing the drawer
+		// mid-flight used to close it with the text still unsaved.
+		if (notesInFlight) jobs.push(notesInFlight);
+		if (tagsInFlight) jobs.push(tagsInFlight);
 		if (dirty) jobs.push(saveNotes(true));
 		if (tagsDirty) jobs.push(saveTags(true));
 		if (jobs.length) await Promise.allSettled(jobs);

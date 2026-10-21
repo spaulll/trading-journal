@@ -106,7 +106,14 @@
 	}
 
 	onDestroy(() => {
-		if (noteTimer) clearTimeout(noteTimer);
+		// The panel is going away. Save whatever the debounce was still
+		// holding instead of dropping it — navigating within the debounce
+		// window used to lose the note entirely.
+		if (noteTimer) {
+			clearTimeout(noteTimer);
+			noteTimer = null;
+			if (dirty) void saveNote(true);
+		}
 	});
 
 	$effect(() => {
@@ -156,6 +163,9 @@
 			clearTimeout(noteTimer);
 			noteTimer = null;
 		}
+		// Await the request already in flight as well — closing the panel
+		// mid-flight used to close it with the text still unsaved.
+		if (noteInFlight) await noteInFlight.catch(() => {});
 		if (dirty) await saveNote(true);
 		closeDay();
 	}
