@@ -1,0 +1,5 @@
+# Development/test dependencies. Install with:
+#   ./venv/bin/pip install -r requirements-dev.txt
+# Production installs requirements.txt only.
+-r requirements.txt
+pytest==9.1.1
