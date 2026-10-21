@@ -258,17 +258,51 @@ export class ApiError extends Error {
 	}
 }
 
+/** FastAPI error bodies are {"detail": "..."} or {"detail": [{msg}]} — show the human part. */
+function humanizeError(raw: string, status: number): string {
+	const text = raw.trim();
+	if (text.startsWith('{') || text.startsWith('[')) {
+		try {
+			const parsed = JSON.parse(text) as { detail?: unknown };
+			const detail = parsed.detail;
+			if (typeof detail === 'string' && detail.trim()) return detail.trim();
+			if (Array.isArray(detail)) {
+				const msgs = detail
+					.map((d) => (d && typeof d === 'object' ? (d as { msg?: string }).msg : null))
+					.filter((m): m is string => Boolean(m));
+				if (msgs.length) return msgs.join(' · ');
+			}
+		} catch {
+			/* not JSON — fall through to the raw text */
+		}
+	}
+	return text || `Request failed (${status})`;
+}
+
 export function errMsg(e: unknown): string {
-	if (e instanceof ApiError) return e.status === 0 ? 'Backend unreachable' : e.message;
+	if (e instanceof ApiError) {
+		// status 0 = the request never reached the backend (or timed out).
+		if (e.status === 0) return e.message || 'Backend unreachable';
+		return humanizeError(e.message, e.status);
+	}
 	if (e instanceof Error) return e.message;
 	return 'Unexpected error';
 }
 
-async function req<T>(path: string, init?: RequestInit): Promise<T> {
+/** Requests that should not hang forever — the UI must always end with an error. */
+const DEFAULT_TIMEOUT_MS = 60_000;
+
+async function req<T>(path: string, init?: RequestInit, timeoutMs = DEFAULT_TIMEOUT_MS): Promise<T> {
 	let res: Response;
 	try {
-		res = await fetch(`${API_BASE}${path}`, init);
-	} catch {
+		res = await fetch(`${API_BASE}${path}`, {
+			...init,
+			signal: init?.signal ?? AbortSignal.timeout(timeoutMs)
+		});
+	} catch (e) {
+		if (e instanceof DOMException && e.name === 'TimeoutError') {
+			throw new ApiError(0, 'Request timed out — the server took too long');
+		}
 		throw new ApiError(0, 'Backend unreachable');
 	}
 	if (!res.ok) {
@@ -405,7 +439,9 @@ export const api = {
 	weekendReview: (from?: string, to?: string) =>
 		req<WeekendReviewResult>(
 			'/api/insights/weekend-review',
-			json({ method: 'POST', body: JSON.stringify({ date_from: from ?? null, date_to: to ?? null }) })
+			json({ method: 'POST', body: JSON.stringify({ date_from: from ?? null, date_to: to ?? null }) }),
+			// The provider can take a while, and the backend retries on rate limits.
+			240_000
 		),
 	listInsightReports: () => req<InsightReportDto[]>('/api/insights/reports'),
 	deleteInsightReport: (id: number) =>
