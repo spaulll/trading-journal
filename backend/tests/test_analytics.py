@@ -70,11 +70,16 @@ def test_a_scratch_trade_is_neither_a_win_nor_a_loss(client):
     assert summary["total_trades"] == 1
 
 
-def test_a_trade_without_a_net_counts_as_breakeven(client):
-    """An unpriced trade is a scratch, not a silent zero."""
+def test_a_trade_without_a_net_counts_as_unpriced(client):
+    """An unpriced trade is not a scratch — its outcome is unknown.
+
+    Counting it as a breakeven would drag the win rate down over a trade
+    that was never priced.
+    """
     _store([_closed("NONE-1", None, opened=datetime(2026, 9, 1, 10, 0))])
     summary = client.get("/api/analytics/summary").json()
-    assert summary["breakeven"] == 1
+    assert summary["unpriced"] == 1
+    assert summary["breakeven"] == 0
     assert summary["wins"] == 0
     assert summary["losses"] == 0
     assert summary["net_pnl"] == 0.0
@@ -129,7 +134,7 @@ def test_a_trade_lands_on_the_day_it_closed(client):
     )
     days = client.get("/api/analytics/calendar", params={"year": 2026}).json()["days"]
     assert days == [
-        {"date": "2026-09-28", "net_pnl": 100.0, "trade_count": 1}
+        {"date": "2026-09-28", "net_pnl": 100.0, "trade_count": 1, "unpriced": 0}
     ]
 
 

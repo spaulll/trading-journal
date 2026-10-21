@@ -937,7 +937,7 @@ async def do_past(chat_id: int, session: Session, args: dict) -> None:
 from app.services.analytics_rules import (  # noqa: E402
     is_loss as _is_loss,
     is_win as _is_win,
-    win_loss_counts,
+    split_outcomes,
     win_rate,
 )
 
@@ -952,22 +952,31 @@ def daily_stats_text(session: Session, today: Optional[date_type] = None) -> str
         for t in session.exec(select(Trade).where(Trade.status == "CLOSED")).all()
         if start <= (as_naive_utc(t.timestamp_close) or datetime.min) < end
     ]
-    nets = [t.net_pnl if t.net_pnl is not None else 0.0 for t in closed]
-    wins, losses, be = win_loss_counts(nets)
+    nets = [t.net_pnl for t in closed]
+    counts = split_outcomes(nets)
+    known = [n for n in nets if n is not None]
     total = len(closed)
-    wr = f"{win_rate(wins, losses):.0f}%" if wins + losses else "n/a"
+    wr = f"{win_rate(counts.wins, counts.losses):.0f}%" if counts.decided else "n/a"
     r_total = sum(t.r_multiple for t in closed if t.r_multiple is not None)
     opens = session.exec(select(Trade).where(Trade.status == "OPEN")).all()
+    buckets = f"{counts.wins}W · {counts.losses}L · {counts.breakeven}BE"
+    if counts.unpriced:
+        buckets += f" · {counts.unpriced} unpriced"
     lines = [
         f"📊 Daily stats {day.isoformat()} (UTC): "
-        f"{total} closed ({wins}W · {losses}L · {be}BE), "
-        f"win rate {wr}, net {sum(nets):+.2f}, R {r_total:+.2f}."
+        f"{total} closed ({buckets}), "
+        f"win rate {wr}, net {sum(known):+.2f}, R {r_total:+.2f}."
     ]
     for t in sorted(closed, key=lambda x: x.timestamp_close or datetime.min):
-        net = t.net_pnl if t.net_pnl is not None else 0.0
         r_txt = f"{t.r_multiple:+.2f}R" if t.r_multiple is not None else "n/a"
+        if t.net_pnl is None:
+            # No contract, no price — say so instead of printing a zero.
+            lines.append(
+                f"• {(t.direction or '').upper()} {t.symbol} unpriced ({r_txt}) 🎫 {t.ticket}"
+            )
+            continue
         lines.append(
-            f"• {(t.direction or '').upper()} {t.symbol} {net:+.2f} ({r_txt}) 🎫 {t.ticket}"
+            f"• {(t.direction or '').upper()} {t.symbol} {t.net_pnl:+.2f} ({r_txt}) 🎫 {t.ticket}"
         )
     if not closed:
         lines.append("No closed trades yet today.")

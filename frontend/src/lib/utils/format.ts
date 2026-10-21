@@ -160,6 +160,17 @@ export function rTone(v: number | null | undefined): 'win' | 'loss' | 'be' {
 	return v > 0 ? 'win' : 'loss';
 }
 
+/**
+ * A closed trade with no net P&L is *unpriced*, not breakeven.
+ *
+ * The symbol had no contract, so the dollar outcome is unknown — it might
+ * have been a $2 scratch or a $200 win. The ledger says so instead of
+ * showing a dash that reads like a zero.
+ */
+export function isUnpriced(t: { status: string; net_pnl: number | null }): boolean {
+	return t.status === 'CLOSED' && t.net_pnl === null;
+}
+
 export const toneText: Record<'win' | 'loss' | 'be', string> = {
 	win: 'text-win',
 	loss: 'text-loss',

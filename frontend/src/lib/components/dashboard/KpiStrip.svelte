@@ -214,11 +214,14 @@
 			{:else if cell.label === 'Win rate'}
 				<div
 					class="mt-4 flex items-stretch gap-1.5"
-					aria-label="{kpi.win_rate.wins} wins, {kpi.win_rate.losses} losses, {kpi.win_rate.breakeven} breakeven"
+					aria-label="{kpi.win_rate.wins} wins, {kpi.win_rate.losses} losses, {kpi.win_rate.breakeven} breakeven{kpi.win_rate.unpriced ? `, ${kpi.win_rate.unpriced} unpriced` : ''}"
 				>
 					<span class="flex-1 rounded-lg bg-win/12 py-2 text-center font-mono text-sm font-bold text-win tabular-nums" title="Wins">W {kpi.win_rate.wins}</span>
 					<span class="flex-1 rounded-lg bg-loss/12 py-2 text-center font-mono text-sm font-bold text-loss tabular-nums" title="Losses">L {kpi.win_rate.losses}</span>
 					<span class="flex-1 rounded-lg bg-flat/12 py-2 text-center font-mono text-sm font-bold text-flat tabular-nums" title="Breakeven">BE {kpi.win_rate.breakeven}</span>
+					{#if kpi.win_rate.unpriced > 0}
+						<span class="flex-1 rounded-lg border border-dashed border-dim/40 py-2 text-center font-mono text-sm font-bold text-dim tabular-nums" title="Unpriced — no contract for the symbol">? {kpi.win_rate.unpriced}</span>
+					{/if}
 				</div>
 			{:else}
 				<div class="relative mx-auto mt-2 h-24 w-full max-w-52">
