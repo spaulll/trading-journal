@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { CalendarPlus, Sparkles, X } from 'lucide-svelte';
+	import { AlertTriangle, CalendarPlus, Sparkles, X } from 'lucide-svelte';
 	import PageHead from '$lib/components/PageHead.svelte';
 	import StateBlock from '$lib/components/StateBlock.svelte';
 	import DayPanel from '$lib/components/DayPanel.svelte';
@@ -27,6 +27,7 @@
 	let overrideFrom = $state('');
 	let overrideTo = $state('');
 	let expandedReport = $state<number | null>(null);
+	let reportsError = $state<string | null>(null);
 
 	/** Last completed Mon–Fri, mirroring the backend default. */
 	function defaultWeek(today: Date = new Date()): { from: string; to: string } {
@@ -50,9 +51,11 @@
 	async function loadReports(): Promise<void> {
 		try {
 			reports = await api.listInsightReports();
-		} catch {
-			// History is a nice-to-have — never block the page on it.
+			reportsError = null;
+		} catch (e) {
+			// History is a nice-to-have — never block the page on it, but say so.
 			reports = [];
+			reportsError = errMsg(e);
 		}
 	}
 
@@ -192,6 +195,12 @@
 		{/if}
 	{/if}
 
+	{#if reportsError}
+		<p role="alert" class="mt-3 rounded-xl border border-loss/40 bg-loss/8 px-3 py-2 text-[13px] text-loss">
+			Could not load past reviews — {reportsError}
+		</p>
+	{/if}
+
 	{#if reports.length > 0}
 		<div class="mt-4 border-t border-line pt-3">
 			<p class="font-mono text-[10px] tracking-[0.16em] text-dim uppercase">Past reviews ({reports.length})</p>
@@ -207,11 +216,20 @@
 							>
 								<span class="num truncate font-medium text-fg">{fmtDate(r.date_from)} – {fmtDate(r.date_to)}</span>
 								{#if isBlankReport(r.markdown)}
-									<span class="num shrink-0 rounded-md bg-loss/12 px-1.5 py-0.5 text-[10px] font-semibold tracking-[0.1em] text-loss uppercase">
-										empty
+									<span
+										class="num shrink-0 rounded-md bg-loss/12 px-1.5 py-0.5 text-[10px] font-semibold tracking-[0.1em] text-loss uppercase"
+										title="Saved with no content"
+									>
+										<AlertTriangle
+											size={11}
+											strokeWidth={2.4}
+											class="inline sm:hidden"
+											aria-label="No content"
+										/>
+										<span class="hidden sm:inline">empty</span>
 									</span>
 								{/if}
-								<span class="num ml-auto shrink-0 text-[11px] text-dim">{fmtDate(r.created_at.slice(0, 10))}</span>
+								<span class="num ml-auto hidden shrink-0 text-[11px] text-dim sm:inline">{fmtDate(r.created_at.slice(0, 10))}</span>
 							</button>
 							<button
 								type="button"
