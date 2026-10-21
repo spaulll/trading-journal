@@ -31,12 +31,12 @@ from app.models import (
 )
 from app.services.migrate_csv import (
     compute_r_multiple,
-    estimate_gross_pnl,
     get_or_create_tag,
     normalize_tag_list,
     parse_tags,
 )
 from app.services.session_resolver import duration_minutes, normalize_session
+from app.services.symbol_registry import estimate_gross_pnl
 from app.services.timeutils import as_naive_utc, trade_close_day
 
 router = APIRouter(prefix="/api/trades", tags=["trades"])
@@ -245,12 +245,13 @@ def close_trade(trade_id: int, payload: TradeCloseRequest, session: Session = De
     if payload.gross_pnl is not None:
         gross = payload.gross_pnl
     else:
-        # Fallback when the client omits gross: price-based estimate for known
-        # symbols (FX 100k, GOLD 100, BTC 1, USDJPY converted at exit). Keeps
-        # None for unknown symbols instead of guessing — net then stays null
-        # only when no deterministic value exists.
+        # Fallback when the client omits gross: price the trade from the
+        # symbol registry (contract size x price distance, converted to
+        # dollars). Keeps None for an unregistered symbol instead of
+        # guessing — net then stays null only when no deterministic value
+        # exists.
         gross = estimate_gross_pnl(
-            trade.direction, trade.symbol, trade.size, trade.entry_price, payload.exit_price
+            session, trade.direction, trade.symbol, trade.size, trade.entry_price, payload.exit_price
         )
         if gross is None:
             gross = trade.gross_pnl
@@ -495,7 +496,7 @@ def patch_trade(trade_id: int, patch: TradePatch, session: Session = Depends(get
         k in data for k in ("direction", "symbol", "size", "entry_price", "exit_price")
     ):
         estimated = estimate_gross_pnl(
-            trade.direction, trade.symbol, trade.size, trade.entry_price, trade.exit_price
+            session, trade.direction, trade.symbol, trade.size, trade.entry_price, trade.exit_price
         )
         if estimated is not None:
             trade.gross_pnl = estimated
@@ -538,7 +539,7 @@ def patch_trade(trade_id: int, patch: TradePatch, session: Session = Depends(get
         # was added while exit_price was already stored).
         if trade.gross_pnl is None:
             estimated = estimate_gross_pnl(
-                trade.direction, trade.symbol, trade.size, trade.entry_price, trade.exit_price
+                session, trade.direction, trade.symbol, trade.size, trade.entry_price, trade.exit_price
             )
             if estimated is not None:
                 trade.gross_pnl = estimated

@@ -777,11 +777,11 @@ async def do_close_on_trade(chat_id: int, session: Session, trade_id: int, args:
     from app.routers.trades import _flag_breach_day, _guardrail_breached
     from app.services.migrate_csv import (
         compute_r_multiple,
-        estimate_gross_pnl,
         get_or_create_tag,
         normalize_tag_list,
     )
     from app.services.session_resolver import duration_minutes
+    from app.services.symbol_registry import estimate_gross_pnl
 
     trade = session.get(Trade, trade_id)
     if trade is None or trade.status != "OPEN":
@@ -792,7 +792,7 @@ async def do_close_on_trade(chat_id: int, session: Session, trade_id: int, args:
         gross = args["gross_pnl"]
     else:
         gross = estimate_gross_pnl(
-            trade.direction, trade.symbol, trade.size, trade.entry_price, args["exit_price"]
+            session, trade.direction, trade.symbol, trade.size, trade.entry_price, args["exit_price"]
         )
         if gross is None:
             gross = trade.gross_pnl
