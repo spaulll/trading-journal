@@ -5,11 +5,19 @@
 	import { dismissLifecycle, lifecycleBusy, submitClose, trades } from '$lib/stores/trades';
 	import { fmtMoney, fmtR, mt5WallToUTC, pnlTone, previewIST, previewMT5, rTone, toneText } from '$lib/utils/format';
 	import { brokerOffset } from '$lib/stores/broker';
+	import { loadSymbols, specFor, symbolMap } from '$lib/stores/symbols';
 	import { FADE, MODAL } from '$lib/utils/transitions';
+	import { onMount } from 'svelte';
 
 	const { tradeId }: { tradeId: number } = $props();
 
+	onMount(() => {
+		void loadSymbols();
+	});
+
 	const trade = $derived($trades.find((t) => t.id === tradeId) ?? null);
+	// The contract comes from the server's registry — never a local guess.
+	const spec = $derived(trade ? specFor(trade.symbol ?? '', $symbolMap) : null);
 
 	let exit = $state('');
 	let gross = $state('');
@@ -49,14 +57,29 @@
 	const feesN = $derived(num(fees) ?? 0);
 
 	const netPreview = $derived(grossN !== null ? grossN - (feesN ?? 0) : null);
+	// The projected R is built from the server's own numbers: the risk the
+	// trade actually carried (realized_risk) and the registry's contract
+	// size. No local re-derivation of the stop rule.
 	const rPreview = $derived.by(() => {
-		if (!trade || exitN === null || trade.entry_price === null || trade.initial_sl === null) return null;
+		if (!trade || exitN === null || trade.entry_price === null) return null;
+		const sign = (trade.direction ?? '').toLowerCase().startsWith('sell') ? -1 : 1;
+		const move = (exitN - trade.entry_price) * sign;
+		const riskMoney = trade.realized_risk ?? trade.initial_risk;
+		if (
+			riskMoney !== null &&
+			riskMoney !== undefined &&
+			riskMoney > 0 &&
+			spec !== null &&
+			trade.size
+		) {
+			const gross = move * spec.contract_size * trade.size;
+			return gross / riskMoney;
+		}
+		// No recorded risk (a trade with no stop, or one stored before the
+		// risk columns existed): fall back to the planned stop distance.
+		if (trade.initial_sl === null) return null;
 		const risk = Math.abs(trade.entry_price - trade.initial_sl);
 		if (risk === 0) return null;
-		const move =
-			(trade.direction ?? '').toLowerCase().startsWith('sell')
-				? trade.entry_price - exitN
-				: exitN - trade.entry_price;
 		return move / risk;
 	});
 
@@ -198,6 +221,11 @@
 
 				<div class="mt-4 rounded-xl border border-line bg-raised/60 px-3.5 py-3" aria-live="polite">
 					<p class="eyebrow">Close preview</p>
+					{#if spec !== null}
+						<p class="num mt-1.5 text-[11.5px] text-dim">
+							{spec.display} · {spec.contract_size} per lot · 1 pip = {spec.pip_size}
+						</p>
+					{/if}
 					<p class="num mt-1.5 flex flex-wrap items-baseline gap-x-3 text-sm">
 						<span>
 							<span class="text-dim">Net</span>
@@ -211,6 +239,12 @@
 								{rPreview === null ? '—' : fmtR(rPreview)}
 							</span>
 						</span>
+						{#if trade.realized_risk !== null}
+							<span>
+								<span class="text-dim">Risk</span>
+								<span class="ml-1.5 font-bold text-loss">{fmtMoney(trade.realized_risk)}</span>
+							</span>
+						{/if}
 					</p>
 					<p class="mt-1.5 text-[11px] leading-relaxed text-dim">
 						Preview only — the server computes the stored values. Invalid exit/SL data clears R.
