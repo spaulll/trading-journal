@@ -17,6 +17,15 @@ from sqlmodel import Session, select
 
 from app.database import get_session
 from app.models import Tag, Trade, TradeTagLink
+from app.services import analytics_rules
+from app.services.analytics_rules import (
+    BE_TOLERANCE,
+    is_breakeven as _is_be,
+    is_loss as _is_loss,
+    is_win as _is_win,
+    sign as _sign,
+    win_loss_counts as _win_loss_counts,
+)
 from app.services.timeutils import as_naive_utc, trade_close_day
 
 router = APIRouter(prefix="/api/analytics", tags=["analytics"])
@@ -68,32 +77,8 @@ def _session_of(t: Trade) -> str:
     return "outside"
 
 
-# Breakeven rule (shared everywhere): |net_pnl| <= BE_TOLERANCE counts as
-# breakeven, not a win/loss. Small wins/losses within the tolerance band
-# (commissions/slippage dust, scratch exits) must not flip the outcome
-# donut, monthly calendar, or long/short stats. Tolerance is $5 —
-# any trade netting 0–$5 profit or 0–$5 loss is BE.
-BE_TOLERANCE = 5.0
-
-
-def _is_win(net: float) -> bool:
-    return net > BE_TOLERANCE
-
-
-def _is_loss(net: float) -> bool:
-    return net < -BE_TOLERANCE
-
-
-def _is_be(net: float) -> bool:
-    return abs(net) <= BE_TOLERANCE
-
-
-def _sign(net: float) -> int:
-    if _is_win(net):
-        return 1
-    if _is_loss(net):
-        return -1
-    return 0
+# Breakeven rule and win-rate denominator live in app.services.analytics_rules
+# so the API, the Telegram bot and the frontend share one definition.
 
 
 def _normalize_direction(raw: object) -> str | None:
@@ -105,12 +90,6 @@ def _normalize_direction(raw: object) -> str | None:
     if s in ("sell", "short"):
         return "sell"
     return None
-
-
-def _win_loss_counts(nets: list[float]) -> tuple[int, int, int]:
-    wins = sum(1 for n in nets if _is_win(n))
-    losses = sum(1 for n in nets if _is_loss(n))
-    return wins, losses, len(nets) - wins - losses
 
 
 def _profit_factor(nets: list[float]) -> Optional[float]:
@@ -171,7 +150,7 @@ def summary(account_id: Optional[int] = Query(default=None), session: Session = 
     wins = [n for n in nets if _is_win(n)]
     losses = [n for n in nets if _is_loss(n)]
     net_pnl = round(sum(nets), 2)
-    win_rate = round(len(wins) / total * 100, 2) if total else 0.0
+    rate = analytics_rules.win_rate(len(wins), len(losses))
     gross_profit = sum(wins)
     gross_loss = abs(sum(losses))
     profit_factor = round(gross_profit / gross_loss, 3) if gross_loss else None
@@ -193,7 +172,7 @@ def summary(account_id: Optional[int] = Query(default=None), session: Session = 
         "losses": len(losses),
         "breakeven": total - len(wins) - len(losses),
         "net_pnl": net_pnl,
-        "win_rate": win_rate,
+        "win_rate": rate,
         "profit_factor": profit_factor,
         "expectancy": expectancy,
         "avg_win": avg_win,
@@ -244,14 +223,14 @@ def tag_performance(account_id: Optional[int] = Query(default=None), session: Se
             link_stmt = link_stmt.where(Trade.account_id == account_id)
         link_rows = session.exec(link_stmt).all()
         nets = [t.net_pnl if t.net_pnl is not None else 0.0 for t in link_rows]
-        wins = sum(1 for n in nets if _is_win(n))
+        wins, losses, _be = _win_loss_counts(nets)
         rows.append(
             {
                 "name": tag.name,
                 "category": tag.category,
                 "trade_count": len(link_rows),
                 "net_pnl": round(sum(nets), 2),
-                "win_rate": round(wins / len(nets) * 100, 2) if nets else 0.0,
+                "win_rate": analytics_rules.win_rate(wins, losses),
             }
         )
     rows.sort(key=lambda r: r["net_pnl"], reverse=True)
@@ -316,12 +295,12 @@ def kpi_dashboard(account_id: Optional[int] = Query(default=None), session: Sess
     for name in ("london", "new_york", "asia", "outside"):
         bucket = [t for t in trades if _session_of(t) == name]
         bnets = [t.net_pnl or 0.0 for t in bucket]
-        bwins = sum(1 for n in bnets if _is_win(n))
+        bwins, blosses, _b_be = _win_loss_counts(bnets)
         bnet = round(sum(bnets), 2)
         sessions[name] = {
             "net_pnl": bnet,
             "trade_count": len(bucket),
-            "win_rate": round(bwins / len(bucket) * 100, 2) if bucket else 0.0,
+            "win_rate": analytics_rules.win_rate(bwins, blosses),
             "return_pct": round(bnet / total_net_abs * 100, 2) if total_net_abs else 0.0,
         }
 
@@ -331,7 +310,7 @@ def kpi_dashboard(account_id: Optional[int] = Query(default=None), session: Sess
         "sparkline": equity,
         "avg_realized_rr": {"current": avg_rr, "target": TARGET_RR},
         "win_rate": {
-            "rate": round(wins / total * 100, 2) if total else 0.0,
+            "rate": analytics_rules.win_rate(wins, losses),
             "wins": wins,
             "losses": losses,
             "breakeven": be,
@@ -504,7 +483,7 @@ def _direction_stats(trades: list[Trade]) -> dict:
         "wins": wins,
         "losses": losses,
         "breakeven": be,
-        "win_rate": round(wins / len(trades) * 100, 2) if trades else 0.0,
+        "win_rate": analytics_rules.win_rate(wins, losses),
         "avg_win": round(sum(win_nets) / len(win_nets), 2) if win_nets else 0.0,
         "avg_loss": round(sum(loss_nets) / len(loss_nets), 2) if loss_nets else 0.0,
         "best": {"ticket": best.ticket, "net_pnl": best.net_pnl} if best else None,
@@ -536,13 +515,13 @@ def radar_profiles(account_id: Optional[int] = Query(default=None), session: Ses
     for i, name in enumerate(day_names):
         bucket = [t for t in trades if (_close_day(t) is not None and _close_day(t).weekday() == i)]
         nets = [t.net_pnl or 0.0 for t in bucket]
-        w = sum(1 for n in nets if _is_win(n))
+        w, l, _be = _win_loss_counts(nets)
         weekday.append(
             {
                 "day": name,
                 "trades": len(bucket),
                 "wins": w,
-                "win_rate": round(w / len(bucket) * 100, 2) if bucket else 0.0,
+                "win_rate": analytics_rules.win_rate(w, l),
                 "net_pnl": round(sum(nets), 2),
             }
         )
@@ -551,13 +530,13 @@ def radar_profiles(account_id: Optional[int] = Query(default=None), session: Ses
     for name in ("london", "new_york", "asia", "outside"):
         bucket = [t for t in trades if _session_of(t) == name]
         nets = [t.net_pnl or 0.0 for t in bucket]
-        w = sum(1 for n in nets if _is_win(n))
+        w, l, _be = _win_loss_counts(nets)
         net = round(sum(nets), 2)
         sessions.append(
             {
                 "session": name,
                 "trades": len(bucket),
-                "win_rate": round(w / len(bucket) * 100, 2) if bucket else 0.0,
+                "win_rate": analytics_rules.win_rate(w, l),
                 "net_pnl": net,
                 "profit_pct": round(net / total_net * 100, 2) if total_net else 0.0,
             }
