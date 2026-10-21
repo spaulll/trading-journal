@@ -3,6 +3,7 @@
 	import { Chart, registerables } from 'chart.js';
 	import type { TagPerf } from '$lib/api';
 	import { palette } from '$lib/utils/palette';
+	import { BE_TOL } from '$lib/utils/format';
 	import { theme } from '$lib/stores/theme';
 
 	Chart.register(...registerables);
@@ -17,7 +18,6 @@
 	function render(list: TagPerf[]): void {
 		if (!canvas) return;
 		const p = palette();
-		const BE_TOL = 5.0;
 		Chart.defaults.color = p.axis;
 		Chart.defaults.borderColor = p.grid;
 		Chart.defaults.font.family = 'Geist, ui-sans-serif, sans-serif';

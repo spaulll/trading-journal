@@ -6,10 +6,9 @@
 	import { bumpNotes, closeDay, selectedDay } from '$lib/stores/journal';
 	import { openTrade, openTrades, trades } from '$lib/stores/trades';
 	import { toasts } from '$lib/stores/toast';
-	import { dayKeyOf, fmtDate, fmtMoney, fmtR, pnlTone, rTone, toneText } from '$lib/utils/format';
+	import { BE_TOL, dayKeyOf, fmtDate, fmtMoney, fmtR, pnlTone, rTone, toneText } from '$lib/utils/format';
 	import { DRAWER, FADE } from '$lib/utils/transitions';
 
-	const BE_TOL = 5.0;
 
 	const day = $derived($selectedDay);
 
