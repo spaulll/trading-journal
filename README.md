@@ -49,6 +49,12 @@ Log trades in one line of chat, attach chart screenshots automatically, and revi
 - Bulk account moves and delete
 - Ledger summary: net realized, win rate, average R, and an open-now ribbon
 
+### Symbol contracts
+- One registry of contract sizes, pip sizes and quote currencies, editable over the API
+- Every registered symbol gets a real dollar P&L — FX, metals, crypto and indices
+- Risk per trade: the dollars planned and the dollars actually carried
+- An unregistered symbol stays unpriced and is flagged, never guessed
+
 ### Telegram bot
 - Live ingestion with inline buttons: **Move to BE**, **Update TSL**, **Close**, **Attach Chart**
 - `@account` routing with last-account memory
@@ -184,10 +190,13 @@ past buy gold, 0.1, 4000, 3990, exit: 4015, pnl: 150, date: 2026-09-20 14:30
 ## 📐 Data rules
 
 - **Timestamps** are naive UTC. Broker `MT5` times resolve via the calibrated offset (`/brokertime`).
+- **Contract sizes** live in the symbol registry (`GET /api/symbols`): 100k units per FX lot, 100 oz for gold, 5000 oz for silver, 1 coin for crypto, 1 contract for indices. The server prices every trade from it; the browser never re-derives a dollar amount.
 - **Breakeven** is `|net_pnl| <= $5`, applied consistently across stats, calendars, and streaks.
+- **Unpriced** is not breakeven. A closed trade with no P&L — because its symbol had no contract — is counted separately and excluded from the win rate, the streaks and the day buckets. The ledger flags it `UNPRICED`.
 - **Net P&L:** `net = gross − fees` when gross is known.
-- **R-multiple** recomputes on close, edit, and backfill.
-- **Closes without gross** fall back to a price-based estimate for known symbols, otherwise stay `null`.
+- **Risk** is recorded per trade: `initial_risk` from the planned stop, `realized_risk` from the stop it was actually carried to.
+- **R-multiple** recomputes on close, edit, and backfill, against the risk actually taken — a trailed stop changes the R.
+- **Closes without gross** fall back to a price-based estimate for registered symbols, otherwise stay `null`.
 - **Pagination:** the trades list is paginated (`page` / `page_size`, max 5000); the frontend fetches all pages for full-set stats.
 
 ---
