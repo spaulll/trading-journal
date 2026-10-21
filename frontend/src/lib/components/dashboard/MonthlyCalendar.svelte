@@ -97,6 +97,9 @@
 				return `${base} border-loss/25 bg-loss/10${ring}`;
 			case 'be':
 				return `${base} border-flat/25 bg-flat/10${ring}`;
+			case 'unpriced':
+				// Trades, but none of them priced — the day's result is unknown.
+				return `${base} border-dashed border-dim/40 bg-raised/60${ring}`;
 			default:
 				return `${base} border-line bg-raised${ring}`;
 		}
@@ -123,16 +126,29 @@
 		let wins = 0,
 			losses = 0,
 			be = 0,
+			unpriced = 0,
 			net = 0;
 		for (const d of yearDays) {
 			if ((d.trade_count ?? 0) === 0) continue;
 			net += d.net_pnl ?? 0;
-			if ((d.net_pnl ?? 0) > BE_TOL) wins++;
+			// A day whose trades were all unpriced has an unknown result —
+			// it is not a breakeven day.
+			if ((d.unpriced ?? 0) > 0 && (d.unpriced ?? 0) >= (d.trade_count ?? 0)) {
+				unpriced++;
+			} else if ((d.net_pnl ?? 0) > BE_TOL) wins++;
 			else if ((d.net_pnl ?? 0) < -BE_TOL) losses++;
 			else be++;
 		}
 		const days = wins + losses + be;
-		return { wins, losses, breakeven: be, days, net, winRate: days ? (wins / days) * 100 : 0 };
+		return {
+			wins,
+			losses,
+			breakeven: be,
+			unpriced,
+			days,
+			net,
+			winRate: days ? (wins / days) * 100 : 0
+		};
 	});
 
 	function renderDonut(): void {
@@ -145,11 +161,16 @@
 		chart = new Chart(donut, {
 			type: 'doughnut',
 			data: {
-				labels: ['Winning days', 'Losing days', 'Breakeven'],
+				labels: ['Winning days', 'Losing days', 'Breakeven', 'Unpriced'],
 				datasets: [
 					{
-						data: [data.outcome.wins, data.outcome.losses, data.outcome.breakeven],
-						backgroundColor: [p.win, p.loss, p.flat],
+						data: [
+							data.outcome.wins,
+							data.outcome.losses,
+							data.outcome.breakeven,
+							data.outcome.unpriced
+						],
+						backgroundColor: [p.win, p.loss, p.flat, p.axis],
 						borderColor: p.panel,
 						borderWidth: 3,
 						hoverOffset: 8
@@ -200,13 +221,18 @@
 	});
 
 	$effect(() => {
-		[data.outcome.wins, data.outcome.losses, data.outcome.breakeven].join(',');
+		[data.outcome.wins, data.outcome.losses, data.outcome.breakeven, data.outcome.unpriced].join(',');
 		void $theme;
 		if (donut) renderDonut();
 	});
 
 	$effect(() => {
-		[yearOutcome.wins, yearOutcome.losses, yearOutcome.breakeven].join(',');
+		[
+			yearOutcome.wins,
+			yearOutcome.losses,
+			yearOutcome.breakeven,
+			yearOutcome.unpriced
+		].join(',');
 		void $theme;
 		tab;
 		if (yearPie) renderYearPie();
@@ -222,11 +248,16 @@
 		yearPieChart = new Chart(yearPie, {
 			type: 'pie',
 			data: {
-				labels: ['Winning days', 'Losing days', 'Breakeven'],
+				labels: ['Winning days', 'Losing days', 'Breakeven', 'Unpriced'],
 				datasets: [
 					{
-						data: [yearOutcome.wins, yearOutcome.losses, yearOutcome.breakeven],
-						backgroundColor: [p.win, p.loss, p.flat],
+						data: [
+							yearOutcome.wins,
+							yearOutcome.losses,
+							yearOutcome.breakeven,
+							yearOutcome.unpriced
+						],
+						backgroundColor: [p.win, p.loss, p.flat, p.axis],
 						borderColor: p.panel,
 						borderWidth: 2,
 						hoverOffset: 6

@@ -50,6 +50,7 @@
 			wins,
 			losses,
 			breakeven: be,
+			unpriced: (b.unpriced ?? 0) + (s.unpriced ?? 0),
 			win_rate: wins + losses > 0 ? (wins / (wins + losses)) * 100 : 0,
 			avg_win: wins ? (b.avg_win * b.wins + s.avg_win * s.wins) / wins : 0,
 			avg_loss: losses ? (b.avg_loss * b.losses + s.avg_loss * s.losses) / losses : 0,

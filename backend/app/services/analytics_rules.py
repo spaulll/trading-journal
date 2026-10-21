@@ -9,6 +9,15 @@ Breakeven band
 A trade that nets within $5 of zero is a scratch — commission and slippage
 dust, a position closed by hand at scratch. It is neither a win nor a loss.
 
+Unpriced trades
+---------------
+A trade with no net P&L is *unpriced*, not a scratch. The symbol had no
+contract, so the dollar outcome is unknown — it might have been a $2
+scratch or a $200 win. Scoring it as breakeven would quietly drag the win
+rate down and break a win streak over a trade that was never priced, so
+unpriced trades are counted separately and excluded from every outcome
+decision.
+
 Win-rate denominator
 --------------------
 ``wins / (wins + losses)`` — the *decided* trades.
@@ -25,7 +34,8 @@ be imported from routers, services and tests alike.
 
 from __future__ import annotations
 
-from typing import Iterable
+from dataclasses import dataclass
+from typing import Iterable, Optional
 
 # A trade netting within ±$5 of zero counts as breakeven, not a win or loss.
 BE_TOLERANCE = 5.0
@@ -56,7 +66,11 @@ def sign(net: float) -> int:
 
 
 def win_loss_counts(nets: Iterable[float]) -> tuple[int, int, int]:
-    """Split net results into (wins, losses, breakeven)."""
+    """Split net results into (wins, losses, breakeven).
+
+    Only for results that are known. Use :func:`split_outcomes` when a
+    trade may be unpriced.
+    """
     wins = losses = be = 0
     for net in nets:
         if is_win(net):
@@ -66,6 +80,50 @@ def win_loss_counts(nets: Iterable[float]) -> tuple[int, int, int]:
         else:
             be += 1
     return wins, losses, be
+
+
+@dataclass(frozen=True)
+class OutcomeCounts:
+    """The four ways a closed trade can end.
+
+    ``unpriced`` is a trade with no net P&L — the outcome is unknown, so
+    it takes part in no decision.
+    """
+
+    wins: int = 0
+    losses: int = 0
+    breakeven: int = 0
+    unpriced: int = 0
+
+    @property
+    def decided(self) -> int:
+        """The trades whose outcome is known and not a scratch."""
+        return self.wins + self.losses
+
+    @property
+    def priced(self) -> int:
+        """The trades with a known net — every outcome bucket but unpriced."""
+        return self.wins + self.losses + self.breakeven
+
+
+def split_outcomes(nets: Iterable[Optional[float]]) -> OutcomeCounts:
+    """Split net results into wins, losses, scratches and unpriced trades.
+
+    A ``None`` net means the trade was never priced. It is counted as
+    unpriced and left out of the win/loss/scratch decision, so it can
+    neither drag the win rate down nor break a streak.
+    """
+    wins = losses = be = unpriced = 0
+    for net in nets:
+        if net is None:
+            unpriced += 1
+        elif is_win(net):
+            wins += 1
+        elif is_loss(net):
+            losses += 1
+        else:
+            be += 1
+    return OutcomeCounts(wins, losses, be, unpriced)
 
 
 def win_rate(wins: int, losses: int) -> float:

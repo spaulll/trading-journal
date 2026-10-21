@@ -6,7 +6,7 @@
 	import { aliasOf, accounts, accountMap, chipAlias, loadAccounts, selectedAccountId } from '$lib/stores/accounts';
 	import { loadTrades, openTrade, requestClose, trades, upsertTrade } from '$lib/stores/trades';
 	import { toasts } from '$lib/stores/toast';
-	import { fmtDateTime, fmtMoney, fmtR, pnlTone, rTone, toneBg, toneText } from '$lib/utils/format';
+	import { fmtDateTime, fmtMoney, fmtR, isUnpriced, pnlTone, rTone, toneBg, toneText } from '$lib/utils/format';
 	import SegControl from '$lib/components/SegControl.svelte';
 
 	type StatusFilter = 'ALL' | 'OPEN' | 'CLOSED';
@@ -397,13 +397,22 @@
 								<span class="text-fg">{t.exit_price?.toFixed(2) ?? '—'}</span>
 							</span>
 							<span role="cell" class="px-3 py-2.5 text-right whitespace-nowrap">
-								<span
-									class="num inline-block rounded-md px-1.5 py-0.5 text-[12.5px] font-semibold {toneBg[
-										pnlTone(t.net_pnl)
-									]} {toneText[pnlTone(t.net_pnl)]}"
-								>
-									{fmtMoney(t.net_pnl)}
-								</span>
+								{#if isUnpriced(t)}
+									<span
+										class="num inline-block rounded-md bg-flat/12 px-1.5 py-0.5 text-[10px] font-bold tracking-[0.1em] uppercase text-flat"
+										title="No contract for this symbol — the P&amp;L could not be priced"
+									>
+										unpriced
+									</span>
+								{:else}
+									<span
+										class="num inline-block rounded-md px-1.5 py-0.5 text-[12.5px] font-semibold {toneBg[
+											pnlTone(t.net_pnl)
+										]} {toneText[pnlTone(t.net_pnl)]}"
+									>
+										{fmtMoney(t.net_pnl)}
+									</span>
+								{/if}
 							</span>
 							<span role="cell" class="px-3 py-2.5 text-right font-mono whitespace-nowrap text-[12.5px] tabular-nums {toneText[rTone(t.r_multiple)]}">
 								{fmtR(t.r_multiple)}
@@ -491,9 +500,18 @@
 							<span class="num text-sm font-semibold text-fg uppercase">{t.symbol ?? '—'} <span class="font-mono text-[10px] font-normal text-dim normal-case">@{chipAlias($accountMap, t.account_id)}</span></span>
 						</span>
 						<span class="flex items-center gap-2">
-							<span class="num text-sm font-semibold {toneText[pnlTone(t.net_pnl)]}">
-								{fmtMoney(t.net_pnl)}
-							</span>
+							{#if isUnpriced(t)}
+								<span
+									class="num rounded-md bg-flat/12 px-1.5 py-0.5 text-[10px] font-bold tracking-[0.1em] uppercase text-flat"
+									title="No contract for this symbol — the P&amp;L could not be priced"
+								>
+									unpriced
+								</span>
+							{:else}
+								<span class="num text-sm font-semibold {toneText[pnlTone(t.net_pnl)]}">
+									{fmtMoney(t.net_pnl)}
+								</span>
+							{/if}
 							{#if t.status === 'OPEN'}
 								<button
 									type="button"

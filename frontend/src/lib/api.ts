@@ -168,6 +168,8 @@ export interface SummaryDto {
 	wins: number;
 	losses: number;
 	breakeven: number;
+	/** Closed trades with no net P&L — the symbol had no contract. */
+	unpriced: number;
 	net_pnl: number;
 	win_rate: number;
 	profit_factor: number | null;
@@ -194,6 +196,7 @@ export interface TagPerf {
 	name: string;
 	category: string;
 	trade_count: number;
+	unpriced: number;
 	net_pnl: number;
 	win_rate: number;
 }
@@ -202,6 +205,7 @@ export interface CalendarDay {
 	date: string;
 	net_pnl: number;
 	trade_count: number;
+	unpriced: number;
 }
 
 // --- PLAN-v2 Phase 4 TradeZella DTOs ---
@@ -209,6 +213,7 @@ export interface CalendarDay {
 export interface KpiSession {
 	net_pnl: number;
 	trade_count: number;
+	unpriced: number;
 	win_rate: number;
 	return_pct: number;
 }
@@ -218,7 +223,7 @@ export interface KpiDashboard {
 	net_pnl_change_pct: number | null;
 	sparkline: number[];
 	avg_realized_rr: { current: number; target: number };
-	win_rate: { rate: number; wins: number; losses: number; breakeven: number };
+	win_rate: { rate: number; wins: number; losses: number; breakeven: number; unpriced: number };
 	profit_factor: number | null;
 	sessions: Record<string, KpiSession>;
 }
@@ -226,7 +231,8 @@ export interface KpiDashboard {
 export interface MonthDay {
 	net_pnl: number;
 	trade_count: number;
-	outcome: 'win' | 'loss' | 'be' | 'inactive';
+	unpriced: number;
+	outcome: 'win' | 'loss' | 'be' | 'unpriced' | 'inactive';
 }
 
 export interface MonthlyCalendarDto {
@@ -240,8 +246,9 @@ export interface MonthlyCalendarDto {
 		winning_days: number;
 		losing_days: number;
 		breakeven_days: number;
+		unpriced_days: number;
 	};
-	outcome: { wins: number; losses: number; breakeven: number };
+	outcome: { wins: number; losses: number; breakeven: number; unpriced: number };
 }
 
 export interface ActivityStreaks {
@@ -250,6 +257,7 @@ export interface ActivityStreaks {
 	closed_trades: number;
 	winning_trades: number;
 	losing_trades: number;
+	unpriced_trades: number;
 	max_win_streak: number;
 	max_loss_streak: number;
 	avg_win_streak: number;
@@ -267,6 +275,7 @@ export interface DirectionStats {
 	wins: number;
 	losses: number;
 	breakeven: number;
+	unpriced: number;
 	win_rate: number;
 	avg_win: number;
 	avg_loss: number;
@@ -279,8 +288,22 @@ export interface DirectionStats {
 }
 
 export interface RadarProfiles {
-	weekday: { day: string; trades: number; wins: number; win_rate: number; net_pnl: number }[];
-	sessions: { session: string; trades: number; win_rate: number; net_pnl: number; profit_pct: number }[];
+	weekday: {
+		day: string;
+		trades: number;
+		wins: number;
+		unpriced: number;
+		win_rate: number;
+		net_pnl: number;
+	}[];
+	sessions: {
+		session: string;
+		trades: number;
+		unpriced: number;
+		win_rate: number;
+		net_pnl: number;
+		profit_pct: number;
+	}[];
 }
 
 export class ApiError extends Error {

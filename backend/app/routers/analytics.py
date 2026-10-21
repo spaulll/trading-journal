@@ -24,7 +24,6 @@ from app.services.analytics_rules import (
     is_loss as _is_loss,
     is_win as _is_win,
     sign as _sign,
-    win_loss_counts as _win_loss_counts,
 )
 from app.services.timeutils import as_naive_utc, trade_close_day
 
@@ -126,7 +125,11 @@ def _equity_points(trades: list[Trade]) -> list[dict]:
     equity = 0.0
     peak = 0.0
     for t in trades:
-        net = t.net_pnl if t.net_pnl is not None else 0.0
+        # An unpriced trade has no known P&L, so it is not a point on the
+        # curve — plotting it as zero would assert a result we do not have.
+        if t.net_pnl is None:
+            continue
+        net = t.net_pnl
         equity += net
         peak = max(peak, equity)
         ts = t.timestamp_close or t.timestamp_open or t.created_at
@@ -145,16 +148,20 @@ def _equity_points(trades: list[Trade]) -> list[dict]:
 @router.get("/summary")
 def summary(account_id: Optional[int] = Query(default=None), session: Session = Depends(get_session)):
     trades = _closed_trades(session, account_id)
-    nets = [t.net_pnl if t.net_pnl is not None else 0.0 for t in trades]
+    nets = [t.net_pnl for t in trades]
     total = len(trades)
-    wins = [n for n in nets if _is_win(n)]
-    losses = [n for n in nets if _is_loss(n)]
-    net_pnl = round(sum(nets), 2)
-    rate = analytics_rules.win_rate(len(wins), len(losses))
+    counts = analytics_rules.split_outcomes(nets)
+    # An unpriced trade has no known P&L, so it contributes nothing to the
+    # total and it is not part of the expectancy denominator.
+    known = [n for n in nets if n is not None]
+    wins = [n for n in known if _is_win(n)]
+    losses = [n for n in known if _is_loss(n)]
+    net_pnl = round(sum(known), 2)
+    rate = analytics_rules.win_rate(counts.wins, counts.losses)
     gross_profit = sum(wins)
     gross_loss = abs(sum(losses))
     profit_factor = round(gross_profit / gross_loss, 3) if gross_loss else None
-    expectancy = round(net_pnl / total, 2) if total else 0.0
+    expectancy = round(net_pnl / counts.priced, 2) if counts.priced else 0.0
     avg_win = round(gross_profit / len(wins), 2) if wins else 0.0
     avg_loss = round(sum(losses) / len(losses), 2) if losses else 0.0
 
@@ -168,9 +175,10 @@ def summary(account_id: Optional[int] = Query(default=None), session: Session = 
     return {
         "total_trades": total,
         "open_trades": open_count,
-        "wins": len(wins),
-        "losses": len(losses),
-        "breakeven": total - len(wins) - len(losses),
+        "wins": counts.wins,
+        "losses": counts.losses,
+        "breakeven": counts.breakeven,
+        "unpriced": counts.unpriced,
         "net_pnl": net_pnl,
         "win_rate": rate,
         "profit_factor": profit_factor,
@@ -222,15 +230,17 @@ def tag_performance(account_id: Optional[int] = Query(default=None), session: Se
         if account_id is not None:
             link_stmt = link_stmt.where(Trade.account_id == account_id)
         link_rows = session.exec(link_stmt).all()
-        nets = [t.net_pnl if t.net_pnl is not None else 0.0 for t in link_rows]
-        wins, losses, _be = _win_loss_counts(nets)
+        nets = [t.net_pnl for t in link_rows]
+        counts = analytics_rules.split_outcomes(nets)
+        known = [n for n in nets if n is not None]
         rows.append(
             {
                 "name": tag.name,
                 "category": tag.category,
                 "trade_count": len(link_rows),
-                "net_pnl": round(sum(nets), 2),
-                "win_rate": analytics_rules.win_rate(wins, losses),
+                "unpriced": counts.unpriced,
+                "net_pnl": round(sum(known), 2),
+                "win_rate": analytics_rules.win_rate(counts.wins, counts.losses),
             }
         )
     rows.sort(key=lambda r: r["net_pnl"], reverse=True)
@@ -244,7 +254,9 @@ def calendar(
     session: Session = Depends(get_session),
 ):
     target_year = year or datetime.now().year
-    daily: dict[str, dict] = defaultdict(lambda: {"net_pnl": 0.0, "trade_count": 0})
+    daily: dict[str, dict] = defaultdict(
+        lambda: {"net_pnl": 0.0, "trade_count": 0, "unpriced": 0}
+    )
     for t in _closed_trades(session, account_id):
         # Naive-UTC close day (same helper as monthly-calendar / streaks) so
         # day boundaries never mix aware vs naive timestamps.
@@ -252,10 +264,18 @@ def calendar(
         if day is None or day.year != target_year:
             continue
         key = day.date().isoformat()
-        daily[key]["net_pnl"] += t.net_pnl if t.net_pnl is not None else 0.0
         daily[key]["trade_count"] += 1
+        if t.net_pnl is None:
+            daily[key]["unpriced"] += 1
+        else:
+            daily[key]["net_pnl"] += t.net_pnl
     days = [
-        {"date": date, "net_pnl": round(v["net_pnl"], 2), "trade_count": v["trade_count"]}
+        {
+            "date": date,
+            "net_pnl": round(v["net_pnl"], 2),
+            "trade_count": v["trade_count"],
+            "unpriced": v["unpriced"],
+        }
         for date, v in sorted(daily.items())
     ]
     return {"year": target_year, "days": days}
@@ -267,9 +287,10 @@ def calendar(
 @router.get("/kpi-dashboard")
 def kpi_dashboard(account_id: Optional[int] = Query(default=None), session: Session = Depends(get_session)):
     trades = _closed_trades(session, account_id)
-    nets = [t.net_pnl if t.net_pnl is not None else 0.0 for t in trades]
-    net_pnl = round(sum(nets), 2)
-    wins, losses, be = _win_loss_counts(nets)
+    nets = [t.net_pnl for t in trades]
+    known = [n for n in nets if n is not None]
+    net_pnl = round(sum(known), 2)
+    counts = analytics_rules.split_outcomes(nets)
     total = len(trades)
 
     now = datetime.now(timezone.utc).replace(tzinfo=None)
@@ -285,7 +306,7 @@ def kpi_dashboard(account_id: Optional[int] = Query(default=None), session: Sess
     )
     change_pct = round((last30 - prev30) / abs(prev30) * 100, 2) if prev30 else None
 
-    equity = _downsample([round(v, 2) for v in _cumulative(nets)])
+    equity = _downsample([round(v, 2) for v in _cumulative(known)])
 
     rr_vals = [t.r_multiple for t in trades if t.r_multiple is not None]
     avg_rr = round(sum(rr_vals) / len(rr_vals), 3) if rr_vals else 0.0
@@ -294,13 +315,15 @@ def kpi_dashboard(account_id: Optional[int] = Query(default=None), session: Sess
     total_net_abs = sum(abs(t.net_pnl or 0.0) for t in trades) or None
     for name in ("london", "new_york", "asia", "outside"):
         bucket = [t for t in trades if _session_of(t) == name]
-        bnets = [t.net_pnl or 0.0 for t in bucket]
-        bwins, blosses, _b_be = _win_loss_counts(bnets)
-        bnet = round(sum(bnets), 2)
+        bnets = [t.net_pnl for t in bucket]
+        bcounts = analytics_rules.split_outcomes(bnets)
+        bknown = [n for n in bnets if n is not None]
+        bnet = round(sum(bknown), 2)
         sessions[name] = {
             "net_pnl": bnet,
             "trade_count": len(bucket),
-            "win_rate": analytics_rules.win_rate(bwins, blosses),
+            "unpriced": bcounts.unpriced,
+            "win_rate": analytics_rules.win_rate(bcounts.wins, bcounts.losses),
             "return_pct": round(bnet / total_net_abs * 100, 2) if total_net_abs else 0.0,
         }
 
@@ -310,12 +333,13 @@ def kpi_dashboard(account_id: Optional[int] = Query(default=None), session: Sess
         "sparkline": equity,
         "avg_realized_rr": {"current": avg_rr, "target": TARGET_RR},
         "win_rate": {
-            "rate": analytics_rules.win_rate(wins, losses),
-            "wins": wins,
-            "losses": losses,
-            "breakeven": be,
+            "rate": analytics_rules.win_rate(counts.wins, counts.losses),
+            "wins": counts.wins,
+            "losses": counts.losses,
+            "breakeven": counts.breakeven,
+            "unpriced": counts.unpriced,
         },
-        "profit_factor": _profit_factor(nets),
+        "profit_factor": _profit_factor(known),
         "sessions": sessions,
     }
 
@@ -340,30 +364,45 @@ def monthly_calendar(
     month_start = date_type(y, m, 1)
     month_end = date_type(y + (m == 12), (m % 12) + 1, 1)
 
-    daily: dict[str, dict] = defaultdict(lambda: {"net_pnl": 0.0, "trade_count": 0})
+    daily: dict[str, dict] = defaultdict(
+        lambda: {"net_pnl": 0.0, "trade_count": 0, "priced": 0, "unpriced": 0}
+    )
     for t in _closed_trades(session, account_id):
         day = _close_day(t)
         if day is None or not (month_start <= day.date() < month_end):
             continue
         key = day.date().isoformat()
-        daily[key]["net_pnl"] += t.net_pnl if t.net_pnl is not None else 0.0
         daily[key]["trade_count"] += 1
+        if t.net_pnl is None:
+            daily[key]["unpriced"] += 1
+        else:
+            daily[key]["priced"] += 1
+            daily[key]["net_pnl"] += t.net_pnl
 
     days: dict[str, dict] = {}
     day_cursor = month_start
     while day_cursor < month_end:
         key = day_cursor.isoformat()
-        v = daily.get(key, {"net_pnl": 0.0, "trade_count": 0})
+        v = daily.get(key, {"net_pnl": 0.0, "trade_count": 0, "priced": 0, "unpriced": 0})
         net = round(v["net_pnl"], 2)
         if v["trade_count"] == 0:
             outcome = "inactive"
+        elif v["priced"] == 0:
+            # Trades, but none of them priced — the day's result is unknown,
+            # not a breakeven.
+            outcome = "unpriced"
         elif _is_win(net):
             outcome = "win"
         elif _is_loss(net):
             outcome = "loss"
         else:
             outcome = "be"
-        days[key] = {"net_pnl": net, "trade_count": v["trade_count"], "outcome": outcome}
+        days[key] = {
+            "net_pnl": net,
+            "trade_count": v["trade_count"],
+            "unpriced": v["unpriced"],
+            "outcome": outcome,
+        }
         day_cursor += timedelta(days=1)
 
     weeks = []
@@ -382,6 +421,7 @@ def monthly_calendar(
     won = sum(1 for d in active if d["outcome"] == "win")
     lost = sum(1 for d in active if d["outcome"] == "loss")
     be_days = sum(1 for d in active if d["outcome"] == "be")
+    unpriced_days = sum(1 for d in active if d["outcome"] == "unpriced")
     return {
         "year": y,
         "month": m,
@@ -393,16 +433,25 @@ def monthly_calendar(
             "winning_days": won,
             "losing_days": lost,
             "breakeven_days": be_days,
+            "unpriced_days": unpriced_days,
         },
-        "outcome": {"wins": won, "losses": lost, "breakeven": be_days},
+        "outcome": {
+            "wins": won,
+            "losses": lost,
+            "breakeven": be_days,
+            "unpriced": unpriced_days,
+        },
     }
 
 
 @router.get("/activity-and-streaks")
 def activity_and_streaks(account_id: Optional[int] = Query(default=None), session: Session = Depends(get_session)):
     trades = _closed_trades(session, account_id)
-    nets = [t.net_pnl if t.net_pnl is not None else 0.0 for t in trades]
-    signs = [_sign(n) for n in nets]
+    nets = [t.net_pnl for t in trades]
+    counts = analytics_rules.split_outcomes(nets)
+    # An unpriced trade has no outcome, so it takes no part in a streak —
+    # an unknown result must not break a run of known ones.
+    signs = [_sign(n) for n in nets if n is not None]
     win_runs, loss_runs = _streak_runs(signs)
 
     daily: dict[str, float] = defaultdict(float)
@@ -431,7 +480,6 @@ def activity_and_streaks(account_id: Optional[int] = Query(default=None), sessio
         max_ldays = max(max_ldays, cur if cur_sign < 0 else 0)
         prev = d
 
-    wins, losses, _be = _win_loss_counts(nets)
     _open_stmt = select(Trade).where(Trade.status == "OPEN")
     if account_id is not None:
         _open_stmt = _open_stmt.where(Trade.account_id == account_id)
@@ -442,8 +490,9 @@ def activity_and_streaks(account_id: Optional[int] = Query(default=None), sessio
         "total_trades": len(trades),
         "open_trades": open_count,
         "closed_trades": len(trades),
-        "winning_trades": wins,
-        "losing_trades": losses,
+        "winning_trades": counts.wins,
+        "losing_trades": counts.losses,
+        "unpriced_trades": counts.unpriced,
         "max_win_streak": max(win_runs, default=0),
         "max_loss_streak": max(loss_runs, default=0),
         "avg_win_streak": round(sum(win_runs) / len(win_runs), 2) if win_runs else 0.0,
@@ -458,12 +507,13 @@ def activity_and_streaks(account_id: Optional[int] = Query(default=None), sessio
 
 
 def _direction_stats(trades: list[Trade]) -> dict:
-    nets = [t.net_pnl if t.net_pnl is not None else 0.0 for t in trades]
-    wins, losses, be = _win_loss_counts(nets)
-    signs = [_sign(n) for n in nets]
+    nets = [t.net_pnl for t in trades]
+    counts = analytics_rules.split_outcomes(nets)
+    signs = [_sign(n) for n in nets if n is not None]
     win_runs, loss_runs = _streak_runs(signs)
-    win_nets = [n for n in nets if _is_win(n)]
-    loss_nets = [n for n in nets if _is_loss(n)]
+    known = [n for n in nets if n is not None]
+    win_nets = [n for n in known if _is_win(n)]
+    loss_nets = [n for n in known if _is_loss(n)]
 
     def avg_dur(pred) -> Optional[float]:
         mins = []
@@ -480,10 +530,11 @@ def _direction_stats(trades: list[Trade]) -> dict:
     worst = min(trades, key=lambda t: t.net_pnl or 0.0, default=None)
     return {
         "trades": len(trades),
-        "wins": wins,
-        "losses": losses,
-        "breakeven": be,
-        "win_rate": analytics_rules.win_rate(wins, losses),
+        "wins": counts.wins,
+        "losses": counts.losses,
+        "breakeven": counts.breakeven,
+        "unpriced": counts.unpriced,
+        "win_rate": analytics_rules.win_rate(counts.wins, counts.losses),
         "avg_win": round(sum(win_nets) / len(win_nets), 2) if win_nets else 0.0,
         "avg_loss": round(sum(loss_nets) / len(loss_nets), 2) if loss_nets else 0.0,
         "best": {"ticket": best.ticket, "net_pnl": best.net_pnl} if best else None,
@@ -514,29 +565,33 @@ def radar_profiles(account_id: Optional[int] = Query(default=None), session: Ses
     weekday = []
     for i, name in enumerate(day_names):
         bucket = [t for t in trades if (_close_day(t) is not None and _close_day(t).weekday() == i)]
-        nets = [t.net_pnl or 0.0 for t in bucket]
-        w, l, _be = _win_loss_counts(nets)
+        nets = [t.net_pnl for t in bucket]
+        counts = analytics_rules.split_outcomes(nets)
+        known = [n for n in nets if n is not None]
         weekday.append(
             {
                 "day": name,
                 "trades": len(bucket),
-                "wins": w,
-                "win_rate": analytics_rules.win_rate(w, l),
-                "net_pnl": round(sum(nets), 2),
+                "wins": counts.wins,
+                "unpriced": counts.unpriced,
+                "win_rate": analytics_rules.win_rate(counts.wins, counts.losses),
+                "net_pnl": round(sum(known), 2),
             }
         )
     total_net = sum(t.net_pnl or 0.0 for t in trades)
     sessions = []
     for name in ("london", "new_york", "asia", "outside"):
         bucket = [t for t in trades if _session_of(t) == name]
-        nets = [t.net_pnl or 0.0 for t in bucket]
-        w, l, _be = _win_loss_counts(nets)
-        net = round(sum(nets), 2)
+        nets = [t.net_pnl for t in bucket]
+        counts = analytics_rules.split_outcomes(nets)
+        known = [n for n in nets if n is not None]
+        net = round(sum(known), 2)
         sessions.append(
             {
                 "session": name,
                 "trades": len(bucket),
-                "win_rate": analytics_rules.win_rate(w, l),
+                "unpriced": counts.unpriced,
+                "win_rate": analytics_rules.win_rate(counts.wins, counts.losses),
                 "net_pnl": net,
                 "profit_pct": round(net / total_net * 100, 2) if total_net else 0.0,
             }
