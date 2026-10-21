@@ -345,6 +345,27 @@ class SymbolSpecUpdate(SQLModel):
     enabled: Optional[bool] = None
 
 
+class SymbolPreview(SQLModel):
+    """The server's answer for one position: gross, R and risk."""
+
+    symbol: str
+    registered: bool
+    display: str
+    category: str
+    contract_size: Optional[float] = None
+    pip_size: Optional[float] = None
+    quote_currency: str = ""
+    gross_pnl: Optional[float] = None
+    r_multiple: Optional[float] = None
+    initial_risk: Optional[float] = None
+    realized_risk: Optional[float] = None
+    risk_unit: Optional[str] = None
+    distance: Optional[float] = None
+    pips: Optional[float] = None
+    risk_distance: Optional[float] = None
+    risk_pips: Optional[float] = None
+
+
 class DailyNoteRead(SQLModel):
     id: int
     date: date_type

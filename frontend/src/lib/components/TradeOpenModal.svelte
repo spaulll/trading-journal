@@ -5,7 +5,8 @@
 	import { accounts, loadAccounts } from '$lib/stores/accounts';
 	import { fmtMoney, mt5WallToUTC, previewIST, previewMT5 } from '$lib/utils/format';
 	import { brokerOffset } from '$lib/stores/broker';
-	import { loadSymbols, specFor, symbolMap, symbols } from '$lib/stores/symbols';
+	import { loadSymbols, previewSymbol, specFor, symbolMap, symbols } from '$lib/stores/symbols';
+	import type { SymbolPreviewDto } from '$lib/api';
 	import { FADE, MODAL, PANEL_FADE } from '$lib/utils/transitions';
 	import SegControl from '$lib/components/SegControl.svelte';
 	import { fluidHeight } from '$lib/utils/motion';
@@ -107,34 +108,49 @@
 	const tpN = $derived(num(tp));
 	const sizeN = $derived(num(size));
 
-	const riskDist = $derived(entryN !== null && slN !== null ? Math.abs(entryN - slN) : null);
-	const riskEst = $derived(
-		riskDist !== null && sizeN !== null && sizeN > 0 && spec !== null
-			? riskDist * sizeN * spec.contract_size
-			: null
-	);
-	const rewardEst = $derived(
-		entryN !== null && tpN !== null && sizeN !== null && sizeN > 0 && spec !== null
-			? Math.abs(tpN - entryN) * sizeN * spec.contract_size
-			: null
-	);
-	const rr = $derived(
-		entryN !== null && slN !== null && tpN !== null && riskDist !== null && riskDist > 0
-			? Math.abs(tpN - entryN) / riskDist
-			: null
-	);
-	// The stop distance, in the unit the trader reads it in: pips for FX,
-	// points for everything else. The registry's pip size makes the FX
-	// number exact instead of a float artefact.
-	const distLabel = $derived.by(() => {
-		if (riskDist === null) return null;
-		if (spec !== null && spec.category === 'fx' && spec.pip_size > 0) {
-			const pips = riskDist / spec.pip_size;
-			const rounded = Math.round(pips * 100) / 100;
-			if (Math.abs(pips - rounded) < 1e-9) return `${rounded} pips`;
+	// The money preview comes from the server, not from the browser: the
+	// same estimator that will store the gross when the trade closes.
+	let preview = $state<SymbolPreviewDto | null>(null);
+	let previewToken = 0;
+
+	$effect(() => {
+		const sym = symbol.trim().toUpperCase();
+		const dir = direction;
+		const sz = sizeN;
+		const en = entryN;
+		const stop = slN;
+		const target = tpN;
+		if (!sym || sz === null || sz <= 0 || en === null) {
+			preview = null;
+			return;
 		}
-		return `${Number(riskDist.toPrecision(6))} pts`;
+		const token = ++previewToken;
+		const timer = setTimeout(() => {
+			void previewSymbol({
+				symbol: sym,
+				direction: dir,
+				size: sz,
+				entry: en,
+				sl: stop,
+				exit: target
+			}).then((r) => {
+				if (token === previewToken) preview = r;
+			});
+		}, 250);
+		return () => clearTimeout(timer);
 	});
+
+	// The stop distance, in the unit the trader reads it in: pips for FX,
+	// points for everything else.
+	const distLabel = $derived.by(() => {
+		if (preview === null || !preview.registered) return null;
+		if (preview.category === 'fx' && preview.risk_pips !== null) {
+			return `${preview.risk_pips} pips`;
+		}
+		if (preview.risk_distance !== null) return `${preview.risk_distance} pts`;
+		return null;
+	});
+
 	const slSideOk = $derived(
 		entryN === null || slN === null
 			? true
@@ -408,22 +424,24 @@
 					<p class="num mt-1.5 text-[11.5px] text-loss">
 						{symbol.trim().toUpperCase()} has no contract registered — it cannot be priced.
 					</p>
-				{:else if spec !== null}
+				{:else if preview !== null && preview.registered}
 					<p class="num mt-1.5 text-[11.5px] text-dim">
-						{spec.display} · {spec.contract_size} per lot · 1 pip = {spec.pip_size}
+						{preview.display} · {preview.contract_size} per lot · 1 pip = {preview.pip_size}
 					</p>
 				{/if}
-				{#if riskEst !== null && riskDist !== null}
+				{#if preview !== null && preview.registered && preview.initial_risk !== null}
 					<div class="num mt-1.5 flex flex-wrap items-baseline gap-x-2.5 gap-y-1 text-sm">
 						<span>
-							Risk <span class="font-bold text-loss">{fmtMoney(riskEst)}</span>
+							Risk <span class="font-bold text-loss">{fmtMoney(preview.initial_risk)}</span>
 						</span>
-						<span class="text-dim">{distLabel}</span>
-						{#if rewardEst !== null}
-							<span class="text-dim">Reward {fmtMoney(rewardEst)}</span>
+						{#if distLabel !== null}
+							<span class="text-dim">{distLabel}</span>
 						{/if}
-						{#if rr !== null}
-							<span class="font-bold text-win">{rr.toFixed(2)}R</span>
+						{#if preview.gross_pnl !== null}
+							<span class="text-dim">Reward {fmtMoney(preview.gross_pnl)}</span>
+						{/if}
+						{#if preview.r_multiple !== null}
+							<span class="font-bold text-win">{preview.r_multiple.toFixed(2)}R</span>
 						{/if}
 					</div>
 				{:else}

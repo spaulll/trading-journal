@@ -1,5 +1,5 @@
 import { derived, writable } from 'svelte/store';
-import { api, errMsg, type SymbolSpecDto } from '$lib/api';
+import { api, errMsg, type SymbolPreviewDto, type SymbolSpecDto } from '$lib/api';
 
 /**
  * The symbol contract registry, straight from the server.
@@ -36,3 +36,34 @@ export function specFor(symbol: string, map: Map<string, SymbolSpecDto>): Symbol
 	if (!key) return null;
 	return map.get(key) ?? null;
 }
+
+/**
+ * The server's price for one position.
+ *
+ * The browser asks instead of re-deriving: the preview it shows is then
+ * the same number the server stores when the trade closes.
+ */
+export async function previewSymbol(params: {
+	symbol: string;
+	direction: string;
+	size?: number | null;
+	entry?: number | null;
+	exit?: number | null;
+	sl?: number | null;
+	current_sl?: number | null;
+}): Promise<SymbolPreviewDto | null> {
+	const clean: Record<string, string | number | undefined> = {
+		symbol: params.symbol,
+		direction: params.direction
+	};
+	for (const key of ['size', 'entry', 'exit', 'sl', 'current_sl'] as const) {
+		const value = params[key];
+		if (value !== undefined && value !== null) clean[key] = value;
+	}
+	try {
+		return await api.previewSymbol(clean);
+	} catch {
+		return null;
+	}
+}
+
