@@ -776,12 +776,15 @@ async def do_close_on_trade(chat_id: int, session: Session, trade_id: int, args:
     from app.models import Trade
     from app.routers.trades import _flag_breach_day, _guardrail_breached
     from app.services.migrate_csv import (
-        compute_r_multiple,
         get_or_create_tag,
         normalize_tag_list,
     )
     from app.services.session_resolver import duration_minutes
-    from app.services.symbol_registry import apply_trade_risk, estimate_gross_pnl
+    from app.services.symbol_registry import (
+        apply_trade_risk,
+        compute_r_multiple,
+        estimate_gross_pnl,
+    )
 
     trade = session.get(Trade, trade_id)
     if trade is None or trade.status != "OPEN":
@@ -797,7 +800,9 @@ async def do_close_on_trade(chat_id: int, session: Session, trade_id: int, args:
         if gross is None:
             gross = trade.gross_pnl
     net = (gross - (fees or 0.0)) if gross is not None else None
-    r = compute_r_multiple(trade.direction, trade.entry_price, trade.initial_sl, args["exit_price"])
+    r = compute_r_multiple(
+        trade.direction, trade.entry_price, trade.initial_sl, trade.current_sl, args["exit_price"]
+    )
     trade.exit_price = args["exit_price"]
     trade.gross_pnl = gross
     trade.fees = fees or 0.0

@@ -30,13 +30,16 @@ from app.models import (
     TradeTSLRequest,
 )
 from app.services.migrate_csv import (
-    compute_r_multiple,
     get_or_create_tag,
     normalize_tag_list,
     parse_tags,
 )
 from app.services.session_resolver import duration_minutes, normalize_session
-from app.services.symbol_registry import apply_trade_risk, estimate_gross_pnl
+from app.services.symbol_registry import (
+    apply_trade_risk,
+    compute_r_multiple,
+    estimate_gross_pnl,
+)
 from app.services.timeutils import as_naive_utc, trade_close_day
 
 router = APIRouter(prefix="/api/trades", tags=["trades"])
@@ -260,7 +263,9 @@ def close_trade(trade_id: int, payload: TradeCloseRequest, session: Session = De
         if gross is None:
             gross = trade.gross_pnl
     net = (gross - (fees or 0.0)) if gross is not None else None
-    r = compute_r_multiple(trade.direction, trade.entry_price, trade.initial_sl, payload.exit_price)
+    r = compute_r_multiple(
+        trade.direction, trade.entry_price, trade.initial_sl, trade.current_sl, payload.exit_price
+    )
 
     trade.exit_price = payload.exit_price
     trade.gross_pnl = gross
@@ -362,7 +367,7 @@ def insert_backfill_record(session: Session, rec: BackfillRecord) -> tuple[str, 
         # row keeps the net = gross - fees invariant.
         gross = net + (fees or 0.0)
     r = rec.r_multiple if rec.r_multiple is not None else compute_r_multiple(
-        direction, rec.entry_price, rec.initial_sl, rec.exit_price
+        direction, rec.entry_price, rec.initial_sl, rec.initial_sl, rec.exit_price
     )
     trade = Trade(
         ticket=ticket,
@@ -505,7 +510,7 @@ def patch_trade(trade_id: int, patch: TradePatch, session: Session = Depends(get
         k in data for k in ("exit_price", "entry_price", "initial_sl", "direction")
     ):
         trade.r_multiple = compute_r_multiple(
-            trade.direction, trade.entry_price, trade.initial_sl, trade.exit_price
+            trade.direction, trade.entry_price, trade.initial_sl, trade.current_sl, trade.exit_price
         )
         session.add(trade)
     # The risk follows the price legs: a new entry, stop or size changes the
@@ -573,7 +578,7 @@ def patch_trade(trade_id: int, patch: TradePatch, session: Session = Depends(get
             trade.net_pnl = trade.gross_pnl - (trade.fees or 0.0)
         if trade.r_multiple is None:
             trade.r_multiple = compute_r_multiple(
-                trade.direction, trade.entry_price, trade.initial_sl, trade.exit_price
+                trade.direction, trade.entry_price, trade.initial_sl, trade.current_sl, trade.exit_price
             )
         session.add(trade)
     trade.updated_at = _now()
