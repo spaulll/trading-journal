@@ -493,8 +493,15 @@ def patch_trade(trade_id: int, patch: TradePatch, session: Session = Depends(get
             session.add(trade)
     # Auto-close: saving exit details on an OPEN trade closes it — no extra
     # manual close step. Triggers when exit_price is present (explicitly in
-    # this patch or already stored) and status is still OPEN.
-    if orig_status == "OPEN" and (trade.status or "OPEN").upper() == "OPEN" and trade.exit_price is not None:
+    # this patch or already stored) and the patch does not ask to keep the
+    # trade open.
+    #
+    # A client that also sends status="CLOSED" must still get the full close
+    # record. Skipping the fill left the trade CLOSED with a null
+    # timestamp_close, so it vanished from /stats_daily and the EOD recap and
+    # was bucketed into the calendar by its open day.
+    keep_open = "status" in data and (trade.status or "").upper() == "OPEN"
+    if orig_status == "OPEN" and trade.exit_price is not None and not keep_open:
         trade.status = "CLOSED"
         if not (trade.exit_time or trade.timestamp_close):
             now_naive = as_naive_utc(_now())
