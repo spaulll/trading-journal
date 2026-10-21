@@ -31,6 +31,23 @@ def create_db_and_tables() -> None:
     SQLModel.metadata.create_all(engine)
     _migrate_screenshot_columns()
     _migrate_account_columns()
+    _migrate_symbol_spec()
+
+
+def _migrate_symbol_spec() -> None:
+    """Create the symbol registry and seed the default contract specs.
+
+    The table itself is created by ``create_all`` above; this pass seeds
+    it. Seeding only ever *adds* a symbol that is missing — a contract
+    size the user edited in the UI survives every restart.
+    """
+    if not DATABASE_URL.startswith("sqlite"):
+        return
+    from app.services.symbol_registry import seed_specs
+
+    with Session(engine) as session:
+        seed_specs(session)
+        session.commit()
 
 
 def _migrate_account_columns() -> None:
