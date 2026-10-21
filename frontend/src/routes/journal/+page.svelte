@@ -43,6 +43,10 @@
 	const defaultRange = defaultWeek();
 	const defaultLabel = `${fmtDate(defaultRange.from)} – ${fmtDate(defaultRange.to)}`;
 
+	/** A stored review with no body — the old bug: a blank box with no error. */
+	const isBlankReport = (markdown: string | null | undefined): boolean =>
+		!(markdown ?? '').trim();
+
 	async function loadReports(): Promise<void> {
 		try {
 			reports = await api.listInsightReports();
@@ -173,12 +177,19 @@
 			<p class="mt-1 text-[13px] text-mut">Write EOD reviews or add trade notes with !mistake tags, then try again.</p>
 		</div>
 	{:else if reviewResult?.status === 'ok'}
-		<article class="mt-3 rounded-xl border border-accent/30 bg-raised/40 px-4 py-3" aria-label="Latest weekend review">
-			<p class="num text-[11px] tracking-wide text-dim uppercase">
-				{fmtDate(reviewResult.date_from)} – {fmtDate(reviewResult.date_to)} · {reviewResult.report.model}
-			</p>
-			<div class="prose-review">{@html renderMiniMarkdown(reviewResult.report.markdown)}</div>
-		</article>
+		{#if isBlankReport(reviewResult.report.markdown)}
+			<div class="card mt-3 border-dashed px-4 py-6 text-center">
+				<p class="text-sm font-medium text-fg">The model returned an empty summary</p>
+				<p class="mt-1 text-[13px] text-mut">Nothing was saved — try again.</p>
+			</div>
+		{:else}
+			<article class="mt-3 rounded-xl border border-accent/30 bg-raised/40 px-4 py-3" aria-label="Latest weekend review">
+				<p class="num text-[11px] tracking-wide text-dim uppercase">
+					{fmtDate(reviewResult.date_from)} – {fmtDate(reviewResult.date_to)} · {reviewResult.report.model}
+				</p>
+				<div class="prose-review">{@html renderMiniMarkdown(reviewResult.report.markdown)}</div>
+			</article>
+		{/if}
 	{/if}
 
 	{#if reports.length > 0}
@@ -195,6 +206,11 @@
 								class="flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-left text-[13px] transition-colors hover:bg-raised/50"
 							>
 								<span class="num truncate font-medium text-fg">{fmtDate(r.date_from)} – {fmtDate(r.date_to)}</span>
+								{#if isBlankReport(r.markdown)}
+									<span class="num shrink-0 rounded-md bg-loss/12 px-1.5 py-0.5 text-[10px] font-semibold tracking-[0.1em] text-loss uppercase">
+										empty
+									</span>
+								{/if}
 								<span class="num ml-auto shrink-0 text-[11px] text-dim">{fmtDate(r.created_at.slice(0, 10))}</span>
 							</button>
 							<button
@@ -208,7 +224,13 @@
 						</div>
 						{#if expandedReport === r.id}
 							<div class="border-t border-line px-4 py-3">
-								<div class="prose-review">{@html renderMiniMarkdown(r.markdown)}</div>
+								{#if isBlankReport(r.markdown)}
+									<p class="text-[13px] text-mut">
+										This review was saved with no content — generate it again.
+									</p>
+								{:else}
+									<div class="prose-review">{@html renderMiniMarkdown(r.markdown)}</div>
+								{/if}
 							</div>
 						{/if}
 					</li>
