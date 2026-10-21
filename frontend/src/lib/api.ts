@@ -63,6 +63,25 @@ export interface SymbolSpecDto {
 	enabled: boolean;
 }
 
+export interface SymbolPreviewDto {
+	symbol: string;
+	registered: boolean;
+	display: string;
+	category: string;
+	contract_size: number | null;
+	pip_size: number | null;
+	quote_currency: string;
+	gross_pnl: number | null;
+	r_multiple: number | null;
+	initial_risk: number | null;
+	realized_risk: number | null;
+	risk_unit: string | null;
+	distance: number | null;
+	pips: number | null;
+	risk_distance: number | null;
+	risk_pips: number | null;
+}
+
 export interface DailyNoteDto {
 	id: number;
 	date: string;
@@ -391,6 +410,15 @@ export const api = {
 		req<SymbolSpecDto>('/api/symbols', json({ method: 'POST', body: JSON.stringify(payload) })),
 	updateSymbol: (id: number, patch: Record<string, unknown>) =>
 		req<SymbolSpecDto>(`/api/symbols/${id}`, json({ method: 'PATCH', body: JSON.stringify(patch) })),
+	/** The server's price for one position: gross, R and risk. */
+	previewSymbol: (params: Record<string, string | number | undefined>) => {
+		const qs = new URLSearchParams();
+		for (const [key, value] of Object.entries(params)) {
+			if (value === undefined || value === null || value === '') continue;
+			qs.set(key, String(value));
+		}
+		return req<SymbolPreviewDto>(`/api/symbols/preview?${qs.toString()}`);
+	},
 	summary: (accountId?: number | null) =>
 		req<SummaryDto>(`/api/analytics/summary${accountId ? `?account_id=${accountId}` : ''}`),
 	equityCurve: (accountId?: number | null) =>
