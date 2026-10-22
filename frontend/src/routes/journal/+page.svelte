@@ -8,15 +8,17 @@
 	import { api, errMsg, type DailyNoteDto, type InsightReportDto, type WeekendReviewResult } from '$lib/api';
 	import { SNAPSHOT_KEYS, readSnapshot, saveSnapshot } from '$lib/offline-snapshot';
 	import { markOffline, markOnline, snapshotAt } from '$lib/stores/offline';
-	import { loadTrades, trades } from '$lib/stores/trades';
+	import { loadOpenPositions } from '$lib/stores/trades';
 	import { notesVersion, openDay } from '$lib/stores/journal';
 	import { renderMiniMarkdown } from '$lib/utils/minimd';
-	import { BE_TOL, dayKeyOf, fmtDate, fmtMoney, pnlTone, toneText, usdNet } from '$lib/utils/format';
+	import { fmtDate, fmtMoney, pnlTone, toneText } from '$lib/utils/format';
 
 
 	let notes = $state<DailyNoteDto[]>([]);
 	let loading = $state(true);
 	let error = $state<string | null>(null);
+	/** The day's closed trades, per day — the server's calendar answers this. */
+	let calendar = $state<Record<string, { count: number; net: number }>>({});
 
 	// --- Weekend review (LLM summary of errors + strengths) ---
 	let reports = $state<InsightReportDto[]>([]);
@@ -93,14 +95,28 @@
 	})();
 
 	function dayNet(date: string): { count: number; net: number } {
-		const closes = $trades.filter(
-			(t) => t.status === 'CLOSED' && dayKeyOf(t.timestamp_close ?? t.timestamp_open) === date
-		);
-		return {
-			count: closes.length,
-			// Mixed-currency day → USD sum; an unpriceable trade adds nothing.
-			net: closes.reduce((a, t) => a + (usdNet(t) ?? 0), 0)
-		};
+		return calendar[date] ?? { count: 0, net: 0 };
+	}
+
+	/**
+	 * The per-day close count and net, straight from the server's calendar.
+	 *
+	 * The ledger holds one page now, so the journal cannot count the day's
+	 * closes from the rows it happens to hold — the calendar already buckets
+	 * every trade by close day.
+	 */
+	async function loadCalendar(days: string[]): Promise<void> {
+		const years = [...new Set(days.map((d) => d.slice(0, 4)).filter((y) => /^\d{4}$/.test(y)))];
+		const map: Record<string, { count: number; net: number }> = {};
+		for (const year of years) {
+			try {
+				const { days: rows } = await api.calendar(Number(year));
+				for (const row of rows) map[row.date] = { count: row.trade_count, net: row.net_pnl };
+			} catch {
+				// The glance stays empty — the notes are what matter here.
+			}
+		}
+		calendar = map;
 	}
 
 	async function refresh(): Promise<void> {
@@ -111,6 +127,7 @@
 			markOnline();
 			const at = saveSnapshot(SNAPSHOT_KEYS.notes, notes);
 			if (at) snapshotAt.set(at);
+			await loadCalendar(notes.map((n) => n.date));
 		} catch (e) {
 			const snap = readSnapshot<DailyNoteDto[]>(SNAPSHOT_KEYS.notes);
 			if (snap) {
@@ -126,7 +143,7 @@
 	}
 
 	onMount(() => {
-		void loadTrades(true);
+		void loadOpenPositions();
 		void loadReports();
 	});
 

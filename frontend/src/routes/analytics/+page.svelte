@@ -16,7 +16,7 @@
 	import StateBlock from '$lib/components/StateBlock.svelte';
 	import DayPanel from '$lib/components/DayPanel.svelte';
 	import TradeModal from '$lib/components/TradeModal.svelte';
-	import { loadTrades } from '$lib/stores/trades';
+	import { loadOpenPositions } from '$lib/stores/trades';
 	import { accounts, loadAccounts, selectedAccountId } from '$lib/stores/accounts';
 	import { markOffline, markOnline, snapshotAt } from '$lib/stores/offline';
 	import { SNAPSHOT_KEYS, readSnapshot, saveSnapshot } from '$lib/offline-snapshot';
@@ -202,7 +202,7 @@
 	onMount(() => {
 		void loadAccounts();
 		void load();
-		void loadTrades(true);
+		void loadOpenPositions();
 	});
 
 	function onAccountChange(e: Event): void {

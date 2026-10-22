@@ -4,20 +4,25 @@
 	import { Trash2, X } from 'lucide-svelte';
 	import { api, type DailyNoteDto } from '$lib/api';
 	import { bumpNotes, closeDay, selectedDay } from '$lib/stores/journal';
-	import { openTrade, openTrades, trades } from '$lib/stores/trades';
+	import { dayTrades, loadDayTrades, openTrade, openTrades } from '$lib/stores/trades';
 	import { toasts } from '$lib/stores/toast';
-	import { BE_TOL, dayKeyOf, fmtDate, fmtMoney, fmtR, pnlTone, rTone, toneText, usdNet } from '$lib/utils/format';
+	import { BE_TOL, fmtDate, fmtMoney, fmtR, pnlTone, rTone, toneText, usdNet } from '$lib/utils/format';
 	import { DRAWER, FADE } from '$lib/utils/transitions';
 
 
 	const day = $derived($selectedDay);
 
-	/** Closes bucketed by close day (close → open fallback), mirroring the backend calendar. */
-	const closes = $derived(
-		day === null
-			? []
-			: $trades.filter((t) => t.status === 'CLOSED' && dayKeyOf(t.timestamp_close ?? t.timestamp_open) === day)
-	);
+	/** The day's closes come from the server, bucketed by close day. */
+	const closes = $derived(day === null ? [] : $dayTrades);
+
+	$effect(() => {
+		const wanted = day;
+		if (wanted === null) {
+			dayTrades.set([]);
+			return;
+		}
+		void loadDayTrades(wanted);
+	});
 
 	/** USD view per close; a trade with no convertible P&L is unpriced. */
 	const priced = $derived(
