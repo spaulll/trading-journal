@@ -379,6 +379,12 @@ class BackfillRequest(SQLModel):
     records: list[BackfillRecord]
 
 
+class RepairRequest(SQLModel):
+    """Dry-run unless ``apply`` is true."""
+
+    apply: bool = False
+
+
 class SymbolSpecRead(SQLModel):
     id: int
     symbol: str
