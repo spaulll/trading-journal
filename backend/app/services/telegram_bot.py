@@ -608,6 +608,12 @@ def account_detail_content(session: Session, account_id: int) -> tuple[str, Opti
         if p["profit_target_pct"] is not None
         else "🎯 Target  <i>—</i>"
     )
+    max_line = (
+        f"🛡️ Max  {esc(p['max_mode'])} {p['max_loss_pct']}% · floor "
+        f"{p['max_floor']:,.2f} · left <b>{_fmt_left(p['max_left'])}</b>"
+        if p["max_floor"] is not None
+        else "🛡️ Max  <i>no limit set</i>"
+    )
     text = (
         f"🏦 <b>@{esc(p['alias'])}</b>\n"
         f"<i>{esc(acc.firm or '—')} · {esc(acc.phase)}</i> — {state}\n"
@@ -615,8 +621,7 @@ def account_detail_content(session: Session, account_id: int) -> tuple[str, Opti
         f"💰 Balance  <b>{p['balance']:,.2f}</b> <i>({p['total_net']:+,.2f} total)</i>\n"
         f"📉 Daily  {p['daily_pnl']:+,.2f} today · left <b>{_fmt_left(p['daily_left'])}</b> "
         f"<i>({p['daily_loss_pct']}% {esc(p['daily_basis'])})</i>\n"
-        f"🛡️ Max  {esc(p['max_mode'])} {p['max_loss_pct']}% · floor "
-        f"{p['max_floor']:,.2f} · left <b>{_fmt_left(p['max_left'])}</b>\n"
+        f"{max_line}\n"
         f"{tgt_line}\n"
         f"📊 Trades  {open_n} open · {total_n} total"
     )
@@ -630,6 +635,60 @@ async def handle_accounts(chat_id: int, session: Session) -> None:
         return
     text, keyboard = rendered
     await send_text(chat_id, text, keyboard)
+
+
+ACCOUNT_USAGE = (
+    "🏦 <b>Account snapshot</b>\n"
+    "<code>/account [@alias]</code> — no alias uses the last used account, "
+    "or the only account when there is just one."
+)
+
+
+def account_summary_target(session: Session):
+    """The account a bare /account shows: last used, else the only active one."""
+    last = get_last_alias(session)
+    if last is not None:
+        acc = get_account_by_alias(session, last)
+        if acc is not None:
+            return acc
+    from app.models import Account
+
+    active = list(
+        session.exec(select(Account).where(Account.status != "archived")).all()
+    )
+    return active[0] if len(active) == 1 else None
+
+
+async def handle_account_command(chat_id: int, body: str, session: Session) -> None:
+    cleaned, alias = extract_alias(body)
+    if alias is None:
+        parts = cleaned.split(maxsplit=1)
+        if len(parts) > 1:
+            alias = parts[1].strip().lstrip("@").lower() or None
+    if alias is not None:
+        acc = get_account_by_alias(session, alias)
+        if acc is None:
+            valid = list_account_aliases(session)
+            hint = ", ".join(f"@{a}" for a in valid) if valid else "no accounts yet"
+            await send_text(chat_id, f"❌ Unknown account @{esc(alias)}. Valid: {esc(hint)}")
+            return
+        set_last_alias(session, acc.alias)
+    else:
+        acc = account_summary_target(session)
+        if acc is None:
+            rendered = accounts_page_content(session, 0)
+            if rendered is None:
+                await send_text(
+                    chat_id, "📭 No accounts yet — add one in the web UI under Accounts."
+                )
+                return
+            await send_text(chat_id, ACCOUNT_USAGE + "\n\n" + rendered[0])
+            return
+    rendered = account_detail_content(session, acc.id)
+    if rendered is None:
+        await send_text(chat_id, "❌ Account not found.")
+        return
+    await send_text(chat_id, rendered[0], rendered[1])
 
 
 # --- Command handlers ---
@@ -890,7 +949,7 @@ HELP = (
     "\n"
     "<b>COMMANDS:</b>\n"
     "/start — greeting · /help — this guide · /open — list open trades · "
-    "/accounts — prop accounts + status · "
+    "/accounts — prop accounts + status · /account [@alias] — one account's snapshot · "
     "/tag — add tags · /note — append a note · /pnl — P&amp;L summary · "
     "/winrate — win rate · /stats_daily — today's stats · "
     "/brokertime — set broker clock · /cancel — drop the pending question\n"
@@ -1345,6 +1404,9 @@ async def handle_text(chat_id: int, text: str, session: Session) -> None:
     if cmd == "/accounts":
         await handle_accounts(chat_id, session)
         return
+    if cmd == "/account":
+        await handle_account_command(chat_id, body, session)
+        return
     if cmd == "/brokertime":
         await handle_broker_clock(chat_id, body, session)
         return
@@ -1744,7 +1806,7 @@ async def _process_update(update: dict) -> None:
         if photos:
             await handle_photo(chat_id, photos[-1]["file_id"], session)
             # A captioned command still executes (photo already routed above).
-            if text.strip() and re.match(r"(?i)^\s*(buy|sell|tsl|close|past|/open|/accounts|/cancel|/start|/help|/stats_daily|/stats|/tag|/note|/pnl|/winrate)", text.strip()):
+            if text.strip() and re.match(r"(?i)^\s*(buy|sell|tsl|close|past|/open|/accounts|/account|/cancel|/start|/help|/stats_daily|/stats|/tag|/note|/pnl|/winrate)", text.strip()):
                 await handle_text(chat_id, text, session)
         elif text:
             # EOD review replies (Phase 3) are picked up there; ignore here
@@ -1769,6 +1831,7 @@ COMMAND_MENU = [
     {"command": "help", "description": "Full trade entry syntax guide"},
     {"command": "open", "description": "List your open trades"},
     {"command": "accounts", "description": "Prop accounts + status"},
+    {"command": "account", "description": "One account's snapshot (optional @alias)"},
     {"command": "tag", "description": "Add setup/mistake tags to a trade"},
     {"command": "note", "description": "Append a review note to a trade"},
     {"command": "pnl", "description": "P&L summary (today/week/month/all)"},
