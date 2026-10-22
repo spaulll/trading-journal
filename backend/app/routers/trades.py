@@ -5,11 +5,14 @@ calling these endpoints. The v1 CSV sync endpoint is removed; history
 imports go through app.services.migrate_csv (one-shot).
 """
 
+import csv
+import io
 import os
 from datetime import datetime, timezone
 from typing import Optional, Union
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import Response
 from sqlmodel import Session, delete, select
 
 from app.database import get_session
@@ -57,6 +60,10 @@ from app.services.trade_money import (
 )
 
 router = APIRouter(prefix="/api/trades", tags=["trades"])
+
+# The export writes every filtered row; the cap keeps a runaway filter from
+# filling the machine's memory.
+EXPORT_LIMIT = 50_000
 
 
 def _now() -> datetime:
@@ -548,6 +555,97 @@ def list_trade_ids(
     statement = sort_trades(apply_trade_filters(select(Trade.id), filters), sort)
     ids = [int(row) for row in session.exec(statement).all()]
     return {"ids": ids, "total": len(ids)}
+
+
+@router.get("/export")
+def export_trades(
+    status: Optional[str] = Query(default=None, description="OPEN or CLOSED"),
+    symbol: Optional[str] = None,
+    query: Optional[str] = Query(default=None, alias="q", description="Free text: symbol or ticket"),
+    tag: Optional[str] = Query(default=None, description="Tag name without #/! prefix"),
+    date_from: Optional[datetime] = Query(default=None, description="Open-day lower bound"),
+    date_to: Optional[datetime] = Query(default=None, description="Open-day upper bound"),
+    closed_from: Optional[datetime] = Query(default=None, description="Close-day lower bound"),
+    closed_to: Optional[datetime] = Query(default=None, description="Close-day upper bound"),
+    account_id: Optional[int] = Query(default=None, description="Filter to one account"),
+    unassigned: bool = Query(default=False, description="Only trades with no account"),
+    sort: Optional[str] = Query(default=None, description="newest | oldest | net-desc | net-asc | r-desc"),
+    session: Session = Depends(get_session),
+):
+    """The filtered ledger as a CSV file.
+
+    The export is the same query as the table, without the page: what the
+    screen shows is what the file holds. Both the quote-currency amount and
+    its USD conversion are written, so the file can be read without the
+    rate that produced it.
+    """
+    from app.models import Account
+
+    filters = _filters(
+        status,
+        symbol,
+        query,
+        tag,
+        date_from,
+        date_to,
+        closed_from,
+        closed_to,
+        account_id,
+        unassigned,
+    )
+    statement = sort_trades(apply_trade_filters(select(Trade), filters), sort)
+    trades = session.exec(statement.limit(EXPORT_LIMIT)).all()
+    aliases = {a.id: a.alias for a in session.exec(select(Account)).all()}
+
+    buffer = io.StringIO()
+    writer = csv.writer(buffer)
+    writer.writerow(
+        [
+            "ticket",
+            "status",
+            "symbol",
+            "direction",
+            "size",
+            "opened",
+            "closed",
+            "entry",
+            "exit",
+            "fees",
+            "quote_currency",
+            "net_quote",
+            "net_usd",
+            "r_multiple",
+            "account",
+            "tags",
+        ]
+    )
+    for t in trades:
+        writer.writerow(
+            [
+                t.ticket,
+                t.status,
+                t.symbol,
+                t.direction,
+                t.size,
+                t.timestamp_open,
+                t.timestamp_close,
+                t.entry_price,
+                t.exit_price,
+                t.fees,
+                t.quote_currency,
+                t.net_pnl,
+                usd_net(t),
+                t.r_multiple,
+                aliases.get(t.account_id, "") if t.account_id else "",
+                ",".join(tag.name for tag in t.tags),
+            ]
+        )
+    filename = f"trades-{_now().strftime('%Y-%m-%d')}.csv"
+    return Response(
+        content=buffer.getvalue(),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @router.get("/{trade_id}", response_model=TradeRead)

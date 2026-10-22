@@ -436,6 +436,8 @@ export const api = {
 		req<PagedTrades>(`/api/trades${params ?? '?page=1&page_size=500'}`),
 	/** The ids of every trade a filter matches — the bulk move's work list. */
 	listTradeIds: (params?: string) => req<{ ids: number[]; total: number }>(`/api/trades/ids${params ?? ''}`),
+	/** The CSV of a filter — the server answers with a file download. */
+	exportTradesUrl: (params?: string) => `${API_BASE}/api/trades/export${params ?? ''}`,
 	getTrade: (id: number) => req<TradeDto>(`/api/trades/${id}`),
 	openTrade: (payload: Record<string, unknown>) =>
 		req<TradeDto>('/api/trades/open', json({ method: 'POST', body: JSON.stringify(payload) })),

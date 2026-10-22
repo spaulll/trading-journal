@@ -1,11 +1,11 @@
 <script lang="ts">
-	import { ChevronDown, Search } from 'lucide-svelte';
+	import { ChevronDown, Download, Search } from 'lucide-svelte';
 	import { slide } from 'svelte/transition';
 	import { onMount } from 'svelte';
 	import { get } from 'svelte/store';
 	import { api, type TradeDto } from '$lib/api';
 	import { aliasOf, accounts, accountMap, chipAlias, ledgerAccountScope, loadAccounts, selectedAccountId, setLedgerAccountScope } from '$lib/stores/accounts';
-	import { gotoPage, ledgerFilters, ledgerQuery, pageCount, resetLedgerPage, setLedgerFilters, setPageSize, type LedgerSort, type LedgerStatus } from '$lib/stores/ledger';
+	import { gotoPage, ledgerExportQuery, ledgerFilters, ledgerQuery, pageCount, resetLedgerPage, setLedgerFilters, setPageSize, type LedgerSort, type LedgerStatus } from '$lib/stores/ledger';
 	import { loadTrades, openTrade, requestClose, tradeCounts, trades, tradesPage, tradesPageSize, tradesTotal, upsertTrade } from '$lib/stores/trades';
 	import { toasts } from '$lib/stores/toast';
 	import { fmtCurrency, fmtDateTime, fmtMoney, fmtR, isUnpriced, pnlTone, rTone, toneBg, toneText, usdNet } from '$lib/utils/format';
@@ -89,6 +89,16 @@
 		return `rounded-md px-1.5 py-0.5 font-mono text-[10.5px] ${
 			category === 'mistake' ? 'tag-mistake' : 'tag-setup'
 		}`;
+	}
+
+	/** Download the filtered ledger as a CSV — the same rows the table shows. */
+	function exportCsv(): void {
+		const link = document.createElement('a');
+		link.href = api.exportTradesUrl(get(ledgerExportQuery));
+		link.rel = 'noopener';
+		document.body.appendChild(link);
+		link.click();
+		link.remove();
 	}
 
 	async function moveFiltered(): Promise<void> {
@@ -268,6 +278,16 @@
 				class="pointer-events-none absolute right-2 text-dim"
 			/>
 		</label>
+
+		<button
+			type="button"
+			onclick={exportCsv}
+			title="Download the filtered ledger as CSV"
+			class="btn btn-ghost h-9 gap-1.5 px-2.5 text-[12px]"
+		>
+			<Download size={14} strokeWidth={2} aria-hidden="true" />
+			Export
+		</button>
 
 		{#if filtered.length > 0}
 			<button

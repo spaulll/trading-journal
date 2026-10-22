@@ -73,6 +73,12 @@ export const ledgerQuery = derived(
 	([$f, $a, $p]) => buildLedgerQuery($f, $a, { page: $p.page, page_size: $p.pageSize })
 );
 
+/** The same filters without the page — the CSV export wants every match. */
+export const ledgerExportQuery = derived(
+	[ledgerFilters, ledgerAccountScope],
+	([$f, $a]) => buildLedgerQuery($f, $a)
+);
+
 /** True when the ledger is showing something narrower than the whole history. */
 export const ledgerHasFilter = derived(
 	[ledgerFilters, ledgerAccountScope],
