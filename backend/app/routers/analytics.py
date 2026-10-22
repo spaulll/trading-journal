@@ -151,6 +151,26 @@ def _bucket(trades: list[Trade]) -> dict:
     }
 
 
+def _setup_tag_map(session: Session) -> tuple[list[str], dict[int, list[str]]]:
+    """Setup-category tag names, and the setup tags carried by each trade.
+
+    One query for the tags and one for the links — a trade with two setups
+    appears under both, which is the point of a setup × symbol matrix. A
+    mistake tag never becomes a row: only ``category == "setup"`` counts.
+    """
+    tags = session.exec(
+        select(Tag).where(Tag.category == "setup").order_by(Tag.name.asc())
+    ).all()
+    names = [tag.name for tag in tags]
+    by_id = {tag.id: tag.name for tag in tags}
+    mapping: dict[int, list[str]] = defaultdict(list)
+    for link in session.exec(select(TradeTagLink)).all():
+        name = by_id.get(link.tag_id)
+        if name is not None and link.trade_id is not None:
+            mapping[link.trade_id].append(name)
+    return names, mapping
+
+
 def _streak_runs(signs: list[int]) -> tuple[list[int], list[int]]:
     """Split a sign sequence (+1/-1/0) into win-run and loss-run lengths."""
     win_runs, loss_runs = [], []
@@ -374,6 +394,76 @@ def symbol_performance(
         )
     rows.sort(key=lambda row: (-row["net_pnl"], row["symbol"]))
     return {"symbols": rows, "totals": _bucket(trades)}
+
+
+@router.get("/setup-matrix")
+def setup_matrix(
+    account_id: Optional[int] = Query(default=None),
+    session: Session = Depends(get_session),
+):
+    """Setup × symbol results — which playbook works on which instrument.
+
+    Rows are the setup tags; columns are the symbols those trades touched.
+    A trade with two setup tags contributes to both rows on purpose, so the
+    row totals overlap. The column totals count every trade once (including
+    the ``Untagged`` row when a closed trade carries no setup), which is why
+    they reconcile with ``grand_total``.
+    """
+    trades = _closed_trades(session, account_id)
+    setups, tag_map = _setup_tag_map(session)
+    symbols = sorted({_symbol_key(t) for t in trades})
+
+    def cells_for(bucket: list[Trade]) -> list[dict]:
+        cells = []
+        for symbol in symbols:
+            cell_trades = [t for t in bucket if _symbol_key(t) == symbol]
+            if not cell_trades:
+                continue
+            cells.append({"symbol": symbol, **_net_stats(cell_trades)})
+        return cells
+
+    rows = []
+    for setup in setups:
+        bucket = [t for t in trades if setup in tag_map.get(t.id or -1, [])]
+        if not bucket:
+            continue
+        rows.append(
+            {
+                "setup": setup,
+                "label": setup,
+                "is_untagged": False,
+                **_net_stats(bucket),
+                "cells": cells_for(bucket),
+            }
+        )
+    rows.sort(key=lambda row: (-row["net_pnl"], row["setup"]))
+
+    untagged = [t for t in trades if not tag_map.get(t.id or -1)]
+    if untagged:
+        rows.append(
+            {
+                "setup": None,
+                "label": "Untagged",
+                "is_untagged": True,
+                **_net_stats(untagged),
+                "cells": cells_for(untagged),
+            }
+        )
+
+    columns = [
+        {
+            "symbol": symbol,
+            **_net_stats([t for t in trades if _symbol_key(t) == symbol]),
+        }
+        for symbol in symbols
+    ]
+    return {
+        "setups": [row["setup"] for row in rows if row["setup"] is not None],
+        "symbols": symbols,
+        "rows": rows,
+        "column_totals": columns,
+        "grand_total": _net_stats(trades),
+    }
 
 
 @router.get("/calendar")
