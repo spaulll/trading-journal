@@ -10,13 +10,13 @@ from collections import defaultdict
 from datetime import date as date_type
 from datetime import datetime, timedelta, timezone
 from math import floor
-from typing import Optional
+from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, Query
 from sqlmodel import Session, select
 
 from app.database import get_session
-from app.models import SymbolSpec, Tag, Trade, TradeTagLink
+from app.models import Account, SymbolSpec, Tag, Trade, TradeTagLink
 from app.services import analytics_rules
 from app.services.analytics_rules import (
     BE_TOLERANCE,
@@ -25,7 +25,7 @@ from app.services.analytics_rules import (
     is_win as _is_win,
     sign as _sign,
 )
-from app.services.analytics_stats import mean_confidence, min_sample_size
+from app.services.analytics_stats import drawdown_curve, mean_confidence, min_sample_size
 from app.services.timeutils import as_naive_utc, trade_close_day, utcnow_naive
 from app.services.trade_filters import TradeFilters, apply_trade_filters
 from app.services.trading_day import day_of_trade, get_trading_day
@@ -537,6 +537,66 @@ def setup_confidence(
         "ci_level": 0.95,
         "tags": rows,
         "insufficient": sum(1 for row in rows if not row["sufficient"]),
+    }
+
+
+@router.get("/drawdown")
+def drawdown(
+    group_by: Literal["account", "setup"] = Query(default="account"),
+    account_id: Optional[int] = Query(default=None),
+    session: Session = Depends(get_session),
+):
+    """Peak-to-trough drawdown, broken out by account or by setup.
+
+    Every group walks its own trades in close order and starts from zero, so
+    the figures answer "what would this book have drawn down on its own".
+    A trade with two setup tags appears in both setup groups — the point is
+    to see each playbook's damage; the ``overall`` row counts every trade
+    once.
+    """
+    trades = _closed_trades(session, account_id)
+
+    groups: dict[str, list[Trade]] = defaultdict(list)
+    labels: dict[str, str] = {}
+    if group_by == "account":
+        accounts = {acc.id: acc for acc in session.exec(select(Account)).all()}
+        for trade in trades:
+            if trade.account_id is None:
+                key, label = "unassigned", "Unassigned"
+            else:
+                key = str(trade.account_id)
+                acc = accounts.get(trade.account_id)
+                label = f"@{acc.alias}" if acc is not None else f"Account #{trade.account_id}"
+            groups[key].append(trade)
+            labels[key] = label
+    else:
+        _setups, tag_map = _setup_tag_map(session)
+        for trade in trades:
+            names = tag_map.get(trade.id or -1, [])
+            if not names:
+                groups["untagged"].append(trade)
+                labels["untagged"] = "Untagged"
+            for name in names:
+                groups[name].append(trade)
+                labels[name] = f"#{name}"
+
+    def curve_row(key: str, label: str, bucket: list[Trade]) -> dict:
+        known = [net for net in (usd_net(t) for t in bucket) if net is not None]
+        return {
+            "key": key,
+            "label": label,
+            **_net_stats(bucket),
+            **drawdown_curve(known),
+            "by_currency": currency_breakdown(bucket),
+        }
+
+    rows = [curve_row(key, labels[key], bucket) for key, bucket in groups.items()]
+    # Worst drawdown first — that is the group worth looking at.
+    rows.sort(key=lambda row: (row["max_drawdown"], -row["net_pnl"], row["label"]))
+    return {
+        "group_by": group_by,
+        "overall": curve_row("all", "All trades", trades),
+        "groups": rows,
     }
 
 

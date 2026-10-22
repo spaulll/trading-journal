@@ -83,3 +83,26 @@ def mean_confidence(values: list[float]) -> dict:
         "ci_high": round(mean + margin, 2),
         "ci_level": CONFIDENCE_LEVEL,
     }
+
+
+def drawdown_curve(nets: list[float]) -> dict:
+    """Peak-to-trough drawdown of a cumulative series that starts at zero.
+
+    ``max_drawdown`` is the worst ``equity - peak`` (a negative number, or
+    zero when the series never went underwater), the same sign convention as
+    the equity chart's ``drawdown`` points. ``peak`` is the highest
+    cumulative result reached, and ``current_drawdown`` is where the series
+    sits relative to that peak at the end.
+    """
+    equity = peak = 0.0
+    max_drawdown = 0.0
+    for net in nets:
+        equity += net
+        peak = max(peak, equity)
+        max_drawdown = min(max_drawdown, equity - peak)
+    return {
+        "net_pnl": round(equity, 2),
+        "peak": round(peak, 2),
+        "max_drawdown": round(max_drawdown, 2),
+        "current_drawdown": round(equity - peak, 2),
+    }
