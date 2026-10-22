@@ -9,6 +9,14 @@ export interface TagDto {
 	category: string;
 }
 
+/** A tag with the numbers the taxonomy page shows. */
+export interface TagSummaryDto extends TagDto {
+	trade_count: number;
+	net_pnl: number;
+	win_rate: number | null;
+	last_used: string | null;
+}
+
 export interface ScreenshotDto {
 	id: number;
 	trade_id: number;
@@ -461,14 +469,21 @@ export const api = {
 			'/api/trades/bulk-account',
 			json({ method: 'POST', body: JSON.stringify({ trade_ids, account_id }) })
 		),
+	listTags: () => req<TagSummaryDto[]>('/api/tags'),
+	patchTag: (id: number, patch: { name?: string; category?: string }) =>
+		req<TagDto>(`/api/tags/${id}`, json({ method: 'PATCH', body: JSON.stringify(patch) })),
+	mergeTags: (source_id: number, target_id: number) =>
+		req<{ merged: string; into: string; trades: number; tag: TagDto }>(
+			'/api/tags/merge',
+			json({ method: 'POST', body: JSON.stringify({ source_id, target_id }) })
+		),
 	listAccounts: (includeArchived = false) =>
 		req<AccountDto[]>(`/api/accounts${includeArchived ? '?include_archived=true' : ''}`),
 	createAccount: (payload: Record<string, unknown>) =>
 		req<AccountDto>('/api/accounts', json({ method: 'POST', body: JSON.stringify(payload) })),
 	updateAccount: (id: number, patch: Record<string, unknown>) =>
 		req<AccountDto>(`/api/accounts/${id}`, json({ method: 'PATCH', body: JSON.stringify(patch) })),
-	deleteAccount: (id: number) => req<{ deleted: number }>(`/api/accounts/${id}`, { method: 'DELETE' }),
-	propStatus: (id: number) => req<PropStatusDto>(`/api/accounts/${id}/prop-status`),
+	deleteAccount: (id: number) => req<{ deleted: number }>(`/api/accounts/${id}`, { method: 'DELETE' }),	propStatus: (id: number) => req<PropStatusDto>(`/api/accounts/${id}/prop-status`),
 	listSymbols: (includeDisabled = false) =>
 		req<SymbolSpecDto[]>(`/api/symbols${includeDisabled ? '?include_disabled=true' : ''}`),
 	createSymbol: (payload: Record<string, unknown>) =>
