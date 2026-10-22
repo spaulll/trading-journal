@@ -163,6 +163,8 @@ class Account(SQLModel, table=True):
     login: Optional[str] = Field(default=None, index=True)  # MT5 login, optional
     phase: str = Field(default="personal", index=True)  # challenge1 | phase2 | funded | personal
     start_balance: float = Field(default=0.0)
+    # Currency the start balance and the prop limits are declared in.
+    base_currency: str = Field(default="USD", index=True)
     # Limits are PERCENT (0-100) off the balance anchor — $ values are
     # derived at read time so every size (1k/5k/10k/100k) just works.
     # Legacy absolute-$ columns (daily_loss_limit, max_loss_limit,
@@ -476,6 +478,7 @@ class AccountRead(SQLModel):
     login: Optional[str] = None
     phase: str
     start_balance: float
+    base_currency: str = "USD"
     daily_loss_pct: float
     daily_basis: str
     max_loss_pct: float
@@ -495,6 +498,7 @@ class AccountCreate(SQLModel):
     login: Optional[str] = None
     phase: str = "personal"
     start_balance: float = 0.0
+    base_currency: str = "USD"
     daily_loss_pct: float = 0.0
     daily_basis: str = "balance"
     max_loss_pct: float = 0.0
@@ -510,6 +514,7 @@ class AccountUpdate(SQLModel):
     login: Optional[str] = None
     phase: Optional[str] = None
     start_balance: Optional[float] = None
+    base_currency: Optional[str] = None
     daily_loss_pct: Optional[float] = None
     daily_basis: Optional[str] = None
     max_loss_pct: Optional[float] = None

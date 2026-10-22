@@ -108,6 +108,8 @@ export interface AccountDto {
 	login: string | null;
 	phase: string;
 	start_balance: number;
+	/** Currency the start balance and prop limits are declared in. */
+	base_currency: string;
 	daily_loss_pct: number;
 	daily_basis: string;
 	max_loss_pct: number;
@@ -124,8 +126,14 @@ export interface AccountDto {
 export interface PropStatusDto {
 	account_id: number;
 	alias: string;
+	/** Currency every figure below is stated in (account base or ?base=). */
+	base_currency: string;
+	account_base_currency: string;
+	start_balance: number;
 	balance: number;
 	total_net: number;
+	/** The same net across all currencies, in USD. */
+	total_net_usd: number;
 	daily_pnl: number;
 	daily_loss_pct: number;
 	daily_loss_limit: number;
@@ -143,6 +151,8 @@ export interface PropStatusDto {
 	status: string;
 	open_trades: number;
 	total_trades: number;
+	/** Conversion provenance: missing rates and stale-rate fallbacks. */
+	fx: { missing: number; fallback: number; max_fallback_days: number };
 }
 
 export interface PagedTrades {
