@@ -1,9 +1,10 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { FileUp, Upload } from 'lucide-svelte';
-	import { api, errMsg, type ImportDetailDto, type Mt5ImportResult } from '$lib/api';
+	import { FileUp, History, Upload } from 'lucide-svelte';
+	import { api, errMsg, type ImportDetailDto, type ImportRunDto, type Mt5ImportResult } from '$lib/api';
 	import { accounts, loadAccounts } from '$lib/stores/accounts';
 	import { toasts } from '$lib/stores/toast';
+	import { fmtDateTime } from '$lib/utils/format';
 
 	let file = $state<File | null>(null);
 	let accountId = $state('');
@@ -11,10 +12,23 @@
 	let result = $state<Mt5ImportResult | null>(null);
 	let error = $state<string | null>(null);
 	let input = $state<HTMLInputElement | undefined>();
+	let runs = $state<ImportRunDto[]>([]);
+	let runsError = $state<string | null>(null);
 
 	onMount(() => {
 		if ($accounts.length === 0) void loadAccounts();
+		void loadRuns();
 	});
+
+	async function loadRuns(): Promise<void> {
+		try {
+			const res = await api.importRuns(8);
+			runs = res.runs;
+			runsError = null;
+		} catch (e) {
+			runsError = errMsg(e);
+		}
+	}
 
 	function pick(event: Event): void {
 		const files = (event.currentTarget as HTMLInputElement).files;
@@ -42,6 +56,7 @@
 			error = errMsg(e);
 		} finally {
 			busy = false;
+			void loadRuns();
 		}
 	}
 
@@ -64,6 +79,14 @@
 		return Object.entries(detail.changes ?? {})
 			.map(([key, change]) => `${key} ${shown(change.from)} → ${shown(change.to)}`)
 			.join(' · ');
+	}
+
+	function runSummary(run: ImportRunDto): string {
+		return `${run.added} added · ${run.updated} updated · ${run.unchanged} unchanged · ${run.skipped} skipped`;
+	}
+
+	function shortName(name: string): string {
+		return name.length > 42 ? `${name.slice(0, 41)}…` : name;
 	}
 </script>
 
@@ -151,6 +174,39 @@
 				<p class="num mt-2 truncate text-[11px] text-dim" title={known.join(', ')}>
 					{known.slice(0, 12).join(' · ')}{known.length > 12 ? ` · +${known.length - 12} more` : ''}
 				</p>
+			{/if}
+		</div>
+	{/if}
+
+	{#if runs.length > 0 || runsError}
+		<div class="mt-4 border-t border-line/70 pt-3" aria-label="Import history">
+			<div class="flex items-center gap-2">
+				<History size={13} strokeWidth={2} aria-hidden="true" class="text-dim" />
+				<h3 class="font-mono text-[10px] tracking-[0.14em] text-dim uppercase">Recent imports</h3>
+			</div>
+			{#if runsError}
+				<p class="mt-1 text-[11px] text-loss">History unavailable — {runsError}</p>
+			{:else}
+				<ul class="mt-1">
+					{#each runs.slice(0, 5) as run (run.id)}
+						<li class="border-b border-line/60 py-1.5 last:border-0">
+							<div class="flex min-w-0 items-baseline gap-2">
+								<span class="num min-w-0 flex-1 break-all text-[11px] text-fg" title={run.filename}>
+									{shortName(run.filename)}
+								</span>
+								<span class="num shrink-0 text-[10px] text-dim">{run.format?.toUpperCase() ?? 'FAILED'}</span>
+							</div>
+							<div class="mt-0.5 flex min-w-0 flex-col gap-0.5 sm:flex-row sm:flex-wrap sm:items-baseline sm:gap-x-2">
+								{#if run.error}
+									<span class="min-w-0 flex-1 break-words text-[11px] text-loss">{run.error}</span>
+								{:else}
+									<span class="num min-w-0 flex-1 text-[11px] text-mut">{runSummary(run)}</span>
+								{/if}
+								<span class="num shrink-0 text-[10px] text-dim sm:ml-auto">{fmtDateTime(run.created_at)}</span>
+							</div>
+						</li>
+					{/each}
+				</ul>
 			{/if}
 		</div>
 	{/if}

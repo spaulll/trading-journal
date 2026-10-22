@@ -7,6 +7,7 @@ imports go through app.services.migrate_csv (one-shot).
 
 import csv
 import io
+import json
 import os
 from datetime import datetime, timezone
 from typing import Optional, Union
@@ -20,6 +21,7 @@ from app.models import (
     BackfillRecord,
     BackfillRequest,
     DailyNote,
+    ImportRun,
     Screenshot,
     ScreenshotRead,
     Tag,
@@ -448,6 +450,61 @@ def _backfill_ticket(session: Session, symbol: str, entry: datetime) -> str:
 # --- MT5 statement import (Phase 8) ---------------------------------------
 
 
+def _import_detail(result: Optional[dict], warnings: Optional[list[str]] = None) -> str:
+    """Capped JSON payload for the run log — warnings plus per-ticket actions.
+
+    The list is trimmed rather than the string, so the stored detail is
+    always valid JSON however large the statement was.
+    """
+    details = list((result or {}).get("details") or [])
+    payload = {
+        "warnings": list(warnings or []),
+        "details": details[:200],
+        "details_total": len(details),
+    }
+    return json.dumps(payload, default=str)
+
+
+def _record_import_run(
+    session: Session,
+    *,
+    filename: str,
+    format: Optional[str],
+    account_id: Optional[int],
+    result: Optional[dict] = None,
+    warnings: Optional[list[str]] = None,
+    rows: int = 0,
+    error: Optional[str] = None,
+) -> ImportRun:
+    """Store one import attempt. A failed file is logged with the same care."""
+    counts = (result or {}).get("counts") or {}
+    run = ImportRun(
+        kind="mt5",
+        filename=(filename or "statement")[:255],
+        format=format,
+        account_id=account_id,
+        rows=int(counts.get("rows", rows) or 0),
+        added=int(counts.get("added", 0) or 0),
+        updated=int(counts.get("updated", 0) or 0),
+        unchanged=int(counts.get("unchanged", 0) or 0),
+        skipped=int(counts.get("skipped", 0) or 0),
+        error=error,
+        detail=_import_detail(result, warnings),
+    )
+    session.add(run)
+    session.commit()
+    session.refresh(run)
+    return run
+
+
+def _load_import_detail(raw: str) -> dict:
+    try:
+        value = json.loads(raw or "{}")
+    except (TypeError, ValueError):
+        return {}
+    return value if isinstance(value, dict) else {}
+
+
 @router.post("/import/mt5")
 async def import_mt5_statement(
     file: UploadFile = File(..., description="MT5 HTML report or CSV export"),
@@ -461,6 +518,9 @@ async def import_mt5_statement(
     whose ticket already exists is reconciled in place: the broker fields
     are refreshed, the trader's notes and tags are kept, and a row that
     already matches changes nothing. Re-importing the same file is a no-op.
+
+    Every attempt lands in ``import_run`` — including a file that cannot
+    be parsed — so a bad statement is diagnosable after the toast is gone.
     """
     from app.services.mt5_import import (
         StatementError,
@@ -473,14 +533,29 @@ async def import_mt5_statement(
     if account_id is not None:
         _resolve_account_id(session, account_id)
 
+    filename = file.filename or "statement"
     raw = await file.read(MAX_STATEMENT_BYTES + 1)
     if len(raw) > MAX_STATEMENT_BYTES:
-        raise HTTPException(status_code=413, detail="Statement exceeds the 10 MB limit")
+        message = "Statement exceeds the 10 MB limit"
+        _record_import_run(
+            session,
+            filename=filename,
+            format=None,
+            account_id=account_id,
+            error=message,
+        )
+        raise HTTPException(status_code=413, detail=message)
 
-    filename = file.filename or "statement"
     try:
         parsed = parse_statement(decode_statement(raw), filename)
     except StatementError as exc:
+        _record_import_run(
+            session,
+            filename=filename,
+            format=None,
+            account_id=account_id,
+            error=str(exc),
+        )
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     target_account = resolve_account_id(session, account_id, parsed.account_login)
@@ -490,13 +565,56 @@ async def import_mt5_statement(
         account_id=target_account,
         update_existing=True,
     )
+    run = _record_import_run(
+        session,
+        filename=filename,
+        format=parsed.format,
+        account_id=target_account,
+        result=result,
+        warnings=parsed.warnings,
+        rows=len(parsed.rows),
+    )
     return {
+        "run_id": run.id,
         "filename": filename,
         "format": parsed.format,
         "account_id": target_account,
         "account_login": parsed.account_login,
         "warnings": parsed.warnings,
         **result,
+    }
+
+
+@router.get("/imports")
+def list_import_runs(
+    limit: int = Query(default=20, ge=1, le=100, description="Most recent runs to return"),
+    session: Session = Depends(get_session),
+):
+    """The import run log, newest first — what each file did, and why it failed."""
+    runs = session.exec(
+        select(ImportRun)
+        .order_by(ImportRun.created_at.desc(), ImportRun.id.desc())
+        .limit(limit)
+    ).all()
+    return {
+        "runs": [
+            {
+                "id": run.id,
+                "kind": run.kind,
+                "filename": run.filename,
+                "format": run.format,
+                "account_id": run.account_id,
+                "rows": run.rows,
+                "added": run.added,
+                "updated": run.updated,
+                "unchanged": run.unchanged,
+                "skipped": run.skipped,
+                "error": run.error,
+                "detail": _load_import_detail(run.detail),
+                "created_at": run.created_at,
+            }
+            for run in runs
+        ]
     }
 
 

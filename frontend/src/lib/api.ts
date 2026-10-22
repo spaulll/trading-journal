@@ -235,6 +235,7 @@ export interface ImportCountsDto {
 }
 
 export interface Mt5ImportResult {
+	run_id: number;
 	filename: string;
 	format: 'html' | 'csv';
 	account_id: number | null;
@@ -246,6 +247,23 @@ export interface Mt5ImportResult {
 	unchanged: string[];
 	skipped: string[];
 	details: ImportDetailDto[];
+}
+
+/** One stored import attempt, successful or not. */
+export interface ImportRunDto {
+	id: number;
+	kind: string;
+	filename: string;
+	format: string | null;
+	account_id: number | null;
+	rows: number;
+	added: number;
+	updated: number;
+	unchanged: number;
+	skipped: number;
+	error: string | null;
+	detail: { warnings?: string[]; details?: ImportDetailDto[]; details_total?: number };
+	created_at: string;
 }
 
 export type WeekendReviewResult =
@@ -655,6 +673,9 @@ export const api = {
 		if (accountId !== null && accountId !== undefined) form.append('account_id', String(accountId));
 		return req<Mt5ImportResult>('/api/trades/import/mt5', { method: 'POST', body: form }, 120_000);
 	},
+	/** The import run log, newest first — a bad file stays diagnosable. */
+	importRuns: (limit = 20) =>
+		req<{ runs: ImportRunDto[] }>(`/api/trades/imports?limit=${limit}`),
 	listTags: () => req<TagSummaryDto[]>('/api/tags'),
 	patchTag: (id: number, patch: { name?: string; category?: string }) =>
 		req<TagDto>(`/api/tags/${id}`, json({ method: 'PATCH', body: JSON.stringify(patch) })),
