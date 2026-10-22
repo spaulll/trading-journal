@@ -106,3 +106,42 @@ def drawdown_curve(nets: list[float]) -> dict:
         "max_drawdown": round(max_drawdown, 2),
         "current_drawdown": round(equity - peak, 2),
     }
+
+
+def ruin_probability(
+    win_rate_pct: float,
+    payoff_ratio: float | None,
+    risk_units: float | None,
+) -> float | None:
+    """Probability of losing the account, by the diffusion approximation.
+
+    Each trade is a step of ``+b`` risk units on a win and ``-1`` on a loss,
+    with ``p`` the win rate and ``b`` the payoff ratio (average win / average
+    loss). The step mean is ``mu = p*b - q`` and its variance is
+    ``p*b^2 + q - mu^2``. For a random walk with drift ``mu`` and variance
+    ``sigma^2``, the probability of ever falling ``N`` units (the account
+    size measured in risk units) is ``exp(-2*mu*N/sigma^2)`` when ``mu > 0``.
+
+    A book with no edge ruins almost surely, so ``mu <= 0`` returns ``1.0``.
+    ``None`` means the inputs cannot size the bet (no risk figure), which is
+    different from a zero probability.
+    """
+    if risk_units is None or risk_units <= 0:
+        return None
+
+    p = max(0.0, min(1.0, win_rate_pct / 100.0))
+    q = 1.0 - p
+    if p <= 0.0:
+        return 1.0
+    if q <= 0.0:
+        return 0.0
+    if payoff_ratio is None or payoff_ratio <= 0:
+        return 1.0
+
+    mean = p * payoff_ratio - q
+    variance = p * payoff_ratio**2 + q - mean**2
+    if variance <= 0:
+        return 0.0 if mean > 0 else 1.0
+    if mean <= 0:
+        return 1.0
+    return min(1.0, math.exp(-2.0 * mean * risk_units / variance))

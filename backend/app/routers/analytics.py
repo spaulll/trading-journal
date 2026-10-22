@@ -12,7 +12,7 @@ from datetime import datetime, timedelta, timezone
 from math import floor
 from typing import Literal, Optional
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlmodel import Session, select
 
 from app.database import get_session
@@ -25,7 +25,12 @@ from app.services.analytics_rules import (
     is_win as _is_win,
     sign as _sign,
 )
-from app.services.analytics_stats import drawdown_curve, mean_confidence, min_sample_size
+from app.services.analytics_stats import (
+    drawdown_curve,
+    mean_confidence,
+    min_sample_size,
+    ruin_probability,
+)
 from app.services.timeutils import as_naive_utc, trade_close_day, utcnow_naive
 from app.services.trade_filters import TradeFilters, apply_trade_filters
 from app.services.trading_day import day_of_trade, get_trading_day
@@ -597,6 +602,150 @@ def drawdown(
         "group_by": group_by,
         "overall": curve_row("all", "All trades", trades),
         "groups": rows,
+    }
+
+
+def _account_size_usd(session: Session, account_id: Optional[int]) -> tuple[Optional[float], str]:
+    """The capital a ruin estimate is measured against, in USD.
+
+    Reuses the prop-status balance math, which converts each account's own
+    base currency into USD at the close-day rate. An account with no
+    resolvable FX rate is left out instead of being counted at 1:1.
+    """
+    from app.routers.accounts import _prop_numbers
+
+    statement = select(Account)
+    if account_id is not None:
+        statement = statement.where(Account.id == account_id)
+    total = 0.0
+    found = 0
+    for account in session.exec(statement).all():
+        try:
+            numbers = _prop_numbers(account, session, "USD")
+        except HTTPException:
+            continue
+        total += numbers["balance"]
+        found += 1
+    if not found:
+        return None, "missing"
+    return round(total, 2), "account_balance"
+
+
+@router.get("/risk-of-ruin")
+def risk_of_ruin(
+    tag: Optional[str] = Query(default=None, description="Setup tag name, with or without #"),
+    account_id: Optional[int] = Query(default=None),
+    account_size: Optional[float] = Query(
+        default=None, gt=0, description="Override the account balance used as capital"
+    ),
+    risk_per_trade: Optional[float] = Query(
+        default=None, gt=0, description="Override every setup's average risk per trade"
+    ),
+    min_sample: Optional[int] = Query(
+        default=None, ge=1, description="Override MIN_SAMPLE_SIZE for this request"
+    ),
+    session: Session = Depends(get_session),
+):
+    """Risk of ruin per setup, against the current account size.
+
+    The account size is the balance of the selected account (or every
+    account, in USD), and each setup is sized at the risk it actually
+    carried — its average ``realized_risk``, falling back to the planned
+    ``initial_risk``. The estimate is the diffusion approximation: a book
+    with no edge ruins almost surely, and a smaller risk per trade buys more
+    units of survivability. ``?account_size=`` and ``?risk_per_trade=``
+    answer "what if" without changing the journal.
+    """
+    trades = _closed_trades(session, account_id)
+    names, tag_map = _setup_tag_map(session)
+    threshold = min_sample if min_sample is not None else min_sample_size()
+    wanted = (tag or "").strip().lstrip("#!").lower() or None
+
+    if account_size is not None:
+        size, size_source = float(account_size), "explicit"
+    else:
+        size, size_source = _account_size_usd(session, account_id)
+
+    rows = []
+    for name in names:
+        if wanted is not None and name.lower() != wanted:
+            continue
+        bucket = [t for t in trades if name in tag_map.get(t.id or -1, [])]
+        if not bucket:
+            continue
+
+        nets = [usd_net(t) for t in bucket]
+        counts = analytics_rules.split_outcomes(nets)
+        known = [n for n in nets if n is not None]
+        win_nets = [n for n in known if _is_win(n)]
+        loss_nets = [n for n in known if _is_loss(n)]
+        avg_win = round(sum(win_nets) / len(win_nets), 2) if win_nets else None
+        avg_loss = round(abs(sum(loss_nets) / len(loss_nets)), 2) if loss_nets else None
+        payoff = round(avg_win / avg_loss, 3) if (avg_win is not None and avg_loss) else None
+        decided = counts.wins + counts.losses
+        win_rate = analytics_rules.win_rate(counts.wins, counts.losses)
+        p = counts.wins / decided if decided else 0.0
+        edge_r = round(p * payoff - (1.0 - p), 4) if payoff is not None else None
+
+        if risk_per_trade is not None:
+            risk, risk_source = float(risk_per_trade), "explicit"
+        else:
+            realized = [t.realized_risk for t in bucket if t.realized_risk and t.realized_risk > 0]
+            planned = [t.initial_risk for t in bucket if t.initial_risk and t.initial_risk > 0]
+            if realized:
+                risk, risk_source = round(sum(realized) / len(realized), 2), "realized"
+            elif planned:
+                risk, risk_source = round(sum(planned) / len(planned), 2), "initial"
+            else:
+                risk, risk_source = None, "missing"
+
+        units = round(size / risk, 2) if (size is not None and risk) else None
+        probability = ruin_probability(win_rate, payoff, units)
+        rows.append(
+            {
+                "name": name,
+                "trade_count": len(bucket),
+                "decided": decided,
+                "wins": counts.wins,
+                "losses": counts.losses,
+                "breakeven": counts.breakeven,
+                "unpriced": counts.unpriced,
+                "win_rate": win_rate,
+                "avg_win": avg_win,
+                "avg_loss": avg_loss,
+                "payoff_ratio": payoff,
+                "expectancy_r": edge_r,
+                "net_pnl": round(sum(known), 2),
+                "avg_r": _avg_r(bucket),
+                "risk_per_trade": risk,
+                "risk_source": risk_source,
+                "risk_units": units,
+                "risk_of_ruin": round(probability, 6) if probability is not None else None,
+                "sufficient": decided >= threshold,
+            }
+        )
+
+    def rank(row: dict) -> tuple:
+        probability = row["risk_of_ruin"]
+        return (
+            0 if row["sufficient"] else 1,
+            0 if probability is not None else 1,
+            probability if probability is not None else 2.0,
+            row["name"],
+        )
+
+    rows.sort(key=rank)
+    return {
+        "account_size": size,
+        "account_size_source": size_source,
+        "risk_per_trade_override": risk_per_trade,
+        "min_sample": threshold,
+        "method": "diffusion",
+        "detail": None
+        if size is not None
+        else "No account balance available — pass ?account_size=",
+        "setups": rows,
+        "insufficient": sum(1 for row in rows if not row["sufficient"]),
     }
 
 
