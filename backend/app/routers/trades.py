@@ -11,7 +11,7 @@ import os
 from datetime import datetime, timezone
 from typing import Optional, Union
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import Response
 from sqlmodel import Session, delete, select
 
@@ -65,6 +65,10 @@ router = APIRouter(prefix="/api/trades", tags=["trades"])
 # The export writes every filtered row; the cap keeps a runaway filter from
 # filling the machine's memory.
 EXPORT_LIMIT = 50_000
+
+# A broker statement is a few hundred kilobytes; anything past this is not
+# a statement and should not be parsed into memory.
+MAX_STATEMENT_BYTES = 10 * 1024 * 1024
 
 
 def _now() -> datetime:
@@ -439,6 +443,60 @@ def _backfill_ticket(session: Session, symbol: str, entry: datetime) -> str:
         ticket = f"{base}-{n}"
         n += 1
     return ticket
+
+
+# --- MT5 statement import (Phase 8) ---------------------------------------
+
+
+@router.post("/import/mt5")
+async def import_mt5_statement(
+    file: UploadFile = File(..., description="MT5 HTML report or CSV export"),
+    account_id: Optional[int] = Form(default=None, description="Account to file new trades under"),
+    session: Session = Depends(get_session),
+):
+    """Import a broker statement, keyed by ticket.
+
+    The account comes from the form when chosen, otherwise from the login
+    printed in the HTML report (matched against ``Account.login``). A row
+    whose ticket already exists is not duplicated; the reconciliation pass
+    refreshes it from the statement.
+    """
+    from app.services.mt5_import import (
+        StatementError,
+        decode_statement,
+        import_rows,
+        parse_statement,
+        resolve_account_id,
+    )
+
+    if account_id is not None:
+        _resolve_account_id(session, account_id)
+
+    raw = await file.read(MAX_STATEMENT_BYTES + 1)
+    if len(raw) > MAX_STATEMENT_BYTES:
+        raise HTTPException(status_code=413, detail="Statement exceeds the 10 MB limit")
+
+    filename = file.filename or "statement"
+    try:
+        parsed = parse_statement(decode_statement(raw), filename)
+    except StatementError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    target_account = resolve_account_id(session, account_id, parsed.account_login)
+    result = import_rows(
+        session,
+        parsed.rows,
+        account_id=target_account,
+        update_existing=False,
+    )
+    return {
+        "filename": filename,
+        "format": parsed.format,
+        "account_id": target_account,
+        "account_login": parsed.account_login,
+        "warnings": parsed.warnings,
+        **result,
+    }
 
 
 def _filters(

@@ -218,6 +218,36 @@ export interface InsightReportDto {
 	created_at: string;
 }
 
+/** One row of an MT5 statement import: what happened to its ticket. */
+export interface ImportDetailDto {
+	ticket: string;
+	action: 'added' | 'updated' | 'unchanged' | 'skipped';
+	reason?: string;
+	changes?: Record<string, { from: unknown; to: unknown }>;
+}
+
+export interface ImportCountsDto {
+	added: number;
+	updated: number;
+	unchanged: number;
+	skipped: number;
+	rows: number;
+}
+
+export interface Mt5ImportResult {
+	filename: string;
+	format: 'html' | 'csv';
+	account_id: number | null;
+	account_login: string | null;
+	warnings: string[];
+	counts: ImportCountsDto;
+	added: string[];
+	updated: string[];
+	unchanged: string[];
+	skipped: string[];
+	details: ImportDetailDto[];
+}
+
 export type WeekendReviewResult =
 	| { status: 'ok'; date_from: string; date_to: string; report: InsightReportDto }
 	| { status: 'empty'; date_from: string; date_to: string; detail: string };
@@ -618,6 +648,13 @@ export const api = {
 			'/api/trades/bulk-account',
 			json({ method: 'POST', body: JSON.stringify({ trade_ids, account_id }) })
 		),
+	/** Upload an MT5 HTML report or CSV export; the server reconciles by ticket. */
+	importStatement: async (file: File, accountId?: number | null): Promise<Mt5ImportResult> => {
+		const form = new FormData();
+		form.append('file', file);
+		if (accountId !== null && accountId !== undefined) form.append('account_id', String(accountId));
+		return req<Mt5ImportResult>('/api/trades/import/mt5', { method: 'POST', body: form }, 120_000);
+	},
 	listTags: () => req<TagSummaryDto[]>('/api/tags'),
 	patchTag: (id: number, patch: { name?: string; category?: string }) =>
 		req<TagDto>(`/api/tags/${id}`, json({ method: 'PATCH', body: JSON.stringify(patch) })),

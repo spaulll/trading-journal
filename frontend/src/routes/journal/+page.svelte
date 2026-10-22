@@ -4,6 +4,7 @@
 	import PageHead from '$lib/components/PageHead.svelte';
 	import StateBlock from '$lib/components/StateBlock.svelte';
 	import DayPanel from '$lib/components/DayPanel.svelte';
+	import Mt5ImportCard from '$lib/components/Mt5ImportCard.svelte';
 	import TradeModal from '$lib/components/TradeModal.svelte';
 	import { api, errMsg, type DailyNoteDto, type InsightReportDto, type WeekendReviewResult } from '$lib/api';
 	import { SNAPSHOT_KEYS, readSnapshot, saveSnapshot } from '$lib/offline-snapshot';
@@ -284,6 +285,8 @@
 		</div>
 	{/if}
 </section>
+
+<Mt5ImportCard />
 
 {#if loading}
 	<div class="flex flex-col gap-4">
