@@ -59,16 +59,14 @@ def get_adherence(day: date_type, session: Session = Depends(get_session)):
     The plan is free text, so this is a reading of it: the setups it names,
     the size it states and the trades the day actually took.
     """
-    from datetime import datetime, timedelta
-
     from sqlalchemy import or_
 
     from app.models import Tag, Trade
     from app.services.adherence import score_adherence
+    from app.services.trading_day import trading_day_bounds
 
     note = session.exec(select(DailyNote).where(DailyNote.date == day)).first()
-    start = datetime(day.year, day.month, day.day)
-    end = start + timedelta(days=1)
+    start, end = trading_day_bounds(session, day)
     trades = session.exec(
         select(Trade).where(
             or_(

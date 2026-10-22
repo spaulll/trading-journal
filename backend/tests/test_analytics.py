@@ -144,12 +144,13 @@ def test_a_trade_lands_on_the_day_it_closed(client):
     ]
 
 
-def test_a_trade_closed_at_2330_stays_on_that_day(client):
+def test_a_trade_closed_at_2330_utc_lands_on_the_next_trading_day(client):
+    """The default boundary is midnight Asia/Kolkata: 23:30 UTC is 05:00 IST."""
     _store(
         [_closed("LATE-1", -50.0, opened=datetime(2026, 9, 28, 23, 0), closed=datetime(2026, 9, 28, 23, 30))]
     )
     days = client.get("/api/analytics/calendar", params={"year": 2026}).json()["days"]
-    assert [d["date"] for d in days] == ["2026-09-28"]
+    assert [d["date"] for d in days] == ["2026-09-29"]
     assert days[0]["net_pnl"] == -50.0
 
 

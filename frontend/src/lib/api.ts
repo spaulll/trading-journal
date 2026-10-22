@@ -109,6 +109,16 @@ export interface DailyNoteDto {
 	updated_at: string;
 }
 
+/** Where the trading day rolls over, and the day the app calls today. */
+export interface TradingDayDto {
+	boundary_hour: number;
+	timezone: string;
+	label: string;
+	today: string;
+	default_boundary_hour: number;
+	default_timezone: string;
+}
+
 /** How the day lined up with the pre-market plan. */
 export interface AdherenceDto {
 	day: string;
@@ -569,6 +579,10 @@ export const api = {
 		req<ScreenshotDto>(`/api/screenshots/${shotId}`, json({ method: 'PATCH', body: JSON.stringify({ label }) })),
 	getBrokerOffset: () =>
 		req<{ offset_minutes: number | null; label: string | null }>('/api/settings/broker-offset'),
+	/** Where the trading day rolls over — and which day the app calls today. */
+	getTradingDay: () => req<TradingDayDto>('/api/settings/trading-day'),
+	putTradingDay: (patch: { boundary_hour?: number; timezone?: string }) =>
+		req<TradingDayDto>('/api/settings/trading-day', json({ method: 'PUT', body: JSON.stringify(patch) })),
 	listNotes: (from?: string, to?: string) => {
 		const qs = new URLSearchParams();
 		if (from) qs.set('date_from', from);

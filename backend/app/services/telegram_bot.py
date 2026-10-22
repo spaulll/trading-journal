@@ -945,10 +945,12 @@ from app.services.analytics_rules import (  # noqa: E402
 
 
 def daily_stats_text(session: Session, today: Optional[date_type] = None) -> str:
-    """One-day stats over naive-UTC close days (same convention as analytics)."""
-    day = today or _now().date()
-    start = datetime(day.year, day.month, day.day)
-    end = start + timedelta(days=1)
+    """One-day stats on the configured trading day (same rule as analytics)."""
+    from app.services.trading_day import get_trading_day
+
+    setting = get_trading_day(session)
+    day = today or setting.day_of(_now())
+    start, end = setting.bounds(day)
     closed = [
         t
         for t in session.exec(select(Trade).where(Trade.status == "CLOSED")).all()
@@ -965,7 +967,7 @@ def daily_stats_text(session: Session, today: Optional[date_type] = None) -> str
     if counts.unpriced:
         buckets += f" · {counts.unpriced} unpriced"
     lines = [
-        f"📊 Daily stats {day.isoformat()} (UTC): "
+        f"📊 Daily stats {day.isoformat()} ({setting.label()}): "
         f"{total} closed ({buckets}), "
         f"win rate {wr}, net {sum(known):+.2f}, R {r_total:+.2f}."
     ]

@@ -1,8 +1,9 @@
 """Tests for the datetime policy and the session resolver.
 
-The whole ledger buckets on **naive UTC**. A timestamp that arrives aware
-and a timestamp that arrives naive must land in the same day bucket, and a
-close at 23:30 UTC must belong to that UTC day — not to the local one.
+Timestamps are stored and compared as **naive UTC**. A timestamp that
+arrives aware and one that arrives naive must resolve to the same instant.
+``trade_close_day`` returns that instant; which *trading day* it belongs to
+is the configured boundary's call (see app.services.trading_day).
 
 Covered:
   - ``as_naive_utc`` / ``utcnow_naive`` — the naive-UTC policy
@@ -99,10 +100,10 @@ def test_trade_close_day_is_none_without_any_timestamp():
     assert trade_close_day(_Trade()) is None
 
 
-def test_a_late_close_stays_in_its_own_utc_day():
-    """23:30 UTC belongs to that day — the bucket never slides to the next."""
+def test_a_late_close_keeps_its_utc_instant():
+    """The helper returns the instant; the trading-day rule buckets it."""
     trade = _Trade(timestamp_close=datetime(2026, 9, 28, 23, 30))
-    assert trade_close_day(trade).date() == datetime(2026, 9, 28).date()
+    assert trade_close_day(trade) == datetime(2026, 9, 28, 23, 30)
 
 
 # --- wall-clock input ------------------------------------------------------

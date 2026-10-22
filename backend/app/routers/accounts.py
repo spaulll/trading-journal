@@ -11,6 +11,7 @@ from app.database import get_session
 from app.models import Account, AccountCreate, AccountRead, AccountUpdate, Trade
 from app.services.fx import convert_amount, normalize_currency
 from app.services.trade_money import usd_net
+from app.services.trading_day import get_trading_day
 
 router = APIRouter(prefix="/api/accounts", tags=["accounts"])
 
@@ -251,7 +252,10 @@ def _prop_numbers(acc: Account, session: Session, base_override: Optional[str] =
             .order_by(Trade.timestamp_close.asc(), Trade.id.asc())
         ).all()
     )
-    day_start = datetime(now.year, now.month, now.day)
+    # The prop daily-loss guardrail follows the configured trading day, the
+    # same bucket as the props' own day rollover.
+    setting = get_trading_day(session)
+    day_start, day_end = setting.bounds(setting.day_of(now))
     nets: list[float] = []
     daily_pnl = 0.0
     fx_missing = 0
@@ -273,7 +277,7 @@ def _prop_numbers(acc: Account, session: Session, base_override: Optional[str] =
             max_fallback_days = max(max_fallback_days, conv.fallback_days)
         amount = round(conv.amount or 0.0, 2)
         nets.append(amount)
-        if closed_at is not None and closed_at >= day_start:
+        if closed_at is not None and day_start <= closed_at < day_end:
             daily_pnl += amount
 
     total_net = round(sum(nets), 2)
