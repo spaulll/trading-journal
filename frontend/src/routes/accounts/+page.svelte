@@ -1,12 +1,13 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { Pencil, Plus, Trash2, X } from 'lucide-svelte';
+	import { ChevronRight, Pencil, Plus, Trash2, X } from 'lucide-svelte';
 	import { fade, scale } from 'svelte/transition';
 	import PageHead from '$lib/components/PageHead.svelte';
 	import StateBlock from '$lib/components/StateBlock.svelte';
-	import { api, errMsg, type AccountDto } from '$lib/api';
+	import { api, errMsg, type AccountDto, type AccountEventDto } from '$lib/api';
 	import { accounts, accountsError, accountsLoading, loadAccounts } from '$lib/stores/accounts';
 	import { toasts } from '$lib/stores/toast';
+	import { fmtDateTime } from '$lib/utils/format';
 	import { FADE, MODAL } from '$lib/utils/transitions';
 
 	const PHASES = ['challenge1', 'phase2', 'funded', 'personal'] as const;
@@ -31,9 +32,26 @@
 
 	let confirmDelete = $state<number | null>(null);
 
+	let timelines = $state<Record<number, AccountEventDto[]>>({});
+	let timelineBusy = $state<Record<number, boolean>>({});
+	let timelineError = $state<Record<number, string | null>>({});
+
 	onMount(() => {
 		void loadAccounts();
 	});
+
+	async function loadTimeline(id: number): Promise<void> {
+		if (timelineBusy[id]) return;
+		timelineBusy[id] = true;
+		timelineError[id] = null;
+		try {
+			timelines[id] = await api.accountTimeline(id, 25);
+		} catch (err) {
+			timelineError[id] = errMsg(err);
+		} finally {
+			timelineBusy[id] = false;
+		}
+	}
 
 	function openCreate(): void {
 		fFirm = '';
@@ -245,6 +263,37 @@
 				<p class="num mt-3 border-t border-line pt-2.5 text-[11px] text-dim">
 					{a.open_trades} open · {a.total_trades} total{#if a.login} · login {a.login}{/if}
 				</p>
+				<details
+					class="group mt-3 border-t border-line pt-2.5"
+					ontoggle={(e) => (e.currentTarget as HTMLDetailsElement).open && void loadTimeline(a.id)}
+				>
+					<summary class="flex cursor-pointer list-none items-center gap-1.5 text-[11px] font-medium tracking-[0.14em] uppercase text-dim transition-colors hover:text-fg">
+						<ChevronRight size={13} class="transition-transform group-open:rotate-90" aria-hidden="true" />
+						Timeline
+						{#if timelines[a.id]}<span class="text-dim/70">· {timelines[a.id].length}</span>{/if}
+					</summary>
+					<div class="mt-2">
+						{#if timelineBusy[a.id]}
+							<div class="space-y-1.5" aria-label="Loading timeline">
+								<div class="skeleton h-4 w-3/4"></div>
+								<div class="skeleton h-4 w-1/2"></div>
+							</div>
+						{:else if timelineError[a.id]}
+							<p class="text-[12px] text-loss" role="alert">{timelineError[a.id]}</p>
+						{:else if (timelines[a.id]?.length ?? 0) === 0}
+							<p class="text-[12px] text-dim">No events yet.</p>
+						{:else}
+							<ol class="space-y-1.5">
+								{#each timelines[a.id] ?? [] as event (event.id ?? `${event.kind}-${event.occurred_at}`)}
+									<li class="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+										<span class="num text-[10px] text-dim tabular-nums">{fmtDateTime(event.occurred_at)}</span>
+										<span class="text-[12px] text-fg">{event.label}</span>
+									</li>
+								{/each}
+							</ol>
+						{/if}
+					</div>
+				</details>
 			</article>
 		{/each}
 	</div>

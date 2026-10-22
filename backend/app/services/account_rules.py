@@ -19,8 +19,16 @@ from typing import Any, Optional
 
 from sqlmodel import Session, select
 
-from app.models import Account, AccountEvent, AccountRule, AccountRuleRead, Trade
+from app.models import (
+    Account,
+    AccountEvent,
+    AccountEventRead,
+    AccountRule,
+    AccountRuleRead,
+    Trade,
+)
 from app.services.trading_day import day_of_trade, get_trading_day
+from app.services.timeutils import as_naive_utc
 
 RULE_KINDS = ("profit_target", "max_loss", "daily_loss", "min_days", "consistency")
 RULE_LABELS = {
@@ -290,3 +298,62 @@ def _serialize(row: AccountRule, acc: Account, today: date_type) -> AccountRuleR
         warning=warning,
         days_left=days_left,
     )
+
+
+def _event_label(kind: str, payload: dict[str, Any]) -> str:
+    if kind == "account_created":
+        return "Account created"
+    if kind == "rule_met":
+        return f"{payload.get('label', 'Rule')} met"
+    if kind == "rule_breached":
+        return f"{payload.get('label', 'Rule')} breached"
+    if kind == "status_changed":
+        return f"Status: {payload.get('from', '?')} → {payload.get('to', '?')}"
+    return kind.replace("_", " ").capitalize()
+
+
+def list_account_timeline(
+    session: Session, acc: Account, limit: int = 50
+) -> list[AccountEventRead]:
+    """The account's history, newest first, anchored by its creation.
+
+    Creation is synthesised from ``account.created_at`` so accounts that
+    predate this table still get a complete timeline. It is always shown,
+    even when the event limit only covers recent activity.
+    """
+    events = session.exec(
+        select(AccountEvent)
+        .where(AccountEvent.account_id == acc.id)
+        .order_by(AccountEvent.occurred_at.desc(), AccountEvent.id.desc())
+        .limit(limit)
+    ).all()
+
+    timeline: list[AccountEventRead] = []
+    for event in events:
+        try:
+            parsed = json.loads(event.payload or "{}")
+            payload = parsed if isinstance(parsed, dict) else {"value": parsed}
+        except json.JSONDecodeError:
+            payload = {"raw": event.payload}
+        timeline.append(
+            AccountEventRead(
+                id=event.id,
+                account_id=event.account_id,
+                kind=event.kind,
+                label=_event_label(event.kind, payload),
+                payload=payload,
+                occurred_at=event.occurred_at,
+            )
+        )
+
+    timeline.append(
+        AccountEventRead(
+            id=None,
+            account_id=acc.id or 0,
+            kind="account_created",
+            label=_event_label("account_created", {}),
+            payload={"alias": acc.alias},
+            occurred_at=as_naive_utc(acc.created_at) or _now(),
+        )
+    )
+    return timeline
