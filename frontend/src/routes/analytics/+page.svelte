@@ -6,6 +6,7 @@
 	import RDistributionChart from '$lib/components/charts/RDistributionChart.svelte';
 	import TagPerformanceBar from '$lib/components/charts/TagPerformanceBar.svelte';
 	import UnderwaterChart from '$lib/components/charts/UnderwaterChart.svelte';
+	import DrawdownBreakdown from '$lib/components/dashboard/DrawdownBreakdown.svelte';
 	import KpiStrip from '$lib/components/dashboard/KpiStrip.svelte';
 	import LongShortOverview from '$lib/components/dashboard/LongShortOverview.svelte';
 	import MonthlyCalendar from '$lib/components/dashboard/MonthlyCalendar.svelte';
@@ -30,6 +31,7 @@
 		type ActivityStreaks,
 		type CalendarDay,
 		type DirectionStats,
+		type DrawdownBreakdown as DrawdownBreakdownDto,
 		type EquityPoint,
 		type KpiDashboard,
 		type MonthlyCalendarDto,
@@ -51,6 +53,8 @@
 	let symbolPerf = $state<SymbolPerformance | null>(null);
 	let matrix = $state<SetupMatrixDto | null>(null);
 	let confidence = $state<SetupConfidence | null>(null);
+	let drawdownAccount = $state<DrawdownBreakdownDto | null>(null);
+	let drawdownSetup = $state<DrawdownBreakdownDto | null>(null);
 	let days = $state<CalendarDay[]>([]);
 	let year = $state(new Date().getFullYear());
 	let rBuckets = $state<RBucket[]>([]);
@@ -82,6 +86,8 @@
 		symbolPerf?: SymbolPerformance;
 		matrix?: SetupMatrixDto;
 		confidence?: SetupConfidence;
+		drawdownAccount?: DrawdownBreakdownDto;
+		drawdownSetup?: DrawdownBreakdownDto;
 	}
 
 	function applySnapshot(snap: AnalyticsSnapshot): void {
@@ -100,6 +106,8 @@
 		if (snap.symbolPerf) symbolPerf = snap.symbolPerf;
 		if (snap.matrix) matrix = snap.matrix;
 		if (snap.confidence) confidence = snap.confidence;
+		if (snap.drawdownAccount) drawdownAccount = snap.drawdownAccount;
+		if (snap.drawdownSetup) drawdownSetup = snap.drawdownSetup;
 	}
 
 	async function loadYearDays(y: number): Promise<void> {
@@ -117,13 +125,15 @@
 		error = null;
 		const acct = $selectedAccountId;
 		try {
-			const [s, e, t, sp, sm, cf, c, k, mc, a, ls, rd, rb] = await Promise.all([
+			const [s, e, t, sp, sm, cf, dda, dds, c, k, mc, a, ls, rd, rb] = await Promise.all([
 				api.summary(acct),
 				api.equityCurve(acct),
 				api.tagPerformance(acct),
 				api.symbolPerformance(acct),
 				api.setupMatrix(acct),
 				api.setupConfidence(acct),
+				api.drawdown('account', acct),
+				api.drawdown('setup', acct),
 				api.calendar(year, acct),
 				api.kpi(acct),
 				api.monthlyCalendar(monthCursor.y, monthCursor.m, acct),
@@ -143,6 +153,8 @@
 			symbolPerf = sp;
 			matrix = sm;
 			confidence = cf;
+			drawdownAccount = dda;
+			drawdownSetup = dds;
 			days = c.days;
 			year = c.year;
 			kpi = k;
@@ -163,6 +175,8 @@
 						symbolPerf: sp,
 						matrix: sm,
 						confidence: cf,
+						drawdownAccount: dda,
+						drawdownSetup: dds,
 						days: c.days,
 						year: c.year,
 						kpi: k,
@@ -351,6 +365,10 @@
 
 		{#if confidence}
 			<SetupConfidencePanel data={confidence} />
+		{/if}
+
+		{#if drawdownAccount && drawdownSetup}
+			<DrawdownBreakdown account={drawdownAccount} setup={drawdownSetup} />
 		{/if}
 
 		<section class="rise grid grid-cols-1 gap-4 xl:grid-cols-12" style="animation-delay: 40ms">

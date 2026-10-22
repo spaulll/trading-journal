@@ -342,6 +342,20 @@ export interface SetupConfidence {
 	insufficient: number;
 }
 
+export interface DrawdownGroup extends PerformanceBucket {
+	key: string;
+	label: string;
+	peak: number;
+	max_drawdown: number;
+	current_drawdown: number;
+}
+
+export interface DrawdownBreakdown {
+	group_by: 'account' | 'setup';
+	overall: DrawdownGroup;
+	groups: DrawdownGroup[];
+}
+
 export interface CalendarDay {
 	date: string;
 	net_pnl: number;
@@ -635,6 +649,11 @@ export const api = {
 		req<SetupConfidence>(
 			`/api/analytics/setup-confidence${accountId ? `?account_id=${accountId}` : ''}`
 		),
+	drawdown: (groupBy: 'account' | 'setup', accountId?: number | null) => {
+		const qs = new URLSearchParams({ group_by: groupBy });
+		if (accountId) qs.set('account_id', String(accountId));
+		return req<DrawdownBreakdown>(`/api/analytics/drawdown?${qs.toString()}`);
+	},
 	calendar: (year?: number, accountId?: number | null) => {
 		const qs = new URLSearchParams();
 		if (year) qs.set('year', String(year));
