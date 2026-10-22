@@ -33,6 +33,24 @@ def create_db_and_tables() -> None:
     _migrate_account_columns()
     _migrate_symbol_spec()
     _migrate_trade_risk_columns()
+    _migrate_fx_rate_indexes()
+
+
+def _migrate_fx_rate_indexes() -> None:
+    """Guarantee the per-day triple is unique on a pre-existing database."""
+    if not DATABASE_URL.startswith("sqlite"):
+        return
+    with engine.begin() as conn:
+        try:
+            conn.exec_driver_sql(
+                "CREATE UNIQUE INDEX IF NOT EXISTS uq_fx_rate_triple "
+                "ON fx_rate (date, base, quote)"
+            )
+        except Exception:
+            pass
+        conn.exec_driver_sql(
+            "CREATE INDEX IF NOT EXISTS ix_fx_rate_date ON fx_rate (date)"
+        )
 
 
 def _migrate_trade_risk_columns() -> None:

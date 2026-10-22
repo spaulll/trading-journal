@@ -48,6 +48,7 @@ _TABLES = (
     "app_setting",
     "insight_report",
     "symbol_spec",
+    "fx_rate",
 )
 
 
