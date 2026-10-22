@@ -219,7 +219,7 @@ def test_a_bulk_move_assigns_the_trades(client):
         json={"trade_ids": [first["id"], second["id"]], "account_id": account["id"]},
     )
     assert response.status_code == 200, response.text
-    assert response.json() == {"updated": 2}
+    assert response.json() == {"updated": 2, "skipped": [], "requested": 2}
 
     for trade_id in (first["id"], second["id"]):
         assert client.get(f"/api/trades/{trade_id}").json()["account_id"] == account["id"]
@@ -237,7 +237,7 @@ def test_a_bulk_move_can_send_the_trades_back_to_unassigned(client):
         "/api/trades/bulk-account", json={"trade_ids": [trade["id"]], "account_id": None}
     )
     assert response.status_code == 200
-    assert response.json() == {"updated": 1}
+    assert response.json() == {"updated": 1, "skipped": [], "requested": 1}
     assert client.get(f"/api/trades/{trade['id']}").json()["account_id"] is None
 
 
@@ -251,7 +251,7 @@ def test_a_bulk_move_skips_a_trade_that_does_not_exist(client):
         json={"trade_ids": [trade["id"], 999999], "account_id": account["id"]},
     )
     assert response.status_code == 200
-    assert response.json() == {"updated": 1}
+    assert response.json() == {"updated": 1, "skipped": [999999], "requested": 2}
 
 
 def test_a_bulk_move_needs_a_list_of_ids(client):
@@ -293,7 +293,10 @@ def test_a_bulk_move_ignores_an_id_that_is_not_a_number(client):
         json={"trade_ids": ["not-an-id", trade["id"]], "account_id": account["id"]},
     )
     assert response.status_code == 200
-    assert response.json() == {"updated": 1}
+    body = response.json()
+    assert body["updated"] == 1
+    assert body["skipped"] == ["not-an-id"]
+    assert body["requested"] == 2
 
 
 # --- the filter surface ----------------------------------------------------

@@ -453,7 +453,7 @@ export const api = {
 			json({ method: 'POST', body: JSON.stringify(payload) })
 		),
 	bulkAccount: (trade_ids: number[], account_id: number | null) =>
-		req<{ updated: number }>(
+		req<{ updated: number; skipped: Array<number | string>; requested: number }>(
 			'/api/trades/bulk-account',
 			json({ method: 'POST', body: JSON.stringify({ trade_ids, account_id }) })
 		),
