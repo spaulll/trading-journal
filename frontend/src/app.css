@@ -378,7 +378,7 @@ html {
 	.tgrid {
 		display: grid;
 		grid-template-columns:
-			48px 180px minmax(120px, 1.1fr) minmax(150px, 1.3fr)
+			48px 180px minmax(120px, 1.1fr) minmax(170px, 1.3fr)
 			minmax(110px, 0.9fr) 84px minmax(140px, 1.7fr) 96px;
 		align-items: center;
 	}

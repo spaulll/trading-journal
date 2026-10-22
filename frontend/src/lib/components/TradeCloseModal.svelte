@@ -3,7 +3,7 @@
 	import { untrack } from 'svelte';
 	import { fade, scale } from 'svelte/transition';
 	import { dismissLifecycle, lifecycleBusy, submitClose, trades } from '$lib/stores/trades';
-	import { fmtMoney, fmtR, mt5WallToUTC, pnlTone, previewIST, previewMT5, rTone, toneText } from '$lib/utils/format';
+	import { fmtCurrency, fmtMoney, fmtR, mt5WallToUTC, pnlTone, previewIST, previewMT5, rTone, toneText } from '$lib/utils/format';
 	import { brokerOffset } from '$lib/stores/broker';
 	import { loadSymbols, specFor, symbolMap } from '$lib/stores/symbols';
 	import { FADE, MODAL } from '$lib/utils/transitions';
@@ -190,7 +190,7 @@
 						<input type="number" value={exit} oninput={(e) => (exit = e.currentTarget.value)} step="any" class={field} />
 					</label>
 					<label class={label}>
-						Gross PnL <span class="normal-case tracking-normal text-dim">(optional)</span>
+						Gross PnL {trade.quote_currency} <span class="normal-case tracking-normal text-dim">(optional)</span>
 						<input type="number" value={gross} oninput={(e) => (gross = e.currentTarget.value)} step="any" placeholder="+135" class={field} />
 					</label>
 					<label class={label}>
@@ -230,7 +230,7 @@
 						<span>
 							<span class="text-dim">Net</span>
 							<span class="ml-1.5 font-bold {toneText[pnlTone(netPreview)]}">
-								{netPreview === null ? '—' : fmtMoney(netPreview)}
+								{netPreview === null ? '—' : fmtCurrency(netPreview, trade.quote_currency)}
 							</span>
 						</span>
 						<span>

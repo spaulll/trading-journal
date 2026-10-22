@@ -11,7 +11,7 @@
 	import { loadTrades, trades } from '$lib/stores/trades';
 	import { notesVersion, openDay } from '$lib/stores/journal';
 	import { renderMiniMarkdown } from '$lib/utils/minimd';
-	import { BE_TOL, dayKeyOf, fmtDate, fmtMoney, pnlTone, toneText } from '$lib/utils/format';
+	import { BE_TOL, dayKeyOf, fmtDate, fmtMoney, pnlTone, toneText, usdNet } from '$lib/utils/format';
 
 
 	let notes = $state<DailyNoteDto[]>([]);
@@ -96,7 +96,11 @@
 		const closes = $trades.filter(
 			(t) => t.status === 'CLOSED' && dayKeyOf(t.timestamp_close ?? t.timestamp_open) === date
 		);
-		return { count: closes.length, net: closes.reduce((a, t) => a + (t.net_pnl ?? 0), 0) };
+		return {
+			count: closes.length,
+			// Mixed-currency day → USD sum; an unpriceable trade adds nothing.
+			net: closes.reduce((a, t) => a + (usdNet(t) ?? 0), 0)
+		};
 	}
 
 	async function refresh(): Promise<void> {

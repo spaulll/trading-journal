@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { fade } from 'svelte/transition';
 	import { openTrades, openTrade, requestClose } from '$lib/stores/trades';
-	import { fmtMoney, fmtNum, pnlTone, toneText } from '$lib/utils/format';
+	import { fmtMoney, fmtNum, pnlTone, toneText, usdNet } from '$lib/utils/format';
 	import { FADE } from '$lib/utils/transitions';
 	import type { TradeDto } from '$lib/api';
 
@@ -82,8 +82,8 @@
 							{t.size ?? '—'} lots · risk {fmtNum(riskDist(t), 2)}
 						</span>
 						<span class="flex shrink-0 items-center gap-2">
-							<span class="num text-[13px] font-semibold {toneText[pnlTone(t.net_pnl)]}">
-								{fmtMoney(t.net_pnl)}
+							<span class="num text-[13px] font-semibold {toneText[pnlTone(usdNet(t))]}">
+								{fmtMoney(usdNet(t))}
 							</span>
 							<button
 								type="button"

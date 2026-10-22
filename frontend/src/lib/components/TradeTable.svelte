@@ -6,7 +6,7 @@
 	import { aliasOf, accounts, accountMap, chipAlias, loadAccounts, selectedAccountId } from '$lib/stores/accounts';
 	import { loadTrades, openTrade, requestClose, trades, upsertTrade } from '$lib/stores/trades';
 	import { toasts } from '$lib/stores/toast';
-	import { fmtDateTime, fmtMoney, fmtR, isUnpriced, pnlTone, rTone, toneBg, toneText } from '$lib/utils/format';
+	import { fmtCurrency, fmtDateTime, fmtMoney, fmtR, isUnpriced, pnlTone, rTone, toneBg, toneText, usdNet } from '$lib/utils/format';
 	import SegControl from '$lib/components/SegControl.svelte';
 
 	type StatusFilter = 'ALL' | 'OPEN' | 'CLOSED';
@@ -48,6 +48,13 @@
 		}
 	}
 
+	/** The broker-booked amount, for a tooltip beside its USD conversion. */
+	function brokerLabel(t: TradeDto): string | undefined {
+		const quote = (t.quote_currency ?? 'USD').toUpperCase();
+		if (quote === 'USD' || t.net_pnl === null) return undefined;
+		return `Broker booked ${fmtCurrency(t.net_pnl, quote)}`;
+	}
+
 	function sortTrades(list: TradeDto[]): TradeDto[] {
 		const byTime = (t: TradeDto) => t.timestamp_open ?? t.created_at;
 		const numLast = (v: number | null | undefined, desc: boolean) =>
@@ -57,9 +64,9 @@
 			case 'oldest':
 				return next.sort((a, b) => byTime(a).localeCompare(byTime(b)));
 			case 'net-desc':
-				return next.sort((a, b) => numLast(b.net_pnl, true) - numLast(a.net_pnl, true));
+				return next.sort((a, b) => numLast(usdNet(b), true) - numLast(usdNet(a), true));
 			case 'net-asc':
-				return next.sort((a, b) => numLast(a.net_pnl, false) - numLast(b.net_pnl, false));
+				return next.sort((a, b) => numLast(usdNet(a), false) - numLast(usdNet(b), false));
 			case 'r-desc':
 				return next.sort((a, b) => numLast(b.r_multiple, true) - numLast(a.r_multiple, true));
 			default:
@@ -400,17 +407,18 @@
 								{#if isUnpriced(t)}
 									<span
 										class="num inline-block rounded-md bg-flat/12 px-1.5 py-0.5 text-[10px] font-bold tracking-[0.1em] uppercase text-flat"
-										title="No contract for this symbol — the P&amp;L could not be priced"
+										title="No contract or FX rate for this trade — its P&amp;L could not be priced in USD"
 									>
 										unpriced
 									</span>
 								{:else}
 									<span
 										class="num inline-block rounded-md px-1.5 py-0.5 text-[12.5px] font-semibold {toneBg[
-											pnlTone(t.net_pnl)
-										]} {toneText[pnlTone(t.net_pnl)]}"
+											pnlTone(usdNet(t))
+										]} {toneText[pnlTone(usdNet(t))]}"
+										title={brokerLabel(t)}
 									>
-										{fmtMoney(t.net_pnl)}
+										{fmtMoney(usdNet(t))}
 									</span>
 								{/if}
 							</span>
@@ -478,9 +486,9 @@
 					style="animation-delay: {Math.min(i, 14) * 40}ms"
 				>
 					<span
-						class="absolute inset-y-0 left-0 w-[3px] {pnlTone(t.net_pnl) === 'loss'
+						class="absolute inset-y-0 left-0 w-[3px] {pnlTone(usdNet(t)) === 'loss'
 							? 'bg-loss/70'
-							: pnlTone(t.net_pnl) === 'win'
+							: pnlTone(usdNet(t)) === 'win'
 								? 'bg-win/70'
 								: 'bg-flat/70'}"
 						aria-hidden="true"
@@ -503,13 +511,13 @@
 							{#if isUnpriced(t)}
 								<span
 									class="num rounded-md bg-flat/12 px-1.5 py-0.5 text-[10px] font-bold tracking-[0.1em] uppercase text-flat"
-									title="No contract for this symbol — the P&amp;L could not be priced"
+									title="No contract or FX rate for this trade — its P&amp;L could not be priced in USD"
 								>
 									unpriced
 								</span>
 							{:else}
-								<span class="num text-sm font-semibold {toneText[pnlTone(t.net_pnl)]}">
-									{fmtMoney(t.net_pnl)}
+								<span class="num text-sm font-semibold {toneText[pnlTone(usdNet(t))]}" title={brokerLabel(t)}>
+									{fmtMoney(usdNet(t))}
 								</span>
 							{/if}
 							{#if t.status === 'OPEN'}
