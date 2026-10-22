@@ -24,6 +24,9 @@ def _now() -> datetime:
 class DailyNotePatch(SQLModel):
     pre_market: Optional[str] = None
     eod_review: Optional[str] = None
+    # The breach flag is the trader's own call — the bot raises it, but the
+    # day drawer can set and clear it too.
+    discipline_breach: Optional[bool] = None
 
 
 @router.get("", response_model=list[DailyNoteRead])
