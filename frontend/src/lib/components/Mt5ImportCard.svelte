@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { FileUp, Upload } from 'lucide-svelte';
-	import { api, errMsg, type Mt5ImportResult } from '$lib/api';
+	import { api, errMsg, type ImportDetailDto, type Mt5ImportResult } from '$lib/api';
 	import { accounts, loadAccounts } from '$lib/stores/accounts';
 	import { toasts } from '$lib/stores/toast';
 
@@ -48,6 +48,23 @@
 	const known = $derived(
 		result ? [...result.added, ...result.updated, ...result.unchanged, ...result.skipped] : []
 	);
+	const updatedDetails = $derived(
+		result ? result.details.filter((d) => d.action === 'updated') : []
+	);
+
+	function shown(value: unknown): string {
+		if (value === null || value === undefined) return '—';
+		if (typeof value === 'number') return Number.isInteger(value) ? String(value) : value.toFixed(4);
+		const text = String(value);
+		return text.length > 16 ? `${text.slice(0, 16)}…` : text;
+	}
+
+	/** `size 0.1 → 0.2 · fees 1 → 2` — what the statement changed on a ticket. */
+	function changeSummary(detail: ImportDetailDto): string {
+		return Object.entries(detail.changes ?? {})
+			.map(([key, change]) => `${key} ${shown(change.from)} → ${shown(change.to)}`)
+			.join(' · ');
+	}
 </script>
 
 <section aria-label="MT5 statement import" class="card rise mb-4 p-5">
@@ -116,6 +133,18 @@
 					{#each result.warnings as warning}
 						<li class="text-[12px] text-accent">{warning}</li>
 					{/each}
+				</ul>
+			{/if}
+			{#if updatedDetails.length > 0}
+				<ul class="mt-2 flex flex-col gap-0.5">
+					{#each updatedDetails.slice(0, 5) as detail (detail.ticket)}
+						<li class="num truncate text-[11px] text-mut" title={changeSummary(detail)}>
+							<span class="text-fg">{detail.ticket}</span> · {changeSummary(detail)}
+						</li>
+					{/each}
+					{#if updatedDetails.length > 5}
+						<li class="num text-[11px] text-dim">+{updatedDetails.length - 5} more updated</li>
+					{/if}
 				</ul>
 			{/if}
 			{#if known.length > 0}
