@@ -204,3 +204,32 @@ def test_the_id_list_honours_the_filter(client):
     body = client.get("/api/trades/ids", params={"q": "gold"}).json()
     assert body["total"] == 1
     assert len(body["ids"]) == 1
+
+
+# --- the bulk move ----------------------------------------------------------
+
+
+def test_a_bulk_move_reports_the_ids_it_skipped(client):
+    account = _account(client)
+    trade = _open(client)
+
+    response = client.post(
+        "/api/trades/bulk-account",
+        json={"trade_ids": [trade["id"], 999999], "account_id": account["id"]},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["updated"] == 1
+    # The trade that does not exist is named, not swallowed.
+    assert body["skipped"] == [999999]
+    assert body["requested"] == 2
+
+
+def test_a_bulk_move_still_refuses_more_than_five_hundred_ids(client):
+    account = _account(client)
+    response = client.post(
+        "/api/trades/bulk-account",
+        json={"trade_ids": list(range(1, 502)), "account_id": account["id"]},
+    )
+    assert response.status_code == 422
+    assert "500" in response.json()["detail"]

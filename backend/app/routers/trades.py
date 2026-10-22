@@ -708,6 +708,10 @@ def bulk_assign_account(
     """Move many trades to one account (or back to unassigned with null).
 
     Body: {"trade_ids": [1, 2], "account_id": 3 | null}
+
+    The answer names the ids it could not move as well as the ones it did:
+    a trade that no longer exists must not disappear silently. The batch
+    limit stays at 500 — a larger move is the caller's job to split.
     """
     ids = payload.get("trade_ids") or []
     account_id = payload.get("account_id")
@@ -717,20 +721,23 @@ def bulk_assign_account(
         raise HTTPException(status_code=422, detail="Batch limit is 500 trades")
     _resolve_account_id(session, account_id)
     updated = 0
+    skipped: list[object] = []
     for tid in ids:
         try:
             tid_int = int(tid)
         except (TypeError, ValueError):
+            skipped.append(tid)
             continue
         trade = session.get(Trade, tid_int)
         if trade is None:
+            skipped.append(tid_int)
             continue
         trade.account_id = account_id
         trade.updated_at = _now()
         session.add(trade)
         updated += 1
     session.commit()
-    return {"updated": updated}
+    return {"updated": updated, "skipped": skipped, "requested": len(ids)}
 
 
 @router.delete("/{trade_id}")

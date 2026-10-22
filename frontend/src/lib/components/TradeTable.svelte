@@ -11,6 +11,9 @@
 	import { fmtCurrency, fmtDateTime, fmtMoney, fmtR, isUnpriced, pnlTone, rTone, toneBg, toneText, usdNet } from '$lib/utils/format';
 	import SegControl from '$lib/components/SegControl.svelte';
 
+	/** The server takes 500 ids a batch — a bigger move is split into batches. */
+	const BULK_BATCH = 500;
+
 	let moveTarget = $state('');
 	let moving = $state(false);
 	let moveOpen = $state(false);
@@ -101,13 +104,41 @@
 				? filtered.filter((t) => selected.has(t.id)).map((t) => t.id)
 				: (await api.listTradeIds(get(ledgerQuery))).ids;
 			if (ids.length === 0) {
-				toasts.push('success', 'Nothing to move — the filter matches no trades.');
+				toasts.push('info', 'Nothing to move — the filter matches no trades.');
 				return;
 			}
-			const r = await api.bulkAccount(ids, target);
+			const where = moveTarget === 'unassigned' ? 'unassigned' : '@' + aliasOf(target);
+			// The server takes 500 ids a batch, so a bigger move is split
+			// here — and every batch is reported, not just the last one.
+			let updated = 0;
+			const skipped: Array<number | string> = [];
+			let failed = '';
+			for (let i = 0; i < ids.length; i += BULK_BATCH) {
+				const batch = ids.slice(i, i + BULK_BATCH);
+				try {
+					const r = await api.bulkAccount(batch, target);
+					updated += r.updated;
+					skipped.push(...(r.skipped ?? []));
+				} catch (e) {
+					failed = e instanceof Error ? e.message : 'unknown error';
+					break;
+				}
+			}
 			await loadTrades(true);
 			selected = new Set([...selected].filter((id) => !ids.includes(id)));
-			toasts.push('success', `Moved ${r.updated} trade${r.updated === 1 ? '' : 's'} to ${moveTarget === 'unassigned' ? 'unassigned' : '@' + aliasOf(target)}.`);
+			if (failed) {
+				toasts.push('error', `Move failed after ${updated} trade${updated === 1 ? '' : 's'} — ${failed}`);
+				return;
+			}
+			if (skipped.length > 0) {
+				const shown = skipped.slice(0, 5).join(', ');
+				toasts.push(
+					'info',
+					`Moved ${updated} to ${where} · ${skipped.length} skipped (${shown}${skipped.length > 5 ? ', …' : ''})`
+				);
+				return;
+			}
+			toasts.push('success', `Moved ${updated} trade${updated === 1 ? '' : 's'} to ${where}.`);
 		} catch (e) {
 			toasts.push('error', `Move failed — ${e instanceof Error ? e.message : 'unknown error'}`);
 		} finally {
