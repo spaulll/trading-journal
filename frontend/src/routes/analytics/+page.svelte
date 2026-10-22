@@ -11,6 +11,7 @@
 	import LongShortOverview from '$lib/components/dashboard/LongShortOverview.svelte';
 	import MonthlyCalendar from '$lib/components/dashboard/MonthlyCalendar.svelte';
 	import RadarAnalytics from '$lib/components/dashboard/RadarAnalytics.svelte';
+	import RiskOfRuinPanel from '$lib/components/dashboard/RiskOfRuinPanel.svelte';
 	import SessionGrid from '$lib/components/dashboard/SessionGrid.svelte';
 	import SetupConfidencePanel from '$lib/components/dashboard/SetupConfidencePanel.svelte';
 	import SetupMatrix from '$lib/components/dashboard/SetupMatrix.svelte';
@@ -38,6 +39,7 @@
 		type PropStatusDto,
 		type RadarProfiles,
 		type RBucket,
+		type RiskOfRuin,
 		type SetupConfidence,
 		type SetupMatrix as SetupMatrixDto,
 		type SummaryDto,
@@ -55,6 +57,7 @@
 	let confidence = $state<SetupConfidence | null>(null);
 	let drawdownAccount = $state<DrawdownBreakdownDto | null>(null);
 	let drawdownSetup = $state<DrawdownBreakdownDto | null>(null);
+	let ruin = $state<RiskOfRuin | null>(null);
 	let days = $state<CalendarDay[]>([]);
 	let year = $state(new Date().getFullYear());
 	let rBuckets = $state<RBucket[]>([]);
@@ -88,6 +91,7 @@
 		confidence?: SetupConfidence;
 		drawdownAccount?: DrawdownBreakdownDto;
 		drawdownSetup?: DrawdownBreakdownDto;
+		ruin?: RiskOfRuin;
 	}
 
 	function applySnapshot(snap: AnalyticsSnapshot): void {
@@ -108,6 +112,7 @@
 		if (snap.confidence) confidence = snap.confidence;
 		if (snap.drawdownAccount) drawdownAccount = snap.drawdownAccount;
 		if (snap.drawdownSetup) drawdownSetup = snap.drawdownSetup;
+		if (snap.ruin) ruin = snap.ruin;
 	}
 
 	async function loadYearDays(y: number): Promise<void> {
@@ -125,7 +130,7 @@
 		error = null;
 		const acct = $selectedAccountId;
 		try {
-			const [s, e, t, sp, sm, cf, dda, dds, c, k, mc, a, ls, rd, rb] = await Promise.all([
+			const [s, e, t, sp, sm, cf, dda, dds, rr, c, k, mc, a, ls, rd, rb] = await Promise.all([
 				api.summary(acct),
 				api.equityCurve(acct),
 				api.tagPerformance(acct),
@@ -134,6 +139,7 @@
 				api.setupConfidence(acct),
 				api.drawdown('account', acct),
 				api.drawdown('setup', acct),
+				api.riskOfRuin(acct),
 				api.calendar(year, acct),
 				api.kpi(acct),
 				api.monthlyCalendar(monthCursor.y, monthCursor.m, acct),
@@ -155,6 +161,7 @@
 			confidence = cf;
 			drawdownAccount = dda;
 			drawdownSetup = dds;
+			ruin = rr;
 			days = c.days;
 			year = c.year;
 			kpi = k;
@@ -177,6 +184,7 @@
 						confidence: cf,
 						drawdownAccount: dda,
 						drawdownSetup: dds,
+						ruin: rr,
 						days: c.days,
 						year: c.year,
 						kpi: k,
@@ -369,6 +377,10 @@
 
 		{#if drawdownAccount && drawdownSetup}
 			<DrawdownBreakdown account={drawdownAccount} setup={drawdownSetup} />
+		{/if}
+
+		{#if ruin}
+			<RiskOfRuinPanel data={ruin} />
 		{/if}
 
 		<section class="rise grid grid-cols-1 gap-4 xl:grid-cols-12" style="animation-delay: 40ms">

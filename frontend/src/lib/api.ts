@@ -356,6 +356,39 @@ export interface DrawdownBreakdown {
 	groups: DrawdownGroup[];
 }
 
+export interface RiskOfRuinRow {
+	name: string;
+	trade_count: number;
+	decided: number;
+	wins: number;
+	losses: number;
+	breakeven: number;
+	unpriced: number;
+	win_rate: number;
+	avg_win: number | null;
+	avg_loss: number | null;
+	payoff_ratio: number | null;
+	expectancy_r: number | null;
+	net_pnl: number;
+	avg_r: number | null;
+	risk_per_trade: number | null;
+	risk_source: 'explicit' | 'realized' | 'initial' | 'missing';
+	risk_units: number | null;
+	risk_of_ruin: number | null;
+	sufficient: boolean;
+}
+
+export interface RiskOfRuin {
+	account_size: number | null;
+	account_size_source: string;
+	risk_per_trade_override: number | null;
+	min_sample: number;
+	method: string;
+	detail: string | null;
+	setups: RiskOfRuinRow[];
+	insufficient: number;
+}
+
 export interface CalendarDay {
 	date: string;
 	net_pnl: number;
@@ -654,6 +687,10 @@ export const api = {
 		if (accountId) qs.set('account_id', String(accountId));
 		return req<DrawdownBreakdown>(`/api/analytics/drawdown?${qs.toString()}`);
 	},
+	riskOfRuin: (accountId?: number | null) =>
+		req<RiskOfRuin>(
+			`/api/analytics/risk-of-ruin${accountId ? `?account_id=${accountId}` : ''}`
+		),
 	calendar: (year?: number, accountId?: number | null) => {
 		const qs = new URLSearchParams();
 		if (year) qs.set('year', String(year));
