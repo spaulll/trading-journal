@@ -212,16 +212,24 @@ def _warning(
     return None, days_left
 
 
-def sync_account_rules(session: Session, acc: Account) -> list[AccountRuleRead]:
+def sync_account_rules(
+    session: Session,
+    acc: Account,
+    *,
+    numbers: Optional[dict] = None,
+) -> list[AccountRuleRead]:
     """Refresh every configured rule and persist newly resolved milestones.
 
     The live numbers come from the same ``_prop_numbers`` calculator the
     prop-status endpoint uses, so the web card, the rules endpoint and the
-    Telegram view cannot drift.
+    Telegram view cannot drift. Callers that already computed the snapshot
+    (the Telegram views) pass it in, so the rules read exactly the same
+    numbers the surrounding message prints.
     """
-    from app.routers.accounts import _prop_numbers
+    if numbers is None:
+        from app.routers.accounts import _prop_numbers
 
-    numbers = _prop_numbers(acc, session)
+        numbers = _prop_numbers(acc, session)
     setting = get_trading_day(session)
     now = _now()
     today = setting.day_of(now)
