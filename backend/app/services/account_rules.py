@@ -202,9 +202,11 @@ def _warning(
     needed = max(0, target - current)
     available = _weekdays_between(today, deadline)
     if needed > 0 and needed >= available:
+        more_days = "day" if needed == 1 else "days"
+        weekdays = "weekday" if available == 1 else "weekdays"
         return (
-            f"At risk: {needed} more trading day(s) needed, only "
-            f"{available} weekday(s) left before {deadline.isoformat()}.",
+            f"At risk: {needed} more trading {more_days} needed, only "
+            f"{available} {weekdays} left before {deadline.isoformat()}.",
             days_left,
         )
     return None, days_left

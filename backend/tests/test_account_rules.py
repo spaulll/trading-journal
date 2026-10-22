@@ -299,3 +299,69 @@ def test_the_timeline_limit_keeps_the_creation_anchor(client):
         "status_changed",
         "account_created",
     ]
+
+
+def test_the_days_rule_warns_when_the_deadline_is_too_close(client):
+    today = datetime.now(timezone.utc).date()
+    account = _account(
+        client,
+        min_trading_days=10,
+        deadline=(today + timedelta(days=2)).isoformat(),
+    )
+    _trade(
+        client,
+        account["id"],
+        "WARN-1",
+        (today - timedelta(days=3)).isoformat(),
+        100.0,
+    )
+
+    rule = _rules(client, account["id"])["min_days"]
+    assert rule["status"] == "pending"
+    assert rule["warning"] is not None
+    assert "At risk" in rule["warning"]
+    assert "9 more trading days needed" in rule["warning"]
+    assert "weekdays left" in rule["warning"]
+    assert rule["days_left"] is not None and rule["days_left"] <= 2
+
+
+def test_a_deadline_that_passed_marks_the_days_rule_missed(client):
+    today = datetime.now(timezone.utc).date()
+    account = _account(
+        client,
+        min_trading_days=10,
+        deadline=(today - timedelta(days=1)).isoformat(),
+    )
+
+    rule = _rules(client, account["id"])["min_days"]
+    assert rule["status"] == "missed"
+    assert rule["warning"] == "Deadline passed with 0 of 10 trading days."
+    assert rule["days_left"] is not None and rule["days_left"] < 0
+
+
+def test_enough_time_left_does_not_warn(client):
+    today = datetime.now(timezone.utc).date()
+    account = _account(
+        client,
+        min_trading_days=2,
+        deadline=(today + timedelta(days=30)).isoformat(),
+    )
+
+    rule = _rules(client, account["id"])["min_days"]
+    assert rule["status"] == "pending"
+    assert rule["warning"] is None
+
+
+def test_meeting_the_days_requirement_clears_the_warning(client):
+    today = datetime.now(timezone.utc).date()
+    account = _account(
+        client,
+        min_trading_days=1,
+        deadline=(today + timedelta(days=2)).isoformat(),
+    )
+    _trade(client, account["id"], "WARN-MET", today.isoformat(), 100.0)
+
+    rule = _rules(client, account["id"])["min_days"]
+    assert rule["status"] == "met"
+    assert rule["met_at"] is not None
+    assert rule["warning"] is None
