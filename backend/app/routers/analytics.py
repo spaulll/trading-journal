@@ -16,7 +16,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlmodel import Session, select
 
 from app.database import get_session
-from app.models import Tag, Trade, TradeTagLink
+from app.models import SymbolSpec, Tag, Trade, TradeTagLink
 from app.services import analytics_rules
 from app.services.analytics_rules import (
     BE_TOLERANCE,
@@ -98,6 +98,57 @@ def _profit_factor(nets: list[float]) -> Optional[float]:
     gross_profit = sum(n for n in nets if _is_win(n))
     gross_loss = abs(sum(n for n in nets if _is_loss(n)))
     return round(gross_profit / gross_loss, 3) if gross_loss else None
+
+
+def _symbol_key(t: Trade) -> str:
+    """The grouping key for a symbol — blank rows are their own bucket."""
+    return (t.symbol or "").strip().upper() or "UNKNOWN"
+
+
+def _r_values(trades: list[Trade]) -> list[float]:
+    return [t.r_multiple for t in trades if t.r_multiple is not None]
+
+
+def _avg_r(trades: list[Trade]) -> Optional[float]:
+    values = _r_values(trades)
+    return round(sum(values) / len(values), 3) if values else None
+
+
+def _net_stats(trades: list[Trade]) -> dict:
+    """Outcome counts and money figures for one bucket of closed trades.
+
+    Uses the shared breakeven band and win-rate denominator, and the USD net
+    for every total, so a bucket can never disagree with the dashboard
+    ribbon. An unpriced trade is counted as unknown, never as a zero.
+    """
+    nets = [usd_net(t) for t in trades]
+    counts = analytics_rules.split_outcomes(nets)
+    known = [n for n in nets if n is not None]
+    net = round(sum(known), 2)
+    return {
+        "trade_count": len(trades),
+        "priced": counts.priced,
+        "unpriced": counts.unpriced,
+        "wins": counts.wins,
+        "losses": counts.losses,
+        "breakeven": counts.breakeven,
+        "net_pnl": net,
+        "win_rate": analytics_rules.win_rate(counts.wins, counts.losses),
+        # Per priced trade — the same expectancy the summary reports.
+        "expectancy": round(net / counts.priced, 2) if counts.priced else 0.0,
+    }
+
+
+def _bucket(trades: list[Trade]) -> dict:
+    """One comparable performance row: counts, money, R and currencies."""
+    known = [n for n in (usd_net(t) for t in trades) if n is not None]
+    return {
+        **_net_stats(trades),
+        "profit_factor": _profit_factor(known),
+        "avg_r": _avg_r(trades),
+        "r_trades": len(_r_values(trades)),
+        "by_currency": currency_breakdown(trades),
+    }
 
 
 def _streak_runs(signs: list[int]) -> tuple[list[int], list[int]]:
@@ -287,6 +338,42 @@ def tag_performance(account_id: Optional[int] = Query(default=None), session: Se
         )
     rows.sort(key=lambda r: r["net_pnl"], reverse=True)
     return {"tags": rows}
+
+
+@router.get("/symbol-performance")
+def symbol_performance(
+    account_id: Optional[int] = Query(default=None),
+    session: Session = Depends(get_session),
+):
+    """Per-symbol results — what each instrument actually pays.
+
+    Net, win rate, expectancy, realised R and trade count, on the same
+    breakeven band and win-rate denominator as the dashboard. An
+    unregistered symbol keeps its trades and is marked ``registered: false``;
+    its unpriced trades stay out of the money and the rate, never scored as
+    zero results.
+    """
+    trades = _closed_trades(session, account_id)
+    buckets: dict[str, list[Trade]] = defaultdict(list)
+    for trade in trades:
+        buckets[_symbol_key(trade)].append(trade)
+    specs = {spec.symbol: spec for spec in session.exec(select(SymbolSpec)).all()}
+
+    rows = []
+    for symbol, bucket in buckets.items():
+        spec = specs.get(symbol)
+        rows.append(
+            {
+                "symbol": symbol,
+                "display": spec.display if spec and spec.display else symbol,
+                "registered": spec is not None,
+                "category": spec.category if spec else None,
+                "contract_size": spec.contract_size if spec else None,
+                **_bucket(bucket),
+            }
+        )
+    rows.sort(key=lambda row: (-row["net_pnl"], row["symbol"]))
+    return {"symbols": rows, "totals": _bucket(trades)}
 
 
 @router.get("/calendar")
