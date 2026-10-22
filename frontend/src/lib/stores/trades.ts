@@ -1,4 +1,4 @@
-import { derived, get, writable } from 'svelte/store';
+import { get, writable } from 'svelte/store';
 import { errMsg, type ScreenshotDto, type TradeDto, api } from '$lib/api';
 import { SNAPSHOT_KEYS, readSnapshot, saveSnapshot } from '$lib/offline-snapshot';
 import { usdNet } from '$lib/utils/format';
@@ -15,13 +15,21 @@ export const tradeCounts = writable<{ ALL: number; OPEN: number; CLOSED: number 
 	OPEN: 0,
 	CLOSED: 0
 });
+/** The page the ledger is on. */
+export const tradesPage = writable(1);
+/** How many rows one page holds. */
+export const tradesPageSize = writable(50);
 export const tradesLoading = writable(true);
 export const tradesError = writable<string | null>(null);
 export const syncing = writable(false);
 export const selectedTradeId = writable<number | null>(null);
 
-export const openTrades = derived(trades, ($t) => $t.filter((t) => t.status === 'OPEN'));
-export const closedTrades = derived(trades, ($t) => $t.filter((t) => t.status !== 'OPEN'));
+/** The open positions, fetched on their own — the ledger holds one filtered page. */
+export const openTrades = writable<TradeDto[]>([]);
+/** The closed trades of the day the journal drawer is showing. */
+export const dayTrades = writable<TradeDto[]>([]);
+/** Every trade the client has seen — the drawer opens a trade by id. */
+export const tradeCache = writable<Map<number, TradeDto>>(new Map());
 
 /** Interactive lifecycle modal state (Phase 5). */
 export type LifecycleModal = { kind: 'open' } | { kind: 'close'; tradeId: number };
@@ -100,8 +108,8 @@ export async function submitBackfill(record: Record<string, unknown>): Promise<b
  * previous data stays on screen and the caller reports the miss instead.
  *
  * The query is the ledger's filter state, so the browser asks the server for
- * the rows it is going to show instead of downloading the whole history and
- * filtering it here.
+ * one page of the rows it is going to show instead of downloading the whole
+ * history and filtering it here.
  */
 export async function loadTrades(quiet = false, query: string = get(ledgerQuery)): Promise<boolean> {
 	if (!quiet) {
@@ -109,10 +117,13 @@ export async function loadTrades(quiet = false, query: string = get(ledgerQuery)
 		tradesError.set(null);
 	}
 	try {
-		const { items, total, counts } = await api.listAllTrades(query);
+		const { items, total, page, page_size, counts } = await api.listTradesPaged(query);
 		trades.set(items);
 		tradesTotal.set(total);
-		tradeCounts.set(counts);
+		tradesPage.set(page);
+		tradesPageSize.set(page_size);
+		tradeCounts.set(counts ?? { ALL: total, OPEN: 0, CLOSED: 0 });
+		cacheTrades(items);
 		if (quiet) tradesError.set(null);
 		markOnline();
 		snapshotAt.set(saveSnapshot(SNAPSHOT_KEYS.trades, { items, total }) ?? null);
@@ -135,6 +146,56 @@ export async function loadTrades(quiet = false, query: string = get(ledgerQuery)
 	}
 }
 
+/**
+ * The open positions, on their own query.
+ *
+ * The ledger shows one filtered page, so the live positions cannot come out
+ * of it — an open trade may sit on a later page, or outside the filter.
+ */
+export async function loadOpenPositions(): Promise<void> {
+	try {
+		const { items } = await api.listTradesPaged('?status=OPEN&page_size=200');
+		openTrades.set(items);
+		cacheTrades(items);
+	} catch {
+		// The live list is best-effort: keep whatever is on screen.
+	}
+}
+
+/** The closed trades of one day — the journal drawer's own query. */
+export async function loadDayTrades(day: string): Promise<void> {
+	try {
+		const { items } = await api.listTradesPaged(
+			`?status=CLOSED&closed_from=${day}T00:00:00&closed_to=${day}T23:59:59&page_size=200`
+		);
+		dayTrades.set(items);
+		cacheTrades(items);
+	} catch {
+		dayTrades.set([]);
+	}
+}
+
+/** Fetch a trade the client has not seen — the drawer opens one by id. */
+export async function ensureTrade(id: number): Promise<void> {
+	if (get(tradeCache).has(id)) return;
+	try {
+		const trade = await api.getTrade(id);
+		cacheTrades([trade]);
+	} catch {
+		// Nothing to show — the drawer keeps what it has.
+	}
+}
+
+/** Remember the trades the client has seen, so a drawer can find them later. */
+function cacheTrades(list: TradeDto[]): void {
+	if (list.length === 0) return;
+	tradeCache.update((cache) => {
+		const next = new Map(cache);
+		for (const trade of list) next.set(trade.id, trade);
+		return next;
+	});
+}
+
 /** Reload trades from the API (v1 bot CSV sync retired in PLAN-v2). */
 export async function refreshTrades(): Promise<void> {
 	if (get(syncing)) return;
@@ -155,6 +216,7 @@ export function upsertTrade(trade: TradeDto): void {
 		next[i] = trade;
 		return next;
 	});
+	cacheTrades([trade]);
 }
 
 export function appendScreenshot(tradeId: number, shot: ScreenshotDto): void {
@@ -175,6 +237,11 @@ export function updateScreenshot(tradeId: number, shot: ScreenshotDto): void {
 
 export function removeTrade(id: number): void {
 	trades.update((list) => list.filter((t) => t.id !== id));
+	tradeCache.update((cache) => {
+		const next = new Map(cache);
+		next.delete(id);
+		return next;
+	});
 	if (get(selectedTradeId) === id) selectedTradeId.set(null);
 }
 

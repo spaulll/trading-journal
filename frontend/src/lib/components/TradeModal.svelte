@@ -6,10 +6,11 @@
 	import {
 		appendScreenshot,
 		closeTrade,
+		ensureTrade,
 		removeTrade,
 		requestClose,
 		selectedTradeId,
-		trades,
+		tradeCache,
 		updateScreenshot,
 		upsertTrade
 	} from '$lib/stores/trades';
@@ -21,7 +22,14 @@
 
 	const LABELS = ['entry', 'exit', 'setup', 'mistake'] as const;
 
-	const trade = $derived($selectedTradeId === null ? null : ($trades.find((t) => t.id === $selectedTradeId) ?? null));
+	const trade = $derived($selectedTradeId === null ? null : ($tradeCache.get($selectedTradeId) ?? null));
+
+	// The ledger shows one page, so the drawer may be opening a trade that is
+	// not on it — fetch that one by id.
+	$effect(() => {
+		const id = $selectedTradeId;
+		if (id !== null) void ensureTrade(id);
+	});
 
 	let thesis = $state('');
 	let notes = $state('');

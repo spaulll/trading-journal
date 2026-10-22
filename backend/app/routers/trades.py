@@ -512,6 +512,44 @@ def list_trades(
     }
 
 
+@router.get("/ids")
+def list_trade_ids(
+    status: Optional[str] = Query(default=None, description="OPEN or CLOSED"),
+    symbol: Optional[str] = None,
+    query: Optional[str] = Query(default=None, alias="q", description="Free text: symbol or ticket"),
+    tag: Optional[str] = Query(default=None, description="Tag name without #/! prefix"),
+    date_from: Optional[datetime] = Query(default=None, description="Open-day lower bound"),
+    date_to: Optional[datetime] = Query(default=None, description="Open-day upper bound"),
+    closed_from: Optional[datetime] = Query(default=None, description="Close-day lower bound"),
+    closed_to: Optional[datetime] = Query(default=None, description="Close-day upper bound"),
+    account_id: Optional[int] = Query(default=None, description="Filter to one account"),
+    unassigned: bool = Query(default=False, description="Only trades with no account"),
+    sort: Optional[str] = Query(default=None, description="newest | oldest | net-desc | net-asc | r-desc"),
+    session: Session = Depends(get_session),
+):
+    """The ids of every trade the filter matches — the bulk move's work list.
+
+    The ledger shows one page, so "move everything on screen" cannot mean
+    "move the rows this page holds". This answers the question the move
+    button actually asks: which trades match the filter right now?
+    """
+    filters = _filters(
+        status,
+        symbol,
+        query,
+        tag,
+        date_from,
+        date_to,
+        closed_from,
+        closed_to,
+        account_id,
+        unassigned,
+    )
+    statement = sort_trades(apply_trade_filters(select(Trade.id), filters), sort)
+    ids = [int(row) for row in session.exec(statement).all()]
+    return {"ids": ids, "total": len(ids)}
+
+
 @router.get("/{trade_id}", response_model=TradeRead)
 def get_trade(trade_id: int, session: Session = Depends(get_session)):
     trade = session.get(Trade, trade_id)

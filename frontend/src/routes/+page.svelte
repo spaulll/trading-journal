@@ -11,6 +11,7 @@
 	import { ledgerHasFilter, ledgerQuery } from '$lib/stores/ledger';
 	import {
 		lifecycleModal,
+		loadOpenPositions,
 		loadTrades,
 		openTrades,
 		requestOpen,
@@ -28,6 +29,12 @@
 	$effect(() => {
 		const query = $ledgerQuery;
 		void loadTrades(false, query);
+	});
+
+	// The live positions are their own query — an open trade may sit on a
+	// later page of the ledger, or outside the active filter.
+	$effect(() => {
+		void loadOpenPositions();
 	});
 
 	const closed = $derived($trades.filter((t) => t.status !== 'OPEN'));
@@ -89,10 +96,10 @@
 	<title>Trades · Trading Journal</title>
 </svelte:head>
 
-{#if $tradesLoading}
+{#if $tradesLoading && $trades.length === 0}
 	<PageHead eyebrow="workspace" title="Trades" meta="loading ledger…" />
 	<TableSkeleton rows={6} />
-{:else if $tradesError}
+{:else if $tradesError && $trades.length === 0}
 	<PageHead eyebrow="workspace" title="Trades" />
 	<StateBlock
 		kind="error"

@@ -2,7 +2,7 @@
 	import { Flag, X } from 'lucide-svelte';
 	import { untrack } from 'svelte';
 	import { fade, scale } from 'svelte/transition';
-	import { dismissLifecycle, lifecycleBusy, submitClose, trades } from '$lib/stores/trades';
+	import { dismissLifecycle, ensureTrade, lifecycleBusy, submitClose, tradeCache } from '$lib/stores/trades';
 	import { fmtCurrency, fmtMoney, fmtR, mt5WallToUTC, pnlTone, previewIST, previewMT5, rTone, toneText } from '$lib/utils/format';
 	import { brokerOffset } from '$lib/stores/broker';
 	import { loadSymbols, specFor, symbolMap } from '$lib/stores/symbols';
@@ -15,7 +15,12 @@
 		void loadSymbols();
 	});
 
-	const trade = $derived($trades.find((t) => t.id === tradeId) ?? null);
+	const trade = $derived($tradeCache.get(tradeId) ?? null);
+
+	// The trade may live on another page of the ledger — fetch it by id.
+	$effect(() => {
+		void ensureTrade(tradeId);
+	});
 	// The contract comes from the server's registry — never a local guess.
 	const spec = $derived(trade ? specFor(trade.symbol ?? '', $symbolMap) : null);
 

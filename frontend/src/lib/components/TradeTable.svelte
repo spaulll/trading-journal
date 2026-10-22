@@ -5,8 +5,8 @@
 	import { get } from 'svelte/store';
 	import { api, type TradeDto } from '$lib/api';
 	import { aliasOf, accounts, accountMap, chipAlias, loadAccounts, selectedAccountId } from '$lib/stores/accounts';
-	import { ledgerFilters, setLedgerFilters, type LedgerSort, type LedgerStatus } from '$lib/stores/ledger';
-	import { loadTrades, openTrade, requestClose, tradeCounts, trades, upsertTrade } from '$lib/stores/trades';
+	import { gotoPage, ledgerFilters, ledgerQuery, pageCount, setLedgerAccount, setLedgerFilters, setPageSize, type LedgerSort, type LedgerStatus } from '$lib/stores/ledger';
+	import { loadTrades, openTrade, requestClose, tradeCounts, trades, tradesPage, tradesPageSize, tradesTotal, upsertTrade } from '$lib/stores/trades';
 	import { toasts } from '$lib/stores/toast';
 	import { fmtCurrency, fmtDateTime, fmtMoney, fmtR, isUnpriced, pnlTone, rTone, toneBg, toneText, usdNet } from '$lib/utils/format';
 	import SegControl from '$lib/components/SegControl.svelte';
@@ -27,15 +27,11 @@
 
 	onMount(() => {
 		void loadAccounts();
-		try {
-			const stored = localStorage.getItem('selected-account-id');
-			if (stored) setLedgerFilters({ account: stored });
-			selectedAccountId.subscribe((v) => {
-				setLedgerFilters({ account: v === null ? '' : String(v) });
-			});
-		} catch {
-			// ignore
-		}
+		// The saved account scope is the ledger's starting filter; the shared
+		// selection keeps it in step with the rest of the app.
+		selectedAccountId.subscribe((v) => {
+			setLedgerAccount(v === null ? '' : String(v));
+		});
 	});
 
 	$effect(() => {
@@ -72,6 +68,11 @@
 
 	const counts = $derived($tradeCounts);
 
+	/** The pager's own arithmetic — the server is the source of the total. */
+	const pages = $derived(pageCount($tradesTotal, $tradesPageSize));
+	const showingFrom = $derived($tradesTotal === 0 ? 0 : ($tradesPage - 1) * $tradesPageSize + 1);
+	const showingTo = $derived(Math.min($tradesPage * $tradesPageSize, $tradesTotal));
+
 	function toggleExpand(id: number, e: MouseEvent): void {
 		e.stopPropagation();
 		expanded = new Set(expanded.has(id) ? [...expanded].filter((x) => x !== id) : [...expanded, id]);
@@ -84,14 +85,21 @@
 	}
 
 	async function moveFiltered(): Promise<void> {
-		const ids = selectMode
-			? filtered.filter((t) => selected.has(t.id)).map((t) => t.id)
-			: filtered.map((t) => t.id);
-		if (ids.length === 0 || moving) return;
+		if (moving) return;
 		moving = true;
 		try {
 			const target = moveTarget === 'unassigned' ? null : moveTarget ? Number(moveTarget) : null;
 			if (moveTarget === '') return;
+			// The ledger shows one page, so "move everything the filter
+			// matches" is a question for the server, not for the rows on
+			// screen.
+			const ids = selectMode
+				? filtered.filter((t) => selected.has(t.id)).map((t) => t.id)
+				: (await api.listTradeIds(get(ledgerQuery))).ids;
+			if (ids.length === 0) {
+				toasts.push('success', 'Nothing to move — the filter matches no trades.');
+				return;
+			}
 			const r = await api.bulkAccount(ids, target);
 			await loadTrades(true);
 			selected = new Set([...selected].filter((id) => !ids.includes(id)));
@@ -249,7 +257,7 @@
 				transition:slide={{ duration: 220 }}
 				class="flex basis-full flex-wrap items-center gap-2 rounded-xl border border-line bg-raised/40 px-3 py-2"
 			>
-				<span class="num text-[12px] text-dim">{filtered.length} shown</span>
+				<span class="num text-[12px] text-dim">{$tradesTotal} matching</span>
 				<button
 					type="button"
 					onclick={toggleSelectMode}
@@ -527,5 +535,48 @@
 				</div>
 			{/each}
 		</div>
+
+		<!-- The pager: the browser asks for one page at a time. -->
+		<nav
+			aria-label="Ledger pages"
+			class="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-line pt-3"
+		>
+			<span class="num text-[11.5px] text-dim">
+				Showing {showingFrom}–{showingTo} of {$tradesTotal}
+			</span>
+			<div class="flex items-center gap-2">
+				<label class="flex items-center gap-1.5">
+					<span class="font-mono text-[10px] tracking-[0.16em] text-dim uppercase">Rows</span>
+					<select
+						value={$tradesPageSize}
+						onchange={(e) => setPageSize(Number(e.currentTarget.value))}
+						class="h-8 rounded-lg border border-line bg-panel px-2 font-mono text-[12px] text-fg outline-none"
+						aria-label="Rows per page"
+					>
+						<option value="25">25</option>
+						<option value="50">50</option>
+						<option value="100">100</option>
+						<option value="200">200</option>
+					</select>
+				</label>
+				<button
+					type="button"
+					onclick={() => gotoPage($tradesPage - 1, pages)}
+					disabled={$tradesPage <= 1}
+					class="btn btn-ghost h-8 px-2.5 text-[12px] disabled:opacity-40"
+				>
+					Prev
+				</button>
+				<span class="num text-[11.5px] whitespace-nowrap text-dim">Page {$tradesPage} of {pages}</span>
+				<button
+					type="button"
+					onclick={() => gotoPage($tradesPage + 1, pages)}
+					disabled={$tradesPage >= pages}
+					class="btn btn-ghost h-8 px-2.5 text-[12px] disabled:opacity-40"
+				>
+					Next
+				</button>
+			</div>
+		</nav>
 	{/if}
 </section>

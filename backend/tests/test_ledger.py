@@ -171,3 +171,36 @@ def test_an_unpriced_trade_sorts_last_in_every_order(client):
 
     body = client.get("/api/trades", params={"sort": "net-desc"}).json()
     assert [row["ticket"] for row in body["items"]][-1] == "UNPRICED"
+
+
+# --- the pagination ---------------------------------------------------------
+
+
+def test_the_browser_asks_for_one_page_at_a_time(client):
+    for i in range(5):
+        client.post("/api/trades/backfill", json=_record(ticket=f"PAGE-{i}"))
+
+    body = client.get("/api/trades", params={"page": 2, "page_size": 2}).json()
+    assert len(body["items"]) == 2
+    assert body["page"] == 2
+    assert body["page_size"] == 2
+    # The total is the filtered count, not the size of the page.
+    assert body["total"] == 5
+
+
+def test_the_id_list_covers_every_filtered_trade_not_one_page(client):
+    for i in range(5):
+        client.post("/api/trades/backfill", json=_record(ticket=f"PAGE-{i}"))
+
+    body = client.get("/api/trades/ids", params={"page": 2, "page_size": 2}).json()
+    assert body["total"] == 5
+    assert len(body["ids"]) == 5
+
+
+def test_the_id_list_honours_the_filter(client):
+    client.post("/api/trades/backfill", json=_record(ticket="MATCHED", symbol="gold"))
+    client.post("/api/trades/backfill", json=_record(ticket="OTHER", symbol="eurusd"))
+
+    body = client.get("/api/trades/ids", params={"q": "gold"}).json()
+    assert body["total"] == 1
+    assert len(body["ids"]) == 1
