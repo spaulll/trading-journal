@@ -5,7 +5,7 @@
 	import { get } from 'svelte/store';
 	import { api, type TradeDto } from '$lib/api';
 	import { aliasOf, accounts, accountMap, chipAlias, ledgerAccountScope, loadAccounts, selectedAccountId, setLedgerAccountScope } from '$lib/stores/accounts';
-	import { gotoPage, ledgerExportQuery, ledgerFilters, ledgerQuery, pageCount, resetLedgerPage, setLedgerFilters, setPageSize, type LedgerSort, type LedgerStatus } from '$lib/stores/ledger';
+	import { gotoPage, ledgerFilterQuery, ledgerFilters, ledgerQuery, pageCount, resetLedgerPage, setLedgerFilters, setPageSize, type LedgerSort, type LedgerStatus } from '$lib/stores/ledger';
 	import { loadTrades, openTrade, requestClose, tradeCounts, trades, tradesPage, tradesPageSize, tradesTotal, upsertTrade } from '$lib/stores/trades';
 	import { toasts } from '$lib/stores/toast';
 	import { fmtCurrency, fmtDateTime, fmtMoney, fmtR, isUnpriced, pnlTone, rTone, toneBg, toneText, usdNet } from '$lib/utils/format';
@@ -94,7 +94,7 @@
 	/** Download the filtered ledger as a CSV — the same rows the table shows. */
 	function exportCsv(): void {
 		const link = document.createElement('a');
-		link.href = api.exportTradesUrl(get(ledgerExportQuery));
+		link.href = api.exportTradesUrl(get(ledgerFilterQuery));
 		link.rel = 'noopener';
 		document.body.appendChild(link);
 		link.click();

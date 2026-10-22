@@ -26,6 +26,7 @@ from app.services.analytics_rules import (
     sign as _sign,
 )
 from app.services.timeutils import as_naive_utc, trade_close_day
+from app.services.trade_filters import TradeFilters, apply_trade_filters
 from app.services.trade_money import currency_breakdown, usd_net
 
 router = APIRouter(prefix="/api/analytics", tags=["analytics"])
@@ -147,8 +148,43 @@ def _equity_points(trades: list[Trade]) -> list[dict]:
 
 
 @router.get("/summary")
-def summary(account_id: Optional[int] = Query(default=None), session: Session = Depends(get_session)):
-    trades = _closed_trades(session, account_id)
+def summary(
+    account_id: Optional[int] = Query(default=None),
+    status: Optional[str] = Query(default=None, description="OPEN or CLOSED"),
+    symbol: Optional[str] = None,
+    query: Optional[str] = Query(default=None, alias="q", description="Free text: symbol or ticket"),
+    tag: Optional[str] = Query(default=None, description="Tag name without #/! prefix"),
+    date_from: Optional[datetime] = Query(default=None, description="Open-day lower bound"),
+    date_to: Optional[datetime] = Query(default=None, description="Open-day upper bound"),
+    closed_from: Optional[datetime] = Query(default=None, description="Close-day lower bound"),
+    closed_to: Optional[datetime] = Query(default=None, description="Close-day upper bound"),
+    unassigned: bool = Query(default=False, description="Only trades with no account"),
+    session: Session = Depends(get_session),
+):
+    """The ledger's summary — the same filter the table shows.
+
+    The figures describe the *closed* trades inside the filter, because that
+    is what the dashboard's ribbon reports: the realized net, the win rate
+    and the average R. The open count comes from the same filter, so the
+    "open now" figure moves with the account and the date range.
+    """
+    filters = TradeFilters(
+        status=status,
+        symbol=symbol,
+        query=query,
+        tag=tag,
+        date_from=date_from,
+        date_to=date_to,
+        closed_from=closed_from,
+        closed_to=closed_to,
+        account_id=account_id,
+        unassigned=unassigned,
+    )
+    base = filters.without_status()
+    closed_stmt = apply_trade_filters(
+        select(Trade).where(Trade.status == "CLOSED"), base
+    )
+    trades = session.exec(closed_stmt).all()
     nets = [usd_net(t) for t in trades]
     total = len(trades)
     counts = analytics_rules.split_outcomes(nets)
@@ -165,13 +201,13 @@ def summary(account_id: Optional[int] = Query(default=None), session: Session = 
     expectancy = round(net_pnl / counts.priced, 2) if counts.priced else 0.0
     avg_win = round(gross_profit / len(wins), 2) if wins else 0.0
     avg_loss = round(sum(losses) / len(losses), 2) if losses else 0.0
+    r_values = [t.r_multiple for t in trades if t.r_multiple is not None]
+    avg_r = round(sum(r_values) / len(r_values), 3) if r_values else None
 
     points = _equity_points(trades)
     max_dd = min((p["drawdown"] for p in points), default=0.0)
 
-    open_stmt = select(Trade).where(Trade.status == "OPEN")
-    if account_id is not None:
-        open_stmt = open_stmt.where(Trade.account_id == account_id)
+    open_stmt = apply_trade_filters(select(Trade).where(Trade.status == "OPEN"), base)
     open_count = len(session.exec(open_stmt).all())
     return {
         "total_trades": total,
@@ -186,6 +222,7 @@ def summary(account_id: Optional[int] = Query(default=None), session: Session = 
         "expectancy": expectancy,
         "avg_win": avg_win,
         "avg_loss": avg_loss,
+        "avg_r": avg_r,
         "max_drawdown": max_dd,
         # The overall figure is USD; this is the quote-currency audit trail.
         "by_currency": currency_breakdown(trades),
