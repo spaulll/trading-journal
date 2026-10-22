@@ -239,3 +239,63 @@ def test_check_validates_the_rule_kind(client):
     checked = client.post(f"/api/accounts/{account['id']}/rules/min_days/check")
     assert checked.status_code == 200, checked.text
     assert checked.json()["kind"] == "min_days"
+
+
+def test_the_timeline_is_anchored_by_the_account_creation(client):
+    account = _account(client)
+
+    response = client.get(f"/api/accounts/{account['id']}/timeline")
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert len(body) == 1
+    created = body[0]
+    assert created["kind"] == "account_created"
+    assert created["label"] == "Account created"
+    assert created["payload"] == {"alias": "prop-eval"}
+    assert created["id"] is None
+
+
+def test_the_timeline_records_rule_and_status_changes(client):
+    account = _account(client, profit_target_pct=5.0)
+    _trade(client, account["id"], "TIMELINE-1", "2026-09-20", 5000.0)
+    _rules(client, account["id"])
+
+    patched = client.patch(
+        f"/api/accounts/{account['id']}", json={"status": "passed"}
+    )
+    assert patched.status_code == 200, patched.text
+
+    body = client.get(f"/api/accounts/{account['id']}/timeline").json()
+    assert [event["kind"] for event in body] == [
+        "status_changed",
+        "rule_met",
+        "account_created",
+    ]
+    assert body[0]["label"] == "Status: active → passed"
+    assert body[0]["payload"] == {"from": "active", "to": "passed"}
+    assert body[1]["label"] == "Profit target met"
+    assert body[1]["payload"]["rule"] == "profit_target"
+    assert body[1]["payload"]["target"] == 5.0
+
+
+def test_an_unchanged_status_does_not_add_a_timeline_event(client):
+    account = _account(client)
+    client.patch(f"/api/accounts/{account['id']}", json={"status": "active"})
+
+    body = client.get(f"/api/accounts/{account['id']}/timeline").json()
+    assert [event["kind"] for event in body] == ["account_created"]
+
+
+def test_the_timeline_limit_keeps_the_creation_anchor(client):
+    account = _account(client)
+    for status in ("passed", "active", "breached"):
+        client.patch(f"/api/accounts/{account['id']}", json={"status": status})
+
+    body = client.get(
+        f"/api/accounts/{account['id']}/timeline", params={"limit": 2}
+    ).json()
+    assert [event["kind"] for event in body] == [
+        "status_changed",
+        "status_changed",
+        "account_created",
+    ]

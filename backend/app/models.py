@@ -7,7 +7,7 @@ Fresh DB per v2 kickoff decision — no in-place migration.
 
 from datetime import date as date_type
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Any, Optional
 
 from sqlalchemy import UniqueConstraint
 from sqlmodel import Field, Relationship, SQLModel
@@ -586,6 +586,15 @@ class AccountRuleRead(SQLModel):
     met_at: Optional[datetime] = None
     warning: Optional[str] = None
     days_left: Optional[int] = None
+
+
+class AccountEventRead(SQLModel):
+    id: Optional[int] = None
+    account_id: int
+    kind: str
+    label: str
+    payload: dict[str, Any] = Field(default_factory=dict)
+    occurred_at: datetime
 
 
 class AccountCreate(SQLModel):

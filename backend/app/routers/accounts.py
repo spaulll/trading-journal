@@ -12,13 +12,19 @@ from app.models import (
     Account,
     AccountCreate,
     AccountEvent,
+    AccountEventRead,
     AccountRead,
     AccountRule,
     AccountRuleRead,
     AccountUpdate,
     Trade,
 )
-from app.services.account_rules import RULE_KINDS, sync_account_rules
+from app.services.account_rules import (
+    RULE_KINDS,
+    list_account_timeline,
+    log_account_event,
+    sync_account_rules,
+)
 from app.services.fx import convert_amount, normalize_currency
 from app.services.trade_money import usd_net
 from app.services.trading_day import day_of_trade, get_trading_day
@@ -160,6 +166,7 @@ def update_account(account_id: int, patch: AccountUpdate, session: Session = Dep
     acc = session.get(Account, account_id)
     if acc is None:
         raise HTTPException(status_code=404, detail="Account not found")
+    old_status = acc.status
     data = patch.model_dump(exclude_unset=True)
     # Null is meaningful for these optional rules: it clears the rule.
     # The generic loops below skip None, so handle it before they run.
@@ -216,6 +223,13 @@ def update_account(account_id: int, patch: AccountUpdate, session: Session = Dep
                 raise HTTPException(status_code=422, detail=f"{key} must be 0-100")
             setattr(acc, key, data[key])
     acc.updated_at = _now()
+    if acc.status != old_status:
+        log_account_event(
+            session,
+            account_id,
+            "status_changed",
+            {"from": old_status, "to": acc.status},
+        )
     session.add(acc)
     session.commit()
     session.refresh(acc)
@@ -481,3 +495,16 @@ def check_account_rule(
         if rule.kind == kind:
             return rule
     raise HTTPException(status_code=404, detail=f"rule not configured: {kind}")
+
+
+@router.get("/{account_id}/timeline", response_model=list[AccountEventRead])
+def account_timeline(
+    account_id: int,
+    limit: int = Query(default=50, ge=1, le=200),
+    session: Session = Depends(get_session),
+):
+    """Rules met/breached, status changes, and the account's creation."""
+    acc = session.get(Account, account_id)
+    if acc is None:
+        raise HTTPException(status_code=404, detail="Account not found")
+    return list_account_timeline(session, acc, limit)

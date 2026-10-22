@@ -149,11 +149,39 @@ export interface AccountDto {
 	max_mode: string;
 	trailing_ref: string;
 	profit_target_pct: number | null;
+	min_trading_days: number;
+	consistency_pct: number | null;
+	/** Challenge end date (YYYY-MM-DD), used by the days warning. */
+	deadline: string | null;
 	status: string;
 	created_at: string;
 	updated_at: string;
 	open_trades: number;
 	total_trades: number;
+	days_traded: number;
+}
+
+export interface AccountRuleDto {
+	id: number;
+	account_id: number;
+	kind: string;
+	label: string;
+	unit: string;
+	target: number;
+	current: number | null;
+	status: 'pending' | 'met' | 'breached' | 'missed';
+	met_at: string | null;
+	warning: string | null;
+	days_left: number | null;
+}
+
+export interface AccountEventDto {
+	id: number | null;
+	account_id: number;
+	kind: string;
+	label: string;
+	payload: Record<string, unknown>;
+	occurred_at: string;
 }
 
 export interface PropStatusDto {
@@ -180,6 +208,13 @@ export interface PropStatusDto {
 	profit_target_pct: number | null;
 	profit_target: number | null;
 	target_pct: number | null;
+	return_pct: number | null;
+	days_traded: number;
+	best_day: number | null;
+	best_day_share: number | null;
+	max_anchor: number;
+	max_loss_used_pct: number | null;
+	daily_loss_used_pct: number | null;
 	breached: boolean;
 	status: string;
 	open_trades: number;
@@ -717,7 +752,13 @@ export const api = {
 		req<AccountDto>('/api/accounts', json({ method: 'POST', body: JSON.stringify(payload) })),
 	updateAccount: (id: number, patch: Record<string, unknown>) =>
 		req<AccountDto>(`/api/accounts/${id}`, json({ method: 'PATCH', body: JSON.stringify(patch) })),
-	deleteAccount: (id: number) => req<{ deleted: number }>(`/api/accounts/${id}`, { method: 'DELETE' }),	propStatus: (id: number) => req<PropStatusDto>(`/api/accounts/${id}/prop-status`),
+	deleteAccount: (id: number) => req<{ deleted: number }>(`/api/accounts/${id}`, { method: 'DELETE' }),
+	propStatus: (id: number) => req<PropStatusDto>(`/api/accounts/${id}/prop-status`),
+	accountRules: (id: number) => req<AccountRuleDto[]>(`/api/accounts/${id}/rules`),
+	checkAccountRule: (id: number, kind: string) =>
+		req<AccountRuleDto>(`/api/accounts/${id}/rules/${kind}/check`, { method: 'POST' }),
+	accountTimeline: (id: number, limit = 50) =>
+		req<AccountEventDto[]>(`/api/accounts/${id}/timeline?limit=${limit}`),
 	listSymbols: (includeDisabled = false) =>
 		req<SymbolSpecDto[]>(`/api/symbols${includeDisabled ? '?include_disabled=true' : ''}`),
 	createSymbol: (payload: Record<string, unknown>) =>
