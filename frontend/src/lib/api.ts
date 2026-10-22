@@ -266,6 +266,27 @@ export interface ImportRunDto {
 	created_at: string;
 }
 
+/** One trade the ledger repair looked at. */
+export interface RepairRowDto {
+	ticket: string;
+	action: 'repaired' | 'would_repair' | 'skipped' | 'unpriced';
+	reason?: string;
+	gross_pnl?: number;
+	net_pnl?: number;
+	kept_net?: boolean;
+}
+
+export interface RepairUnpricedResultDto {
+	apply: boolean;
+	scanned: number;
+	repairable: number;
+	repaired: number;
+	skipped: number;
+	unpriced: number;
+	kept_net: number;
+	results: RepairRowDto[];
+}
+
 export type WeekendReviewResult =
 	| { status: 'ok'; date_from: string; date_to: string; report: InsightReportDto }
 	| { status: 'empty'; date_from: string; date_to: string; detail: string };
@@ -676,6 +697,12 @@ export const api = {
 	/** The import run log, newest first — a bad file stays diagnosable. */
 	importRuns: (limit = 20) =>
 		req<{ runs: ImportRunDto[] }>(`/api/trades/imports?limit=${limit}`),
+	/** Price closed trades with no gross P&L; dry-run until apply is true. */
+	repairUnpriced: (apply = false) =>
+		req<RepairUnpricedResultDto>(
+			'/api/trades/repair/unpriced',
+			json({ method: 'POST', body: JSON.stringify({ apply }) })
+		),
 	listTags: () => req<TagSummaryDto[]>('/api/tags'),
 	patchTag: (id: number, patch: { name?: string; category?: string }) =>
 		req<TagDto>(`/api/tags/${id}`, json({ method: 'PATCH', body: JSON.stringify(patch) })),

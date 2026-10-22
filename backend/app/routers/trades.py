@@ -22,6 +22,7 @@ from app.models import (
     BackfillRequest,
     DailyNote,
     ImportRun,
+    RepairRequest,
     Screenshot,
     ScreenshotRead,
     Tag,
@@ -616,6 +617,24 @@ def list_import_runs(
             for run in runs
         ]
     }
+
+
+@router.post("/repair/unpriced")
+def repair_unpriced(
+    body: Optional[RepairRequest] = None,
+    session: Session = Depends(get_session),
+):
+    """Fill a missing gross P&L from the symbol registry.
+
+    Dry-run unless the body says ``{"apply": true}``. A row with no exit
+    price is reported as skipped, an unregistered symbol as unpriced, and
+    a net the trader supplied is kept exactly (the gross behind it is
+    recovered). The repair is idempotent: only rows whose gross is missing
+    are considered, so a second run changes nothing.
+    """
+    from app.services.trade_repair import repair_unpriced_trades
+
+    return repair_unpriced_trades(session, apply=bool(body.apply) if body else False)
 
 
 def _filters(
