@@ -32,8 +32,50 @@ def create_db_and_tables() -> None:
     _migrate_screenshot_columns()
     _migrate_account_columns()
     _migrate_symbol_spec()
+    _migrate_trade_currency_columns()
     _migrate_trade_risk_columns()
     _migrate_fx_rate_indexes()
+
+
+def _migrate_trade_currency_columns() -> None:
+    """Add the quote-currency columns and label the historical rows.
+
+    A row written before Phase 4 was priced in USD (the old estimator
+    converted yen into dollars on the way in). It keeps that meaning and
+    gets ``quote_currency = 'USD'`` — relabelling history as JPY while
+    leaving the stored amount in dollars would corrupt every total. New
+    rows are stamped with their symbol's real quote currency by
+    ``app.services.trade_money``.
+    """
+    if not DATABASE_URL.startswith("sqlite"):
+        return
+    wanted = {
+        "quote_currency": "VARCHAR",
+        "gross_pnl_usd": "FLOAT",
+        "net_pnl_usd": "FLOAT",
+    }
+    with engine.begin() as conn:
+        cols = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(trade)")}
+        for name, ddl in wanted.items():
+            if name not in cols:
+                conn.exec_driver_sql(f"ALTER TABLE trade ADD COLUMN {name} {ddl}")
+        conn.exec_driver_sql(
+            "UPDATE trade SET quote_currency = 'USD' "
+            "WHERE quote_currency IS NULL OR quote_currency = ''"
+        )
+        conn.exec_driver_sql(
+            "UPDATE trade SET gross_pnl_usd = gross_pnl "
+            "WHERE gross_pnl_usd IS NULL AND gross_pnl IS NOT NULL "
+            "AND quote_currency = 'USD'"
+        )
+        conn.exec_driver_sql(
+            "UPDATE trade SET net_pnl_usd = net_pnl "
+            "WHERE net_pnl_usd IS NULL AND net_pnl IS NOT NULL "
+            "AND quote_currency = 'USD'"
+        )
+        conn.exec_driver_sql(
+            "CREATE INDEX IF NOT EXISTS ix_trade_quote_currency ON trade (quote_currency)"
+        )
 
 
 def _migrate_fx_rate_indexes() -> None:
@@ -77,13 +119,29 @@ def _migrate_trade_risk_columns() -> None:
 
 
 def _backfill_trade_risk() -> None:
-    """Fill the risk columns for trades that predate them."""
+    """Fill the risk columns for trades that predate them.
+
+    The select deliberately names the handful of columns it needs instead
+    of loading the whole ``Trade`` entity: this pass can run against a
+    table that still lacks a column the ORM model gained later (the
+    currency columns on a Phase-3 database, for instance), and a
+    ``SELECT *`` would fail before the ALTER could fix it.
+    """
+    from sqlalchemy import update
+
     from app.models import Trade
     from app.services.symbol_registry import find_spec, risk_amount
 
     with Session(engine) as session:
         rows = session.exec(
-            select(Trade).where(
+            select(
+                Trade.id,
+                Trade.symbol,
+                Trade.size,
+                Trade.entry_price,
+                Trade.initial_sl,
+                Trade.current_sl,
+            ).where(
                 Trade.initial_risk.is_(None),
                 Trade.entry_price.is_not(None),
                 Trade.initial_sl.is_not(None),
@@ -91,14 +149,19 @@ def _backfill_trade_risk() -> None:
         ).all()
         if not rows:
             return
-        for trade in rows:
-            spec = find_spec(session, trade.symbol)
-            trade.initial_risk = risk_amount(
-                spec, trade.size, trade.entry_price, trade.initial_sl
+        for row in rows:
+            spec = find_spec(session, row.symbol)
+            initial = risk_amount(spec, row.size, row.entry_price, row.initial_sl)
+            stop = row.current_sl or row.initial_sl
+            session.exec(
+                update(Trade)
+                .where(Trade.id == row.id)
+                .values(
+                    initial_risk=initial,
+                    realized_risk=risk_amount(spec, row.size, row.entry_price, stop),
+                    risk_unit="USD" if initial is not None else None,
+                )
             )
-            stop = trade.current_sl or trade.initial_sl
-            trade.realized_risk = risk_amount(spec, trade.size, trade.entry_price, stop)
-            trade.risk_unit = "USD" if trade.initial_risk is not None else None
         session.commit()
 
 

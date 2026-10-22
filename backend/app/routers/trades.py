@@ -38,9 +38,17 @@ from app.services.session_resolver import duration_minutes, normalize_session
 from app.services.symbol_registry import (
     apply_trade_risk,
     compute_r_multiple,
-    estimate_gross_pnl,
+    estimate_gross_quote_pnl,
 )
-from app.services.timeutils import as_naive_utc, trade_close_day
+from app.services.timeutils import as_naive_utc
+from app.services.trade_money import (
+    fx_missing,
+    quote_currency_for,
+    set_trade_pnl,
+    sync_trade_currency,
+    sync_trade_usd,
+    usd_net,
+)
 
 router = APIRouter(prefix="/api/trades", tags=["trades"])
 
@@ -57,6 +65,7 @@ def _as_naive_utc(dt: Optional[datetime]) -> Optional[datetime]:
 def to_trade_read(trade: Trade) -> TradeRead:
     data = trade.model_dump(exclude={"tags", "screenshots"})
     data["trade_id"] = trade.ticket  # deprecated v1 alias
+    data["fx_missing"] = fx_missing(trade)
     return TradeRead(
         **data,
         tags=[TagRead.model_validate(t.model_dump()) for t in trade.tags],
@@ -91,7 +100,7 @@ def _guardrail_status(session: Session) -> dict:
         closed_at = _as_naive_utc(t.timestamp_close)
         if closed_at is None or closed_at < day_start:
             continue
-        daily_pnl += t.net_pnl or 0.0
+        daily_pnl += usd_net(t) or 0.0
     return {
         "breached": daily_pnl <= max_loss or len(todays) >= max_trades,
         "daily_pnl": round(daily_pnl, 2),
@@ -195,6 +204,7 @@ def open_trade(payload: TradeOpenRequest, session: Session = Depends(get_session
         tp=payload.tp,
         fees=0.0,
         status="OPEN",
+        quote_currency=quote_currency_for(session, payload.symbol),
         thesis=payload.thesis,
     )
     session.add(trade)
@@ -252,25 +262,18 @@ def close_trade(trade_id: int, payload: TradeCloseRequest, session: Session = De
     if payload.gross_pnl is not None:
         gross = payload.gross_pnl
     else:
-        # Fallback when the client omits gross: price the trade from the
-        # symbol registry (contract size x price distance, converted to
-        # dollars). Keeps None for an unregistered symbol instead of
-        # guessing — net then stays null only when no deterministic value
-        # exists.
-        gross = estimate_gross_pnl(
+        # Price the trade in its quote currency (yen for USDJPY, dollars
+        # for EURUSD); the USD view is derived at the close-day FX rate.
+        gross = estimate_gross_quote_pnl(
             session, trade.direction, trade.symbol, trade.size, trade.entry_price, payload.exit_price
         )
         if gross is None:
             gross = trade.gross_pnl
-    net = (gross - (fees or 0.0)) if gross is not None else None
     r = compute_r_multiple(
         trade.direction, trade.entry_price, trade.initial_sl, trade.current_sl, payload.exit_price
     )
 
     trade.exit_price = payload.exit_price
-    trade.gross_pnl = gross
-    trade.fees = fees or 0.0
-    trade.net_pnl = net
     trade.r_multiple = r
     closed_at = as_naive_utc(payload.timestamp_close or _now())
     assert closed_at is not None
@@ -281,6 +284,8 @@ def close_trade(trade_id: int, payload: TradeCloseRequest, session: Session = De
     )
     if not trade.session:
         trade.session = normalize_session(None, trade.entry_time or trade.timestamp_open)
+    # Quote-currency P&L and its USD equivalent, written together.
+    set_trade_pnl(session, trade, gross, fees)
     # Final risk: the stop the trade was actually carried to.
     apply_trade_risk(session, trade)
     trade.status = "CLOSED"
@@ -353,11 +358,11 @@ def insert_backfill_record(session: Session, rec: BackfillRecord) -> tuple[str, 
     gross = rec.gross_pnl
     net = rec.net_pnl
     if gross is None and net is None:
-        # The trader gave no P&L at all: price the trade from the symbol
-        # registry, the same estimator the close path uses. A history row
-        # with no net is an unpriced trade, and an unpriced trade silently
-        # scores as a scratch.
-        gross = estimate_gross_pnl(
+        # The trader gave no P&L at all: price the trade in its quote
+        # currency from the symbol registry. A history row with no net is
+        # an unpriced trade, and an unpriced trade silently scores as a
+        # scratch.
+        gross = estimate_gross_quote_pnl(
             session, direction, rec.symbol, rec.size, rec.entry_price, rec.exit_price
         )
     if net is None:
@@ -386,9 +391,8 @@ def insert_backfill_record(session: Session, rec: BackfillRecord) -> tuple[str, 
         current_sl=rec.initial_sl,
         tp=rec.tp,
         exit_price=rec.exit_price,
-        gross_pnl=gross,
         fees=fees or 0.0,
-        net_pnl=net,
+        quote_currency=quote_currency_for(session, rec.symbol),
         r_multiple=r,
         status="CLOSED",
         thesis=rec.thesis,
@@ -396,6 +400,8 @@ def insert_backfill_record(session: Session, rec: BackfillRecord) -> tuple[str, 
     )
     session.add(trade)
     session.flush()
+    # Quote-currency P&L and its USD equivalent at the close-day rate.
+    set_trade_pnl(session, trade, gross, fees)
     trade.tags = [
         get_or_create_tag(session, name, cat) for name, cat in normalize_tag_list(rec.tags)
     ]
@@ -477,6 +483,10 @@ def patch_trade(trade_id: int, patch: TradePatch, session: Session = Depends(get
         data["status"] = data["status"].upper()
     for key, value in data.items():
         setattr(trade, key, value)
+    # A symbol change also changes the currency the P&L is quoted in. Only
+    # an explicit quote_currency in the same patch overrides it.
+    if "symbol" in data and "quote_currency" not in data:
+        sync_trade_currency(session, trade, force=True)
     if patch.tags is not None:
         trade.tags = [
             get_or_create_tag(session, name, category)
@@ -526,7 +536,7 @@ def patch_trade(trade_id: int, patch: TradePatch, session: Session = Depends(get
     if "gross_pnl" not in data and any(
         k in data for k in ("direction", "symbol", "size", "entry_price", "exit_price")
     ):
-        estimated = estimate_gross_pnl(
+        estimated = estimate_gross_quote_pnl(
             session, trade.direction, trade.symbol, trade.size, trade.entry_price, trade.exit_price
         )
         if estimated is not None:
@@ -569,7 +579,7 @@ def patch_trade(trade_id: int, patch: TradePatch, session: Session = Depends(get
         # Ensure gross/net exist on the auto-close path (e.g. only exit_time
         # was added while exit_price was already stored).
         if trade.gross_pnl is None:
-            estimated = estimate_gross_pnl(
+            estimated = estimate_gross_quote_pnl(
                 session, trade.direction, trade.symbol, trade.size, trade.entry_price, trade.exit_price
             )
             if estimated is not None:
@@ -582,6 +592,9 @@ def patch_trade(trade_id: int, patch: TradePatch, session: Session = Depends(get
             )
         session.add(trade)
     trade.updated_at = _now()
+    # The USD view follows every edit: a fee, a leg, a close timestamp, the
+    # quote currency or the symbol itself all change the conversion.
+    sync_trade_usd(session, trade)
     session.add(trade)
     # Closing from the web drawer is a close like any other: the daily loss
     # and trade-count guardrails have to run here too, or a breach raised in
