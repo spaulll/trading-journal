@@ -314,6 +314,34 @@ export interface SetupMatrix {
 	grand_total: PerformanceBucket;
 }
 
+export interface SetupConfidenceRow {
+	name: string;
+	category: string;
+	trade_count: number;
+	priced: number;
+	unpriced: number;
+	wins: number;
+	losses: number;
+	breakeven: number;
+	decided: number;
+	win_rate: number;
+	net_pnl: number;
+	expectancy: number;
+	std_dev: number | null;
+	standard_error: number | null;
+	ci_low: number | null;
+	ci_high: number | null;
+	ci_level: number;
+	sufficient: boolean;
+}
+
+export interface SetupConfidence {
+	min_sample: number;
+	ci_level: number;
+	tags: SetupConfidenceRow[];
+	insufficient: number;
+}
+
 export interface CalendarDay {
 	date: string;
 	net_pnl: number;
@@ -602,6 +630,10 @@ export const api = {
 	setupMatrix: (accountId?: number | null) =>
 		req<SetupMatrix>(
 			`/api/analytics/setup-matrix${accountId ? `?account_id=${accountId}` : ''}`
+		),
+	setupConfidence: (accountId?: number | null) =>
+		req<SetupConfidence>(
+			`/api/analytics/setup-confidence${accountId ? `?account_id=${accountId}` : ''}`
 		),
 	calendar: (year?: number, accountId?: number | null) => {
 		const qs = new URLSearchParams();
