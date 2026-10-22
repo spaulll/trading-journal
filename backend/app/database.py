@@ -31,6 +31,7 @@ def create_db_and_tables() -> None:
     SQLModel.metadata.create_all(engine)
     _migrate_screenshot_columns()
     _migrate_account_columns()
+    _migrate_account_lifecycle_columns()
     _migrate_symbol_spec()
     _migrate_trade_currency_columns()
     _migrate_trade_risk_columns()
@@ -268,6 +269,33 @@ def _migrate_account_columns() -> None:
             conn.exec_driver_sql("ALTER TABLE trade ADD COLUMN account_id INTEGER")
         try:
             conn.exec_driver_sql("CREATE INDEX IF NOT EXISTS ix_trade_account_id ON trade (account_id)")
+        except Exception:
+            pass
+
+
+def _migrate_account_lifecycle_columns() -> None:
+    """Add the challenge-lifecycle columns to a pre-existing account table.
+
+    ``account_rule`` and ``account_event`` are new tables, so
+    ``create_all`` creates them on any database. The three columns on
+    ``account`` need an explicit ALTER on a database that predates Phase 9.
+    """
+    if not DATABASE_URL.startswith("sqlite"):
+        return
+    wanted = {
+        "min_trading_days": "INTEGER NOT NULL DEFAULT 0",
+        "consistency_pct": "FLOAT",
+        "deadline": "DATE",
+    }
+    with engine.begin() as conn:
+        cols = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(account)")}
+        for name, ddl in wanted.items():
+            if name not in cols:
+                conn.exec_driver_sql(f"ALTER TABLE account ADD COLUMN {name} {ddl}")
+        try:
+            conn.exec_driver_sql(
+                "CREATE INDEX IF NOT EXISTS ix_account_deadline ON account (deadline)"
+            )
         except Exception:
             pass
 

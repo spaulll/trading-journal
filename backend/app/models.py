@@ -178,11 +178,57 @@ class Account(SQLModel, table=True):
     trailing_ref: str = Field(default="balance_peak")  # balance_peak | equity_peak
     profit_target: Optional[float] = Field(default=None)
     profit_target_pct: Optional[float] = Field(default=None)
+    # Challenge lifecycle: the days the firm requires and the rule that no
+    # single day may carry too much of the profit. The deadline is what lets
+    # the journal warn before the days requirement becomes unreachable.
+    min_trading_days: int = Field(default=0)
+    consistency_pct: Optional[float] = Field(default=None)
+    deadline: Optional[date_type] = Field(default=None, index=True)
     status: str = Field(default="active", index=True)  # active | breach | passed | archived
     created_at: datetime = Field(default_factory=_utcnow)
     updated_at: datetime = Field(default_factory=_utcnow)
 
     trades: list["Trade"] = Relationship(back_populates="account")
+
+
+class AccountRule(SQLModel, table=True):
+    """Per-account challenge rule snapshot.
+
+    ``target`` and ``current`` use the rule's own unit (percent or trading
+    days). ``met_at`` is the first time the rule resolved — the profit
+    target was reached, the loss limit was breached, the days requirement
+    was met. It is a milestone, not a live status, so a later trade cannot
+    erase the moment the rule was satisfied.
+    """
+
+    __tablename__ = "account_rule"
+    __table_args__ = (
+        UniqueConstraint("account_id", "kind", name="uq_account_rule_kind"),
+    )
+    id: Optional[int] = Field(default=None, primary_key=True)
+    account_id: int = Field(foreign_key="account.id", index=True)
+    kind: str = Field(index=True)  # profit_target | max_loss | daily_loss | min_days | consistency
+    target: float = Field(default=0.0)
+    current: Optional[float] = Field(default=None)
+    met_at: Optional[datetime] = Field(default=None, index=True)
+    created_at: datetime = Field(default_factory=_utcnow)
+    updated_at: datetime = Field(default_factory=_utcnow)
+
+
+class AccountEvent(SQLModel, table=True):
+    """One thing that happened to a prop account.
+
+    ``payload`` is JSON text so a rule event can carry the target and the
+    reading that resolved it without a wide table. Events are append-only:
+    the timeline is the account's history, not a mutable status.
+    """
+
+    __tablename__ = "account_event"
+    id: Optional[int] = Field(default=None, primary_key=True)
+    account_id: int = Field(foreign_key="account.id", index=True)
+    kind: str = Field(index=True)  # rule_met | rule_breached | status_changed
+    payload: str = Field(default="{}")
+    occurred_at: datetime = Field(default_factory=_utcnow, index=True)
 
 
 class AppSetting(SQLModel, table=True):
@@ -517,11 +563,29 @@ class AccountRead(SQLModel):
     max_mode: str
     trailing_ref: str
     profit_target_pct: Optional[float] = None
+    min_trading_days: int = 0
+    consistency_pct: Optional[float] = None
+    deadline: Optional[date_type] = None
     status: str
     created_at: datetime
     updated_at: datetime
     open_trades: int = 0
     total_trades: int = 0
+    days_traded: int = 0
+
+
+class AccountRuleRead(SQLModel):
+    id: int
+    account_id: int
+    kind: str
+    label: str
+    unit: str
+    target: float
+    current: Optional[float] = None
+    status: str  # pending | met | breached | missed
+    met_at: Optional[datetime] = None
+    warning: Optional[str] = None
+    days_left: Optional[int] = None
 
 
 class AccountCreate(SQLModel):
@@ -537,6 +601,9 @@ class AccountCreate(SQLModel):
     max_mode: str = "static"
     trailing_ref: str = "balance_peak"
     profit_target_pct: Optional[float] = None
+    min_trading_days: int = 0
+    consistency_pct: Optional[float] = None
+    deadline: Optional[date_type] = None
     status: str = "active"
 
 
@@ -553,4 +620,7 @@ class AccountUpdate(SQLModel):
     max_mode: Optional[str] = None
     trailing_ref: Optional[str] = None
     profit_target_pct: Optional[float] = None
+    min_trading_days: Optional[int] = None
+    consistency_pct: Optional[float] = None
+    deadline: Optional[date_type] = None
     status: Optional[str] = None

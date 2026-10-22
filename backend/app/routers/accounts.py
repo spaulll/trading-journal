@@ -1,17 +1,27 @@
 """Prop-firm accounts CRUD + per-account prop status."""
 
 import re
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlmodel import Session, select
 
 from app.database import get_session
-from app.models import Account, AccountCreate, AccountRead, AccountUpdate, Trade
+from app.models import (
+    Account,
+    AccountCreate,
+    AccountEvent,
+    AccountRead,
+    AccountRule,
+    AccountRuleRead,
+    AccountUpdate,
+    Trade,
+)
+from app.services.account_rules import RULE_KINDS, sync_account_rules
 from app.services.fx import convert_amount, normalize_currency
 from app.services.trade_money import usd_net
-from app.services.trading_day import get_trading_day
+from app.services.trading_day import day_of_trade, get_trading_day
 
 router = APIRouter(prefix="/api/accounts", tags=["accounts"])
 
@@ -56,17 +66,19 @@ def _normalize_base(raw: object, fallback: str = "USD") -> str:
 
 
 def to_account_read(acc: Account, session: Session) -> AccountRead:
-    open_trades = len(
-        session.exec(
-            select(Trade).where(Trade.account_id == acc.id, Trade.status == "OPEN")
-        ).all()
-    )
-    total = len(
-        session.exec(select(Trade).where(Trade.account_id == acc.id)).all()
-    )
+    trades = session.exec(select(Trade).where(Trade.account_id == acc.id)).all()
+    setting = get_trading_day(session)
     data = acc.model_dump()
-    data["open_trades"] = open_trades
-    data["total_trades"] = total
+    data["open_trades"] = sum(1 for trade in trades if trade.status == "OPEN")
+    data["total_trades"] = len(trades)
+    data["days_traded"] = len(
+        {
+            day
+            for trade in trades
+            if trade.status == "CLOSED"
+            and (day := day_of_trade(setting, trade)) is not None
+        }
+    )
     return AccountRead(**data)
 
 
@@ -107,6 +119,10 @@ def create_account(payload: AccountCreate, session: Session = Depends(get_sessio
             raise HTTPException(status_code=422, detail=f"{key} must be <= 100")
     if payload.profit_target_pct is not None and not 0 <= payload.profit_target_pct <= 100:
         raise HTTPException(status_code=422, detail="profit_target_pct must be 0-100")
+    if payload.min_trading_days < 0:
+        raise HTTPException(status_code=422, detail="min_trading_days must be >= 0")
+    if payload.consistency_pct is not None and not 0 <= payload.consistency_pct <= 100:
+        raise HTTPException(status_code=422, detail="consistency_pct must be 0-100")
     acc = Account(
         firm=(payload.firm or "").strip(),
         alias=alias,
@@ -120,6 +136,9 @@ def create_account(payload: AccountCreate, session: Session = Depends(get_sessio
         max_mode=payload.max_mode,
         trailing_ref=payload.trailing_ref,
         profit_target_pct=payload.profit_target_pct,
+        min_trading_days=payload.min_trading_days,
+        consistency_pct=payload.consistency_pct,
+        deadline=payload.deadline,
         status=payload.status or "active",
     )
     session.add(acc)
@@ -142,6 +161,12 @@ def update_account(account_id: int, patch: AccountUpdate, session: Session = Dep
     if acc is None:
         raise HTTPException(status_code=404, detail="Account not found")
     data = patch.model_dump(exclude_unset=True)
+    # Null is meaningful for these optional rules: it clears the rule.
+    # The generic loops below skip None, so handle it before they run.
+    for key in ("profit_target_pct", "consistency_pct", "deadline"):
+        if key in data and data[key] is None:
+            setattr(acc, key, None)
+            data.pop(key)
     if "alias" in data and data["alias"] is not None:
         alias = _normalize_alias(data["alias"])
         clash = session.exec(
@@ -171,6 +196,18 @@ def update_account(account_id: int, patch: AccountUpdate, session: Session = Dep
             setattr(acc, key, val.strip() if isinstance(val, str) else val)
     if "base_currency" in data and data["base_currency"] is not None:
         acc.base_currency = _normalize_base(data.pop("base_currency"))
+    if "min_trading_days" in data and data["min_trading_days"] is not None:
+        val = data.pop("min_trading_days")
+        if val < 0:
+            raise HTTPException(status_code=422, detail="min_trading_days must be >= 0")
+        acc.min_trading_days = int(val)
+    if "consistency_pct" in data and data["consistency_pct"] is not None:
+        val = data.pop("consistency_pct")
+        if not 0 <= val <= 100:
+            raise HTTPException(status_code=422, detail="consistency_pct must be 0-100")
+        acc.consistency_pct = val
+    if "deadline" in data and data["deadline"] is not None:
+        acc.deadline = data.pop("deadline")
     for key in ("start_balance", "daily_loss_pct", "max_loss_pct", "profit_target_pct"):
         if key in data and data[key] is not None:
             if key == "start_balance" and data[key] < 0:
@@ -208,6 +245,14 @@ def delete_account(
             t.account_id = None
             t.updated_at = _now()
             session.add(t)
+    for rule in session.exec(
+        select(AccountRule).where(AccountRule.account_id == account_id)
+    ).all():
+        session.delete(rule)
+    for event in session.exec(
+        select(AccountEvent).where(AccountEvent.account_id == account_id)
+    ).all():
+        session.delete(event)
     session.delete(acc)
     session.commit()
     return {"deleted": account_id}
@@ -257,16 +302,22 @@ def _prop_numbers(acc: Account, session: Session, base_override: Optional[str] =
     setting = get_trading_day(session)
     day_start, day_end = setting.bounds(setting.day_of(now))
     nets: list[float] = []
+    by_day: dict[date, float] = {}
+    traded_days: set[date] = set()
     daily_pnl = 0.0
     fx_missing = 0
     fx_fallback = 0
     max_fallback_days = 0
     for t in trades:
+        closed_at = as_naive_utc(t.timestamp_close) or as_naive_utc(t.exit_time)
+        moment = closed_at or as_naive_utc(t.timestamp_open) or now
+        when = moment.date()
+        # A closed trade is a traded day even when its P&L is unknown.
+        trade_day = setting.day_of(moment)
+        traded_days.add(trade_day)
         # An unpriced trade has no amount to convert. It is not a zero.
         if t.net_pnl is None:
             continue
-        closed_at = as_naive_utc(t.timestamp_close) or as_naive_utc(t.exit_time)
-        when = (closed_at or as_naive_utc(t.timestamp_open) or now).date()
         quote = normalize_currency(t.quote_currency, "USD")
         conv = convert_amount(session, t.net_pnl, quote, target, when)
         if conv.missing:
@@ -277,6 +328,7 @@ def _prop_numbers(acc: Account, session: Session, base_override: Optional[str] =
             max_fallback_days = max(max_fallback_days, conv.fallback_days)
         amount = round(conv.amount or 0.0, 2)
         nets.append(amount)
+        by_day[trade_day] = round(by_day.get(trade_day, 0.0) + amount, 2)
         if closed_at is not None and day_start <= closed_at < day_end:
             daily_pnl += amount
 
@@ -305,6 +357,23 @@ def _prop_numbers(acc: Account, session: Session, base_override: Optional[str] =
     target_pct = (
         round(total_net / target_usd * 100, 2)
         if target_usd
+        else None
+    )
+    return_pct = round(total_net / start * 100, 2) if start else None
+    best_day = max(by_day.values()) if by_day else None
+    best_day_share = (
+        round(best_day / total_net * 100, 2)
+        if best_day is not None and total_net > 0
+        else None
+    )
+    daily_loss_used_pct = (
+        round(max(0.0, -daily_pnl) / start * 100, 2)
+        if start and (acc.daily_loss_pct or 0.0)
+        else None
+    )
+    max_loss_used_pct = (
+        round(max(0.0, anchor - balance) / anchor * 100, 2)
+        if max_pct and anchor > 0
         else None
     )
     breached = bool(
@@ -343,6 +412,13 @@ def _prop_numbers(acc: Account, session: Session, base_override: Optional[str] =
         "profit_target_pct": acc.profit_target_pct,
         "profit_target": target_usd,
         "target_pct": target_pct,
+        "return_pct": return_pct,
+        "days_traded": len(traded_days),
+        "best_day": round(best_day, 2) if best_day is not None else None,
+        "best_day_share": best_day_share,
+        "max_anchor": round(anchor, 2),
+        "max_loss_used_pct": max_loss_used_pct,
+        "daily_loss_used_pct": daily_loss_used_pct,
         "breached": breached,
         "status": "breach" if breached else acc.status,
         "open_trades": open_trades,
@@ -368,3 +444,40 @@ def prop_status(
     if acc is None:
         raise HTTPException(status_code=404, detail="Account not found")
     return _prop_numbers(acc, session, base)
+
+
+@router.get("/{account_id}/rules", response_model=list[AccountRuleRead])
+def list_account_rules(
+    account_id: int,
+    session: Session = Depends(get_session),
+):
+    """Refresh the configured challenge rules and return their milestones.
+
+    Reading the rules recomputes the live numbers and records a newly
+    resolved milestone. That keeps a target hit visible even if the trader
+    never pressed "check" on the exact day.
+    """
+    acc = session.get(Account, account_id)
+    if acc is None:
+        raise HTTPException(status_code=404, detail="Account not found")
+    return sync_account_rules(session, acc)
+
+
+@router.post("/{account_id}/rules/{kind}/check", response_model=AccountRuleRead)
+def check_account_rule(
+    account_id: int,
+    kind: str,
+    session: Session = Depends(get_session),
+):
+    if kind not in RULE_KINDS:
+        raise HTTPException(
+            status_code=422, detail=f"kind must be one of {list(RULE_KINDS)}"
+        )
+    acc = session.get(Account, account_id)
+    if acc is None:
+        raise HTTPException(status_code=404, detail="Account not found")
+    rules = sync_account_rules(session, acc)
+    for rule in rules:
+        if rule.kind == kind:
+            return rule
+    raise HTTPException(status_code=404, detail=f"rule not configured: {kind}")
