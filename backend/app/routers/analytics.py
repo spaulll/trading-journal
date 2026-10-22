@@ -25,6 +25,7 @@ from app.services.analytics_rules import (
     is_win as _is_win,
     sign as _sign,
 )
+from app.services.analytics_stats import mean_confidence, min_sample_size
 from app.services.timeutils import as_naive_utc, trade_close_day, utcnow_naive
 from app.services.trade_filters import TradeFilters, apply_trade_filters
 from app.services.trading_day import day_of_trade, get_trading_day
@@ -463,6 +464,79 @@ def setup_matrix(
         "rows": rows,
         "column_totals": columns,
         "grand_total": _net_stats(trades),
+    }
+
+
+@router.get("/setup-confidence")
+def setup_confidence(
+    tag: Optional[str] = Query(default=None, description="Setup tag name, with or without #"),
+    account_id: Optional[int] = Query(default=None),
+    min_sample: Optional[int] = Query(
+        default=None, ge=1, description="Override MIN_SAMPLE_SIZE for this request"
+    ),
+    session: Session = Depends(get_session),
+):
+    """Expectancy per setup with a 95% confidence interval.
+
+    A setup with three trades can post a spectacular average by luck. The
+    interval says how much of that average is signal: rows are ranked by the
+    *lower* bound, and a setup below the configured minimum sample is marked
+    ``sufficient: false`` and sorted after every ranked one — visible, never
+    presented as a winner.
+    """
+    trades = _closed_trades(session, account_id)
+    names, tag_map = _setup_tag_map(session)
+    threshold = min_sample if min_sample is not None else min_sample_size()
+    wanted = (tag or "").strip().lstrip("#!").lower() or None
+
+    rows = []
+    for name in names:
+        if wanted is not None and name.lower() != wanted:
+            continue
+        bucket = [t for t in trades if name in tag_map.get(t.id or -1, [])]
+        nets = [usd_net(t) for t in bucket]
+        counts = analytics_rules.split_outcomes(nets)
+        known = [n for n in nets if n is not None]
+        interval = mean_confidence(known)
+        decided = counts.wins + counts.losses
+        rows.append(
+            {
+                "name": name,
+                "category": "setup",
+                "trade_count": len(bucket),
+                "priced": counts.priced,
+                "unpriced": counts.unpriced,
+                "wins": counts.wins,
+                "losses": counts.losses,
+                "breakeven": counts.breakeven,
+                "decided": decided,
+                "win_rate": analytics_rules.win_rate(counts.wins, counts.losses),
+                "net_pnl": round(sum(known), 2),
+                "expectancy": interval["mean"] if interval["mean"] is not None else 0.0,
+                "std_dev": interval["std_dev"],
+                "standard_error": interval["standard_error"],
+                "ci_low": interval["ci_low"],
+                "ci_high": interval["ci_high"],
+                "ci_level": interval["ci_level"],
+                "sufficient": decided >= threshold,
+            }
+        )
+
+    def rank(row: dict) -> tuple:
+        low = row["ci_low"]
+        return (
+            0 if row["sufficient"] else 1,
+            -(low if low is not None else float("-inf")),
+            -row["trade_count"],
+            row["name"],
+        )
+
+    rows.sort(key=rank)
+    return {
+        "min_sample": threshold,
+        "ci_level": 0.95,
+        "tags": rows,
+        "insufficient": sum(1 for row in rows if not row["sufficient"]),
     }
 
 

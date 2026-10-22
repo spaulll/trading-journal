@@ -11,6 +11,7 @@
 	import MonthlyCalendar from '$lib/components/dashboard/MonthlyCalendar.svelte';
 	import RadarAnalytics from '$lib/components/dashboard/RadarAnalytics.svelte';
 	import SessionGrid from '$lib/components/dashboard/SessionGrid.svelte';
+	import SetupConfidencePanel from '$lib/components/dashboard/SetupConfidencePanel.svelte';
 	import SetupMatrix from '$lib/components/dashboard/SetupMatrix.svelte';
 	import StatPanels from '$lib/components/dashboard/StatPanels.svelte';
 	import SymbolPerformanceTable from '$lib/components/dashboard/SymbolPerformanceTable.svelte';
@@ -35,6 +36,7 @@
 		type PropStatusDto,
 		type RadarProfiles,
 		type RBucket,
+		type SetupConfidence,
 		type SetupMatrix as SetupMatrixDto,
 		type SummaryDto,
 		type SymbolPerformance,
@@ -48,6 +50,7 @@
 	let tags = $state<TagPerf[]>([]);
 	let symbolPerf = $state<SymbolPerformance | null>(null);
 	let matrix = $state<SetupMatrixDto | null>(null);
+	let confidence = $state<SetupConfidence | null>(null);
 	let days = $state<CalendarDay[]>([]);
 	let year = $state(new Date().getFullYear());
 	let rBuckets = $state<RBucket[]>([]);
@@ -78,6 +81,7 @@
 		rBuckets: RBucket[];
 		symbolPerf?: SymbolPerformance;
 		matrix?: SetupMatrixDto;
+		confidence?: SetupConfidence;
 	}
 
 	function applySnapshot(snap: AnalyticsSnapshot): void {
@@ -95,6 +99,7 @@
 		rBuckets = snap.rBuckets;
 		if (snap.symbolPerf) symbolPerf = snap.symbolPerf;
 		if (snap.matrix) matrix = snap.matrix;
+		if (snap.confidence) confidence = snap.confidence;
 	}
 
 	async function loadYearDays(y: number): Promise<void> {
@@ -112,12 +117,13 @@
 		error = null;
 		const acct = $selectedAccountId;
 		try {
-			const [s, e, t, sp, sm, c, k, mc, a, ls, rd, rb] = await Promise.all([
+			const [s, e, t, sp, sm, cf, c, k, mc, a, ls, rd, rb] = await Promise.all([
 				api.summary(acct),
 				api.equityCurve(acct),
 				api.tagPerformance(acct),
 				api.symbolPerformance(acct),
 				api.setupMatrix(acct),
+				api.setupConfidence(acct),
 				api.calendar(year, acct),
 				api.kpi(acct),
 				api.monthlyCalendar(monthCursor.y, monthCursor.m, acct),
@@ -136,6 +142,7 @@
 			tags = t.tags;
 			symbolPerf = sp;
 			matrix = sm;
+			confidence = cf;
 			days = c.days;
 			year = c.year;
 			kpi = k;
@@ -155,6 +162,7 @@
 						tags: t.tags,
 						symbolPerf: sp,
 						matrix: sm,
+						confidence: cf,
 						days: c.days,
 						year: c.year,
 						kpi: k,
@@ -339,6 +347,10 @@
 
 		{#if matrix}
 			<SetupMatrix data={matrix} />
+		{/if}
+
+		{#if confidence}
+			<SetupConfidencePanel data={confidence} />
 		{/if}
 
 		<section class="rise grid grid-cols-1 gap-4 xl:grid-cols-12" style="animation-delay: 40ms">
