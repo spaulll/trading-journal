@@ -4,6 +4,7 @@ Jobs (AsyncIOScheduler, started in app.main lifespan):
   - check_stale_trades every 15 minutes (STALE_TRADE_HOURS env)
   - send_eod_recap daily at EOD_PROMPT_HOUR (server-local hour)
   - send_weekly_review Monday morning (WEEKLY_REVIEW_DOW/HOUR/MINUTE, EOD_TZ)
+    — generates, stores and pushes the review.
 
 EOD prompt message ids are tracked so replies to the recap are saved
 into daily_notes.eod_review (see maybe_handle_eod_reply, called from
@@ -12,6 +13,7 @@ telegram_bot._process_update).
 
 import logging
 import os
+import re
 from datetime import date as date_type
 from datetime import datetime
 from datetime import timezone
@@ -239,14 +241,59 @@ async def maybe_handle_eod_reply(chat_id: int, msg: dict, session: Session) -> b
     return True
 
 
+# Telegram rejects a message longer than 4096 UTF-16 units; leave headroom
+# for emoji and entities, and split on line boundaries where possible.
+TG_TEXT_LIMIT = 3500
+
+_TG_HEADING_RE = re.compile(r"^#{1,6}[ \t]+(.+)$", re.MULTILINE)
+_TG_BOLD_RE = re.compile(r"\*\*(.+?)\*\*")
+
+
+def telegram_chunks(text: str, limit: int = TG_TEXT_LIMIT) -> list[str]:
+    """Split text into Telegram-sized messages without cutting a line first."""
+    chunks: list[str] = []
+    current = ""
+    for line in text.splitlines(keepends=True):
+        while len(line) > limit:
+            if current:
+                chunks.append(current)
+                current = ""
+            chunks.append(line[:limit])
+            line = line[limit:]
+        if len(current) + len(line) > limit:
+            chunks.append(current)
+            current = ""
+        current += line
+    if current:
+        chunks.append(current)
+    return [c for c in chunks if c.strip()]
+
+
+def weekly_review_text(report) -> str:
+    """Render stored markdown as Telegram HTML for the Monday push.
+
+    The LLM writes markdown; Telegram renders HTML only. Escape first so the
+    trader's own text can never inject a tag, then turn headings and **bold**
+    into Telegram's equivalents. Tables stay as plain rows.
+    """
+    from app.services.telegram_bot import esc
+
+    body = esc((report.markdown or "").strip())
+    body = _TG_HEADING_RE.sub(r"\n<b>\1</b>", body)
+    body = _TG_BOLD_RE.sub(r"<b>\1</b>", body)
+    title = f"📊 <b>Weekly review</b> · {report.date_from:%d %b} – {report.date_to:%d %b %Y}\n"
+    return title + body.strip()
+
+
 async def send_weekly_review() -> dict:
-    """Generate and store the Monday review of the last completed week.
+    """Generate, store and push the Monday review of the last completed week.
 
     The LLM is optional: with no key configured the job is a quiet no-op, so
-    a journal that never set one does not log a failed job every week.
+    a journal that never set one does not log a failed job every week. The
+    review is stored before the push, so a Telegram failure never loses it.
     """
     from app.database import engine
-    from app.services import weekly_review
+    from app.services import telegram_bot, weekly_review
 
     if not weekly_review.llm_configured():
         log.info("weekly review skipped: LLM_API_KEY is not configured")
@@ -254,6 +301,7 @@ async def send_weekly_review() -> dict:
     try:
         with Session(engine) as session:
             result = weekly_review.generate_weekend_review(session)
+            text = weekly_review_text(result["report"]) if result["status"] == "ok" else None
     except Exception:
         log.exception("weekly review failed")
         return {"status": "error"}
@@ -263,7 +311,23 @@ async def send_weekly_review() -> dict:
         result["date_from"],
         result["date_to"],
     )
-    return result
+    if text is None:
+        return result
+
+    if not telegram_bot.is_configured():
+        log.warning("weekly review stored but Telegram is not configured")
+        return {**result, "pushed": False, "reason": "telegram_not_configured"}
+
+    delivered = 0
+    try:
+        for chunk in telegram_chunks(text):
+            if await telegram_bot.notify(chunk) is not None:
+                delivered += 1
+    except Exception:
+        log.exception("weekly review stored but the Telegram push failed")
+        return {**result, "pushed": False, "chunks": delivered}
+    log.info("weekly review pushed in %s message(s)", delivered)
+    return {**result, "pushed": delivered > 0, "chunks": delivered}
 
 
 def build_scheduler() -> AsyncIOScheduler:
