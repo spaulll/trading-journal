@@ -1,5 +1,4 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
 	import { Plus } from 'lucide-svelte';
 	import OpenTrades from '$lib/components/OpenTrades.svelte';
 	import PageHead from '$lib/components/PageHead.svelte';
@@ -9,11 +8,13 @@
 	import TradeModal from '$lib/components/TradeModal.svelte';
 	import TradeOpenModal from '$lib/components/TradeOpenModal.svelte';
 	import TradeTable from '$lib/components/TradeTable.svelte';
+	import { ledgerHasFilter, ledgerQuery } from '$lib/stores/ledger';
 	import {
 		lifecycleModal,
 		loadTrades,
 		openTrades,
 		requestOpen,
+		tradeCounts,
 		trades,
 		tradesError,
 		tradesLoading,
@@ -22,13 +23,16 @@
 	import { BE_TOL, fmtMoney, fmtR, pnlTone, toneText, usdNet } from '$lib/utils/format';
 	import { countup } from '$lib/utils/motion';
 
-	onMount(() => {
-		void loadTrades();
+	// The ledger asks the server for the rows it shows: a filter change is a
+	// new query, not another pass over a downloaded history.
+	$effect(() => {
+		const query = $ledgerQuery;
+		void loadTrades(false, query);
 	});
 
 	const closed = $derived($trades.filter((t) => t.status !== 'OPEN'));
 
-	/** Client-side roll-up over the FULL trade set (loadTrades fetches all pages).
+	/** Client-side roll-up over the filtered trade set.
 	 * Total count comes from the API `total`, not items.length.
 	 * BE rule and win-rate denominator mirror the API: |usd net| <= $5 is
 	 * breakeven, and the rate is wins / decided trades. Unpriced trades
@@ -97,7 +101,7 @@
 		actionLabel="Retry"
 		onAction={() => void loadTrades()}
 	/>
-{:else if $trades.length === 0}
+{:else if $trades.length === 0 && !$ledgerHasFilter}
 	<PageHead eyebrow="workspace" title="Trades" />
 	<StateBlock
 		title="No trades yet"
@@ -110,7 +114,7 @@
 	<PageHead
 		eyebrow="workspace"
 		title="Trades"
-		meta="{$openTrades.length} open · {$tradesTotal || $trades.length} logged · {closed.length} closed"
+		meta="{$tradeCounts.OPEN} open · {$tradesTotal} logged · {$tradeCounts.CLOSED} closed"
 	>
 		<button type="button" onclick={() => requestOpen()} class="btn btn-primary h-10 px-4 text-sm">
 			<Plus size={16} strokeWidth={2.2} aria-hidden="true" />

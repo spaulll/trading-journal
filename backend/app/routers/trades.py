@@ -41,6 +41,12 @@ from app.services.symbol_registry import (
     estimate_gross_quote_pnl,
 )
 from app.services.timeutils import as_naive_utc
+from app.services.trade_filters import (
+    TradeFilters,
+    apply_trade_filters,
+    filtered_count,
+    sort_trades,
+)
 from app.services.trade_money import (
     fx_missing,
     quote_currency_for,
@@ -420,45 +426,90 @@ def _backfill_ticket(session: Session, symbol: str, entry: datetime) -> str:
     return ticket
 
 
+def _filters(
+    status: Optional[str],
+    symbol: Optional[str],
+    query: Optional[str],
+    tag: Optional[str],
+    date_from: Optional[datetime],
+    date_to: Optional[datetime],
+    closed_from: Optional[datetime],
+    closed_to: Optional[datetime],
+    account_id: Optional[int],
+    unassigned: bool,
+) -> TradeFilters:
+    """The filter state every ledger entry point shares."""
+    return TradeFilters(
+        status=status,
+        symbol=symbol,
+        query=query,
+        tag=tag,
+        date_from=date_from,
+        date_to=date_to,
+        closed_from=closed_from,
+        closed_to=closed_to,
+        account_id=account_id,
+        unassigned=unassigned,
+    )
+
+
 @router.get("")
 def list_trades(
     status: Optional[str] = Query(default=None, description="OPEN or CLOSED"),
     symbol: Optional[str] = None,
+    query: Optional[str] = Query(default=None, alias="q", description="Free text: symbol or ticket"),
     tag: Optional[str] = Query(default=None, description="Tag name without #/! prefix"),
-    date_from: Optional[datetime] = None,
-    date_to: Optional[datetime] = None,
+    date_from: Optional[datetime] = Query(default=None, description="Open-day lower bound"),
+    date_to: Optional[datetime] = Query(default=None, description="Open-day upper bound"),
+    closed_from: Optional[datetime] = Query(default=None, description="Close-day lower bound"),
+    closed_to: Optional[datetime] = Query(default=None, description="Close-day upper bound"),
     account_id: Optional[int] = Query(default=None, description="Filter to one account"),
     unassigned: bool = Query(default=False, description="Only trades with no account"),
+    sort: Optional[str] = Query(default=None, description="newest | oldest | net-desc | net-asc | r-desc"),
     page: int = Query(default=1, ge=1),
     # Large default so first-page clients (Trades page, bots) see the full
     # ledger without paginating; total is always the full filtered count
     # independent of page/page_size — clients that need every row should
-    # still paginate until items.length == total (see listAllTrades).
+    # still paginate until items.length === total (see listAllTrades).
     page_size: int = Query(default=500, ge=1, le=5000),
     session: Session = Depends(get_session),
 ):
-    statement = select(Trade).order_by(Trade.created_at.desc())
-    if status:
-        statement = statement.where(Trade.status == status.upper())
-    if symbol:
-        statement = statement.where(Trade.symbol == symbol.upper())
-    if account_id is not None:
-        statement = statement.where(Trade.account_id == account_id)
-    elif unassigned:
-        statement = statement.where(Trade.account_id.is_(None))
-    if date_from:
-        statement = statement.where(Trade.timestamp_open >= date_from)
-    if date_to:
-        statement = statement.where(Trade.timestamp_open <= date_to)
-    trades = session.exec(statement).all()
-    if tag:
-        wanted = tag.lower().lstrip("#!")
-        trades = [t for t in trades if any(x.name == wanted for x in t.tags)]
+    """The ledger, filtered and counted on the server.
 
-    total = len(trades)
+    ``total`` is the number of rows the filter matches, not the size of the
+    page. ``counts`` holds the same count per status tab, computed without
+    the status filter, so the tabs can show what each one would return.
+    """
+    filters = _filters(
+        status,
+        symbol,
+        query,
+        tag,
+        date_from,
+        date_to,
+        closed_from,
+        closed_to,
+        account_id,
+        unassigned,
+    )
+    base = filters.without_status()
+    counts = {
+        "ALL": filtered_count(session, base),
+        "OPEN": filtered_count(session, base.with_status("OPEN")),
+        "CLOSED": filtered_count(session, base.with_status("CLOSED")),
+    }
+    total = filtered_count(session, filters)
+
+    statement = sort_trades(apply_trade_filters(select(Trade), filters), sort)
     start = (page - 1) * page_size
-    items = [to_trade_read(t) for t in trades[start : start + page_size]]
-    return {"items": items, "total": total, "page": page, "page_size": page_size}
+    trades = session.exec(statement.offset(start).limit(page_size)).all()
+    return {
+        "items": [to_trade_read(t) for t in trades],
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "counts": counts,
+    }
 
 
 @router.get("/{trade_id}", response_model=TradeRead)
