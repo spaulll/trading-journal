@@ -233,3 +233,35 @@ def test_a_bulk_move_still_refuses_more_than_five_hundred_ids(client):
     )
     assert response.status_code == 422
     assert "500" in response.json()["detail"]
+
+
+# --- the export -------------------------------------------------------------
+
+
+def test_the_export_holds_the_filtered_rows(client):
+    client.post("/api/trades/backfill", json=_record(ticket="EXPORTED", symbol="gold"))
+    client.post("/api/trades/backfill", json=_record(ticket="OTHER", symbol="eurusd"))
+
+    response = client.get("/api/trades/export", params={"q": "gold"})
+    assert response.status_code == 200
+    assert "text/csv" in response.headers["content-type"]
+    assert "attachment" in response.headers["content-disposition"]
+
+    lines = response.text.strip().splitlines()
+    assert lines[0].startswith("ticket,status,symbol")
+    assert len(lines) == 2
+    assert lines[1].startswith("EXPORTED,")
+    # The USD view travels with the quote-currency amount.
+    assert "net_quote" in lines[0] and "net_usd" in lines[0]
+
+
+def test_the_export_matches_the_on_screen_filter(client):
+    for i in range(3):
+        client.post("/api/trades/backfill", json=_record(ticket=f"CSV-{i}", symbol="gold"))
+    client.post("/api/trades/backfill", json=_record(ticket="CSV-OTHER", symbol="eurusd"))
+
+    rows = client.get("/api/trades", params={"q": "gold"}).json()
+    export = client.get("/api/trades/export", params={"q": "gold"}).text.strip().splitlines()
+    # One header row, then exactly the rows the table would show.
+    assert len(export) - 1 == len(rows["items"])
+    assert len(export) - 1 == rows["total"]
