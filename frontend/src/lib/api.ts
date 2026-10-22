@@ -155,11 +155,19 @@ export interface PropStatusDto {
 	fx: { missing: number; fallback: number; max_fallback_days: number };
 }
 
+export interface LedgerCounts {
+	ALL: number;
+	OPEN: number;
+	CLOSED: number;
+}
+
 export interface PagedTrades {
 	items: TradeDto[];
 	total: number;
 	page: number;
 	page_size: number;
+	/** How many trades each status tab holds under the current filter. */
+	counts?: LedgerCounts;
 }
 
 export interface SyncResult {
@@ -401,22 +409,28 @@ export const api = {
 		const data = await req<TradeDto[] | PagedTrades>(`/api/trades${params ?? ''}`);
 		return Array.isArray(data) ? data : data.items;
 	},
-	/** Fetch every trade regardless of server pagination — loops until items.length === total. */
-	listAllTrades: async (baseParams?: string): Promise<{ items: TradeDto[]; total: number }> => {
+	/** Fetch every trade that matches a filter, whatever the server pagination — loops until items.length === total. */
+	listAllTrades: async (
+		baseParams?: string
+	): Promise<{ items: TradeDto[]; total: number; counts: LedgerCounts }> => {
 		let page = 1;
 		const pageSize = 500;
 		let all: TradeDto[] = [];
 		let total = 0;
+		let counts: LedgerCounts = { ALL: 0, OPEN: 0, CLOSED: 0 };
 		for (let i = 0; i < 20; i++) {
 			const joiner = baseParams?.includes('?') ? '&' : '?';
 			const qs = `${baseParams ?? ''}${joiner}page=${page}&page_size=${pageSize}`;
 			const data = await req<PagedTrades>(`/api/trades${qs}`);
-			if (page === 1) total = data.total;
+			if (page === 1) {
+				total = data.total;
+				counts = data.counts ?? counts;
+			}
 			all = all.concat(data.items);
 			if (all.length >= data.total || data.items.length === 0) break;
 			page += 1;
 		}
-		return { items: all, total };
+		return { items: all, total, counts };
 	},
 	listTradesPaged: (params?: string) =>
 		req<PagedTrades>(`/api/trades${params ?? '?page=1&page_size=500'}`),

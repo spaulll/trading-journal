@@ -2,21 +2,15 @@
 	import { ChevronDown, Search } from 'lucide-svelte';
 	import { slide } from 'svelte/transition';
 	import { onMount } from 'svelte';
+	import { get } from 'svelte/store';
 	import { api, type TradeDto } from '$lib/api';
 	import { aliasOf, accounts, accountMap, chipAlias, loadAccounts, selectedAccountId } from '$lib/stores/accounts';
-	import { loadTrades, openTrade, requestClose, trades, upsertTrade } from '$lib/stores/trades';
+	import { ledgerFilters, setLedgerFilters, type LedgerSort, type LedgerStatus } from '$lib/stores/ledger';
+	import { loadTrades, openTrade, requestClose, tradeCounts, trades, upsertTrade } from '$lib/stores/trades';
 	import { toasts } from '$lib/stores/toast';
 	import { fmtCurrency, fmtDateTime, fmtMoney, fmtR, isUnpriced, pnlTone, rTone, toneBg, toneText, usdNet } from '$lib/utils/format';
 	import SegControl from '$lib/components/SegControl.svelte';
 
-	type StatusFilter = 'ALL' | 'OPEN' | 'CLOSED';
-	type SortKey = 'newest' | 'oldest' | 'net-desc' | 'net-asc' | 'r-desc';
-
-	let status: StatusFilter = $state('ALL');
-	let query = $state('');
-	let tagQuery = $state('');
-	let sort: SortKey = $state('newest');
-	let accountFilter = $state('');
 	let moveTarget = $state('');
 	let moving = $state(false);
 	let moveOpen = $state(false);
@@ -25,16 +19,34 @@
 	let searchEl: HTMLInputElement | null = $state(null);
 	let expanded = $state<Set<number>>(new Set());
 
+	// The filters live in the shared store: the server does the matching, so
+	// the browser only ever holds the rows it is showing. The text inputs
+	// keep their own value so a keystroke does not fire a request per letter.
+	let queryInput = $state('');
+	let tagInput = $state('');
+
 	onMount(() => {
 		void loadAccounts();
 		try {
-			accountFilter = localStorage.getItem('selected-account-id') ?? '';
+			const stored = localStorage.getItem('selected-account-id');
+			if (stored) setLedgerFilters({ account: stored });
 			selectedAccountId.subscribe((v) => {
-				accountFilter = v === null ? '' : String(v);
+				setLedgerFilters({ account: v === null ? '' : String(v) });
 			});
 		} catch {
 			// ignore
 		}
+	});
+
+	$effect(() => {
+		const query = queryInput;
+		const tag = tagInput;
+		const timer = setTimeout(() => {
+			const current = get(ledgerFilters);
+			if (current.query === query && current.tag === tag) return;
+			setLedgerFilters({ query, tag });
+		}, 250);
+		return () => clearTimeout(timer);
 	});
 
 	function onGlobalKey(e: KeyboardEvent): void {
@@ -55,48 +67,10 @@
 		return `Broker booked ${fmtCurrency(t.net_pnl, quote)}`;
 	}
 
-	function sortTrades(list: TradeDto[]): TradeDto[] {
-		const byTime = (t: TradeDto) => t.timestamp_open ?? t.created_at;
-		const numLast = (v: number | null | undefined, desc: boolean) =>
-			v === null || v === undefined ? (desc ? -Infinity : Infinity) : v;
-		const next = [...list];
-		switch (sort) {
-			case 'oldest':
-				return next.sort((a, b) => byTime(a).localeCompare(byTime(b)));
-			case 'net-desc':
-				return next.sort((a, b) => numLast(usdNet(b), true) - numLast(usdNet(a), true));
-			case 'net-asc':
-				return next.sort((a, b) => numLast(usdNet(a), false) - numLast(usdNet(b), false));
-			case 'r-desc':
-				return next.sort((a, b) => numLast(b.r_multiple, true) - numLast(a.r_multiple, true));
-			default:
-				return next.sort((a, b) => byTime(b).localeCompare(byTime(a)));
-		}
-	}
+	/** The rows the server sent — already filtered, sorted and counted there. */
+	const filtered = $derived($trades);
 
-	const filtered = $derived.by(() => {
-		const q = query.trim().toLowerCase();
-		const tq = tagQuery.trim().toLowerCase().replace(/^[#!]/, '');
-		const list = $trades.filter((t) => {
-			if (status !== 'ALL' && t.status !== status) return false;
-			if (accountFilter === 'unassigned') {
-				if (t.account_id !== null && t.account_id !== undefined) return false;
-			} else if (accountFilter !== '' && String(t.account_id ?? '') !== accountFilter) {
-				return false;
-			}
-			if (q && !(t.symbol ?? '').toLowerCase().includes(q) && !(t.trade_id ?? '').toLowerCase().includes(q))
-				return false;
-			if (tq && !t.tags.some((tag) => tag.name.toLowerCase().includes(tq))) return false;
-			return true;
-		});
-		return sortTrades(list);
-	});
-
-	const counts = $derived.by(() => ({
-		ALL: $trades.length,
-		OPEN: $trades.filter((t) => t.status === 'OPEN').length,
-		CLOSED: $trades.filter((t) => t.status !== 'OPEN').length
-	}));
+	const counts = $derived($tradeCounts);
 
 	function toggleExpand(id: number, e: MouseEvent): void {
 		e.stopPropagation();
@@ -168,8 +142,8 @@
 		<SegControl
 			mode="tabs"
 			label="Status filter"
-			value={status}
-			onChange={(v) => (status = v as StatusFilter)}
+			value={$ledgerFilters.status}
+			onChange={(v) => setLedgerFilters({ status: v as LedgerStatus })}
 			size="sm"
 			options={[
 				{ value: 'ALL', label: 'All', count: counts.ALL },
@@ -188,7 +162,7 @@
 			<input
 				type="search"
 				bind:this={searchEl}
-				bind:value={query}
+				bind:value={queryInput}
 				placeholder="Symbol or ID…  ( / )"
 				class="field h-9 pl-8 text-[13px]"
 			/>
@@ -198,7 +172,7 @@
 			<span
 				class="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 font-mono text-xs text-dim"
 				aria-hidden="true">#</span>
-			<input type="search" bind:value={tagQuery} placeholder="Tag…" class="field h-9 pl-7 font-mono text-[13px]" />
+			<input type="search" bind:value={tagInput} placeholder="Tag…" class="field h-9 pl-7 font-mono text-[13px]" />
 		</label>
 
 		<label
@@ -206,7 +180,8 @@
 		>
 			<span class="font-mono text-[10px] tracking-[0.16em] uppercase">Acct</span>
 			<select
-				bind:value={accountFilter}
+				value={$ledgerFilters.account}
+				onchange={(e) => setLedgerFilters({ account: e.currentTarget.value })}
 				class="h-full max-w-32 appearance-none border-0 bg-none bg-transparent py-0 pr-6 text-[13px] text-fg outline-none [color-scheme:inherit] [&>option]:bg-panel [&>option]:text-fg"
 				aria-label="Filter by account"
 			>
@@ -229,7 +204,8 @@
 		>
 			<span class="font-mono text-[10px] tracking-[0.16em] uppercase">Sort</span>
 			<select
-				bind:value={sort}
+				value={$ledgerFilters.sort}
+				onchange={(e) => setLedgerFilters({ sort: e.currentTarget.value as LedgerSort })}
 				class="h-full appearance-none border-0 bg-none bg-transparent py-0 pr-6 text-[13px] text-fg outline-none [color-scheme:inherit] [&>option]:bg-panel [&>option]:text-fg"
 				aria-label="Sort trades"
 			>

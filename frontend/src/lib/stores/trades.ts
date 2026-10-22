@@ -2,12 +2,19 @@ import { derived, get, writable } from 'svelte/store';
 import { errMsg, type ScreenshotDto, type TradeDto, api } from '$lib/api';
 import { SNAPSHOT_KEYS, readSnapshot, saveSnapshot } from '$lib/offline-snapshot';
 import { usdNet } from '$lib/utils/format';
+import { ledgerQuery } from './ledger';
 import { markOffline, markOnline, snapshotAt } from './offline';
 import { toasts } from './toast';
 
 export const trades = writable<TradeDto[]>([]);
-/** Full server-side count from listAllTrades — masthead uses this, not items.length. */
+/** Server-side count of the filtered ledger — the masthead uses this, not items.length. */
 export const tradesTotal = writable<number>(0);
+/** How many trades each status tab holds under the current filter. */
+export const tradeCounts = writable<{ ALL: number; OPEN: number; CLOSED: number }>({
+	ALL: 0,
+	OPEN: 0,
+	CLOSED: 0
+});
 export const tradesLoading = writable(true);
 export const tradesError = writable<string | null>(null);
 export const syncing = writable(false);
@@ -91,16 +98,21 @@ export async function submitBackfill(record: Record<string, unknown>): Promise<b
  * Returns `false` when the API could not be reached, so callers can surface it.
  * Quiet (background) refreshes never clobber the visible list on failure — the
  * previous data stays on screen and the caller reports the miss instead.
+ *
+ * The query is the ledger's filter state, so the browser asks the server for
+ * the rows it is going to show instead of downloading the whole history and
+ * filtering it here.
  */
-export async function loadTrades(quiet = false): Promise<boolean> {
+export async function loadTrades(quiet = false, query: string = get(ledgerQuery)): Promise<boolean> {
 	if (!quiet) {
 		tradesLoading.set(true);
 		tradesError.set(null);
 	}
 	try {
-		const { items, total } = await api.listAllTrades();
+		const { items, total, counts } = await api.listAllTrades(query);
 		trades.set(items);
 		tradesTotal.set(total);
+		tradeCounts.set(counts);
 		if (quiet) tradesError.set(null);
 		markOnline();
 		snapshotAt.set(saveSnapshot(SNAPSHOT_KEYS.trades, { items, total }) ?? null);
