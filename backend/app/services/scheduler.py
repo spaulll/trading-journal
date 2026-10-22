@@ -1,8 +1,9 @@
-"""Background scheduler: stale-trade nudges + EOD recap (PLAN-v2 Phase 3).
+"""Background scheduler: stale-trade nudges + EOD recap + weekly review.
 
 Jobs (AsyncIOScheduler, started in app.main lifespan):
   - check_stale_trades every 15 minutes (STALE_TRADE_HOURS env)
   - send_eod_recap daily at EOD_PROMPT_HOUR (server-local hour)
+  - send_weekly_review Monday morning (WEEKLY_REVIEW_DOW/HOUR/MINUTE, EOD_TZ)
 
 EOD prompt message ids are tracked so replies to the recap are saved
 into daily_notes.eod_review (see maybe_handle_eod_reply, called from
@@ -238,6 +239,33 @@ async def maybe_handle_eod_reply(chat_id: int, msg: dict, session: Session) -> b
     return True
 
 
+async def send_weekly_review() -> dict:
+    """Generate and store the Monday review of the last completed week.
+
+    The LLM is optional: with no key configured the job is a quiet no-op, so
+    a journal that never set one does not log a failed job every week.
+    """
+    from app.database import engine
+    from app.services import weekly_review
+
+    if not weekly_review.llm_configured():
+        log.info("weekly review skipped: LLM_API_KEY is not configured")
+        return {"status": "skipped", "reason": "llm_not_configured"}
+    try:
+        with Session(engine) as session:
+            result = weekly_review.generate_weekend_review(session)
+    except Exception:
+        log.exception("weekly review failed")
+        return {"status": "error"}
+    log.info(
+        "weekly review %s for %s..%s",
+        result["status"],
+        result["date_from"],
+        result["date_to"],
+    )
+    return result
+
+
 def build_scheduler() -> AsyncIOScheduler:
     sched = AsyncIOScheduler()
     sched.add_job(
@@ -257,6 +285,20 @@ def build_scheduler() -> AsyncIOScheduler:
         minute=eod_minute,
         timezone=_eod_tz(),
         id="eod_recap",
+        max_instances=1,
+        coalesce=True,
+    )
+    # Monday morning, in the same timezone the EOD prompt uses. `default_week`
+    # always resolves to the Mon–Fri that just ended, so a Monday 07:00 run
+    # reviews last week rather than a partial one.
+    sched.add_job(
+        send_weekly_review,
+        "cron",
+        day_of_week=os.getenv("WEEKLY_REVIEW_DOW", "mon").strip() or "mon",
+        hour=_env_int("WEEKLY_REVIEW_HOUR", 7),
+        minute=_env_int("WEEKLY_REVIEW_MINUTE", 0),
+        timezone=_eod_tz(),
+        id="weekly_review",
         max_instances=1,
         coalesce=True,
     )
