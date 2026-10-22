@@ -46,6 +46,7 @@ _TABLES = (
     "daily_note",
     "account",
     "app_setting",
+    "import_run",
     "insight_report",
     "symbol_spec",
     "fx_rate",

@@ -194,6 +194,32 @@ class AppSetting(SQLModel, table=True):
     updated_at: datetime = Field(default_factory=_utcnow)
 
 
+class ImportRun(SQLModel, table=True):
+    """One broker-statement import attempt, success or failure.
+
+    A bad file has to be diagnosable after the fact, so every attempt is
+    kept: the file name, the detected format, what happened to each
+    ticket, and the error when the statement could not be read. ``detail``
+    is capped JSON text — warnings plus per-ticket actions — so the table
+    needs no JSON column and a huge statement cannot bloat the row.
+    """
+
+    __tablename__ = "import_run"
+    id: Optional[int] = Field(default=None, primary_key=True)
+    kind: str = Field(default="mt5", index=True)
+    filename: str = Field(default="")
+    format: Optional[str] = None  # html | csv | None when unreadable
+    account_id: Optional[int] = Field(default=None, index=True)
+    rows: int = Field(default=0)
+    added: int = Field(default=0)
+    updated: int = Field(default=0)
+    unchanged: int = Field(default=0)
+    skipped: int = Field(default=0)
+    error: Optional[str] = None
+    detail: str = Field(default="")
+    created_at: datetime = Field(default_factory=_utcnow, index=True)
+
+
 class InsightReport(SQLModel, table=True):
     """Stored LLM weekend-review summaries (one row per generated week)."""
 
