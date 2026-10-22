@@ -61,10 +61,6 @@ def _eod_tz():
         return pytz.UTC
 
 
-def _eod_today() -> date_type:
-    return datetime.now(_eod_tz()).date()
-
-
 def _as_naive_utc(dt: Optional[datetime]) -> Optional[datetime]:
     if dt is None:
         return None
@@ -134,12 +130,14 @@ async def check_stale_trades() -> dict:
 
 
 def eod_summary_text(session: Session, today: date_type) -> str:
-    """Aggregate today's closed trades for the EOD recap."""
-    day_start = datetime(today.year, today.month, today.day)
+    """Aggregate the trading day's closed trades for the EOD recap."""
+    from app.services.trading_day import trading_day_bounds
+
+    day_start, day_end = trading_day_bounds(session, today)
     closes = [
         t
         for t in session.exec(select(Trade).where(Trade.status == "CLOSED")).all()
-        if (_as_naive_utc(t.timestamp_close) or datetime.min) >= day_start
+        if day_start <= (_as_naive_utc(t.timestamp_close) or datetime.min) < day_end
     ]
     nets = [usd_net(t) or 0.0 for t in closes]
     wins = sum(1 for n in nets if n > 5.0)
@@ -158,19 +156,23 @@ def eod_summary_text(session: Session, today: date_type) -> str:
 
 
 def _trades_today(session: Session, today: date_type) -> tuple[list, list]:
-    """Trades opened / closed on `today` (naive-UTC midnight bucketing)."""
-    day_start = datetime(today.year, today.month, today.day)
+    """Trades opened / closed on `today` (configured trading-day bounds)."""
+    from app.services.trading_day import trading_day_bounds
+
+    day_start, day_end = trading_day_bounds(session, today)
     all_trades = session.exec(select(Trade)).all()
     opened = [
         t
         for t in all_trades
-        if (_as_naive_utc(t.entry_time) or _as_naive_utc(t.timestamp_open) or datetime.min)
-        >= day_start
+        if day_start
+        <= (_as_naive_utc(t.entry_time) or _as_naive_utc(t.timestamp_open) or datetime.min)
+        < day_end
     ]
     closed = [
         t
         for t in all_trades
-        if t.status == "CLOSED" and (_as_naive_utc(t.timestamp_close) or datetime.min) >= day_start
+        if t.status == "CLOSED"
+        and day_start <= (_as_naive_utc(t.timestamp_close) or datetime.min) < day_end
     ]
     return opened, closed
 
@@ -184,8 +186,10 @@ async def send_eod_recap() -> dict:
     from app.database import engine
     from app.services import telegram_bot
 
-    today = _eod_today()
     with Session(engine) as session:
+        from app.services.trading_day import current_trading_day
+
+        today = current_trading_day(session)
         opened, _closed = _trades_today(session, today)
         if not opened and not _closed:
             return {"sent": False, "reason": "no_trades"}

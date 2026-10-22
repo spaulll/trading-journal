@@ -44,6 +44,7 @@ from app.services.symbol_registry import (
     estimate_gross_quote_pnl,
 )
 from app.services.timeutils import as_naive_utc
+from app.services.trading_day import get_trading_day
 from app.services.trade_filters import (
     TradeFilters,
     apply_trade_filters,
@@ -87,7 +88,7 @@ def to_trade_read(trade: Trade) -> TradeRead:
 
 
 def _guardrail_status(session: Session) -> dict:
-    """Trading-day PnL + open count vs caps (naive-UTC day bounds)."""
+    """Trading-day PnL + open count vs caps (configured day boundary)."""
     try:
         max_loss = float(os.getenv("MAX_DAILY_LOSS", "-250.0"))
     except ValueError:
@@ -96,22 +97,28 @@ def _guardrail_status(session: Session) -> dict:
         max_trades = int(os.getenv("MAX_DAILY_TRADES", "3"))
     except ValueError:
         max_trades = 3
-    today = _now().date()
-    # Naive UTC midnight: stored rows mix naive (CSV history) and aware
-    # (live) timestamps; plain ISO lexicographic comparison in SQLite
+    # The same boundary as the calendar and the daily stats: a 23:30 UTC
+    # close is tomorrow in Kolkata, and the guardrail counts it there.
+    # Stored rows mix naive (CSV history) and aware (live) timestamps; the
+    # bounds are naive UTC and ISO lexicographic comparison in SQLite
     # classifies both correctly for a day boundary.
-    day_start = datetime(today.year, today.month, today.day)
+    setting = get_trading_day(session)
+    today = setting.day_of(_now().replace(tzinfo=None))
+    day_start, day_end = setting.bounds(today)
     # Trading-day basis (timestamp_open/close), not created_at — so backfilled
     # history imported today doesn't trip the guardrail.
     todays = session.exec(
-        select(Trade).where(Trade.timestamp_open >= day_start)
+        select(Trade).where(
+            Trade.timestamp_open >= day_start,
+            Trade.timestamp_open < day_end,
+        )
     ).all()
     daily_pnl = 0.0
     for t in todays:
         if t.status != "CLOSED":
             continue
         closed_at = _as_naive_utc(t.timestamp_close)
-        if closed_at is None or closed_at < day_start:
+        if closed_at is None or closed_at < day_start or closed_at >= day_end:
             continue
         daily_pnl += usd_net(t) or 0.0
     return {
@@ -120,6 +127,7 @@ def _guardrail_status(session: Session) -> dict:
         "trades": len(todays),
         "max_loss": max_loss,
         "max_trades": max_trades,
+        "day": today.isoformat(),
     }
 
 
@@ -128,7 +136,7 @@ def _guardrail_breached(session: Session) -> bool:
 
 
 def _flag_breach_day(session: Session) -> None:
-    today = _now().date()
+    today = get_trading_day(session).day_of(_now().replace(tzinfo=None))
     note = session.exec(select(DailyNote).where(DailyNote.date == today)).first()
     if note is None:
         note = DailyNote(date=today, discipline_breach=True)

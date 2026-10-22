@@ -23,6 +23,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from sqlmodel import Session
 
 from app.models import AppSetting
+from app.services.timeutils import trade_close_day
 
 TRADING_DAY_KEY = "trading_day"
 DEFAULT_TIMEZONE = "Asia/Kolkata"
@@ -130,6 +131,12 @@ def set_trading_day(
     row.updated_at = datetime.now(timezone.utc)
     session.add(row)
     return setting
+
+
+def day_of_trade(setting: TradingDay, trade: object) -> Optional[date_type]:
+    """The trading day a trade's close (or open fallback) belongs to."""
+    moment = trade_close_day(trade)
+    return None if moment is None else setting.day_of(moment)
 
 
 def trading_day_of(session: Session, moment: datetime) -> date_type:

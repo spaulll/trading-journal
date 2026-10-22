@@ -54,6 +54,8 @@
 	let radarData = $state<RadarProfiles | null>(null);
 	let prop = $state<PropStatusDto | null>(null);
 	let snapshotRestored = $state(false);
+	/** The server's trading day, not the browser's calendar date. */
+	let tradingToday = $state('');
 
 	interface AnalyticsSnapshot {
 		summary: SummaryDto;
@@ -203,6 +205,12 @@
 		void loadAccounts();
 		void load();
 		void loadOpenPositions();
+		void api
+			.getTradingDay()
+			.then((d) => (tradingToday = d.today))
+			.catch(() => {
+				// The calendar falls back to the browser's date.
+			});
 	});
 
 	function onAccountChange(e: Event): void {
@@ -332,6 +340,7 @@
 			<MonthlyCalendar
 				data={monthData}
 				yearDays={days}
+				today={tradingToday}
 				onPrev={() => void shiftMonth(-1)}
 				onNext={() => void shiftMonth(1)}
 				onPrevYear={() => void shiftYear(-1)}

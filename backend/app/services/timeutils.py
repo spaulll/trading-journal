@@ -7,8 +7,9 @@ Policy: store and compare trade timestamps as **naive UTC** everywhere.
 - Live callers may send aware ISO-8601 (`...Z` / `+00:00`); history (CSV) is
   naive. All write paths normalize via :func:`as_naive_utc` before storage.
 - All read paths (guardrails, calendar, monthly-calendar, streaks, session
-  buckets) bucket via :func:`as_naive_utc` / :func:`trade_close_day` so day
-  boundaries are always UTC midnights.
+  buckets) normalize via :func:`as_naive_utc` / :func:`trade_close_day`, then
+  assign the day with app.services.trading_day — the boundary is
+  configurable, so a day is not always a UTC midnight.
 
 Helpers here are the single source of truth — routers must import from this
 module instead of defining local ``_as_naive`` copies.

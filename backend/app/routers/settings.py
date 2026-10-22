@@ -11,6 +11,7 @@ from app.services.trading_day import (
     DEFAULT_BOUNDARY_HOUR,
     DEFAULT_TIMEZONE,
     TradingDayError,
+    current_trading_day,
     get_trading_day,
     set_trading_day,
 )
@@ -40,6 +41,9 @@ def read_trading_day(session: Session = Depends(get_session)):
         "boundary_hour": setting.boundary_hour,
         "timezone": setting.timezone,
         "label": setting.label(),
+        # The day bucket the UI should call "today" — not the browser's
+        # calendar date, which can be a different trading day.
+        "today": current_trading_day(session).isoformat(),
         "default_boundary_hour": DEFAULT_BOUNDARY_HOUR,
         "default_timezone": DEFAULT_TIMEZONE,
     }
@@ -68,6 +72,7 @@ def write_trading_day(
         "boundary_hour": setting.boundary_hour,
         "timezone": setting.timezone,
         "label": setting.label(),
+        "today": current_trading_day(session).isoformat(),
         "default_boundary_hour": DEFAULT_BOUNDARY_HOUR,
         "default_timezone": DEFAULT_TIMEZONE,
     }

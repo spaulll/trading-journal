@@ -25,8 +25,9 @@ from app.services.analytics_rules import (
     is_win as _is_win,
     sign as _sign,
 )
-from app.services.timeutils import as_naive_utc, trade_close_day
+from app.services.timeutils import as_naive_utc, trade_close_day, utcnow_naive
 from app.services.trade_filters import TradeFilters, apply_trade_filters
+from app.services.trading_day import day_of_trade, get_trading_day
 from app.services.trade_money import currency_breakdown, usd_net
 
 router = APIRouter(prefix="/api/analytics", tags=["analytics"])
@@ -294,17 +295,18 @@ def calendar(
     account_id: Optional[int] = Query(default=None),
     session: Session = Depends(get_session),
 ):
-    target_year = year or datetime.now().year
+    setting = get_trading_day(session)
+    target_year = year or setting.day_of(utcnow_naive()).year
     daily: dict[str, dict] = defaultdict(
         lambda: {"net_pnl": 0.0, "trade_count": 0, "unpriced": 0, "by_currency": {}}
     )
     for t in _closed_trades(session, account_id):
-        # Naive-UTC close day (same helper as monthly-calendar / streaks) so
-        # day boundaries never mix aware vs naive timestamps.
-        day = _close_day(t)
+        # The configured trading day (same helper as monthly-calendar /
+        # streaks) — a 23:30 UTC close can belong to the next local day.
+        day = day_of_trade(setting, t)
         if day is None or day.year != target_year:
             continue
-        key = day.date().isoformat()
+        key = day.isoformat()
         daily[key]["trade_count"] += 1
         if usd_net(t) is None:
             daily[key]["unpriced"] += 1
@@ -407,8 +409,9 @@ def monthly_calendar(
     account_id: Optional[int] = Query(default=None),
     session: Session = Depends(get_session),
 ):
-    now = datetime.now()
-    y, m = year or now.year, month or now.month
+    setting = get_trading_day(session)
+    this_day = setting.day_of(utcnow_naive())
+    y, m = year or this_day.year, month or this_day.month
     month_start = date_type(y, m, 1)
     month_end = date_type(y + (m == 12), (m % 12) + 1, 1)
 
@@ -416,10 +419,10 @@ def monthly_calendar(
         lambda: {"net_pnl": 0.0, "trade_count": 0, "priced": 0, "unpriced": 0, "by_currency": {}}
     )
     for t in _closed_trades(session, account_id):
-        day = _close_day(t)
-        if day is None or not (month_start <= day.date() < month_end):
+        day = day_of_trade(setting, t)
+        if day is None or not (month_start <= day < month_end):
             continue
-        key = day.date().isoformat()
+        key = day.isoformat()
         daily[key]["trade_count"] += 1
         if usd_net(t) is None:
             daily[key]["unpriced"] += 1
@@ -511,13 +514,14 @@ def activity_and_streaks(account_id: Optional[int] = Query(default=None), sessio
     signs = [_sign(n) for n in nets if n is not None]
     win_runs, loss_runs = _streak_runs(signs)
 
+    setting = get_trading_day(session)
     daily: dict[str, float] = defaultdict(float)
     volume: dict[str, float] = defaultdict(float)
     for t in trades:
-        day = _close_day(t)
+        day = day_of_trade(setting, t)
         if day is None:
             continue
-        key = day.date().isoformat()
+        key = day.isoformat()
         daily[key] += usd_net(t) if usd_net(t) is not None else 0.0
         volume[key] += t.size or 0.0
     ordered_days = sorted(daily)
@@ -620,10 +624,13 @@ def long_short_stats(account_id: Optional[int] = Query(default=None), session: S
 @router.get("/radar-profiles")
 def radar_profiles(account_id: Optional[int] = Query(default=None), session: Session = Depends(get_session)):
     trades = _closed_trades(session, account_id)
+    setting = get_trading_day(session)
     day_names = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
     weekday = []
     for i, name in enumerate(day_names):
-        bucket = [t for t in trades if (_close_day(t) is not None and _close_day(t).weekday() == i)]
+        bucket = [
+            t for t in trades if (d := day_of_trade(setting, t)) is not None and d.weekday() == i
+        ]
         nets = [usd_net(t) for t in bucket]
         counts = analytics_rules.split_outcomes(nets)
         known = [n for n in nets if n is not None]

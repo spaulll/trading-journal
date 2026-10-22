@@ -17,6 +17,7 @@
 	const {
 		data,
 		yearDays,
+		today: serverToday = '',
 		onPrev,
 		onNext,
 		onPrevYear,
@@ -24,6 +25,8 @@
 	}: {
 		data: MonthlyCalendarDto;
 		yearDays: CalendarDay[];
+		/** The server's trading day; falls back to the local date until loaded. */
+		today?: string;
 		onPrev: () => void;
 		onNext: () => void;
 		onPrevYear: () => void;
@@ -40,7 +43,9 @@
 
 
 	const monthNet = $derived(data.weeks.reduce((a, w) => a + w.net_pnl, 0));
-	const todayKey = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}-${String(new Date().getDate()).padStart(2, '0')}`;
+	const localToday = new Date();
+	const localTodayKey = `${localToday.getFullYear()}-${String(localToday.getMonth() + 1).padStart(2, '0')}-${String(localToday.getDate()).padStart(2, '0')}`;
+	const todayKey = $derived(serverToday || localTodayKey);
 
 	const cells = $derived.by(() => {
 		const first = new Date(data.year, data.month - 1, 1);

@@ -89,10 +89,11 @@
 		}
 	}
 
-	const todayKey = (() => {
-		const d = new Date();
-		return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-	})();
+	const localToday = new Date();
+	const localTodayKey = `${localToday.getFullYear()}-${String(localToday.getMonth() + 1).padStart(2, '0')}-${String(localToday.getDate()).padStart(2, '0')}`;
+	/** The server's trading day; the local date until the settings load. */
+	let serverToday = $state('');
+	const todayKey = $derived(serverToday || localTodayKey);
 
 	function dayNet(date: string): { count: number; net: number } {
 		return calendar[date] ?? { count: 0, net: 0 };
@@ -145,6 +146,12 @@
 	onMount(() => {
 		void loadOpenPositions();
 		void loadReports();
+		void api
+			.getTradingDay()
+			.then((d) => (serverToday = d.today))
+			.catch(() => {
+				// "Today" falls back to the browser's date.
+			});
 	});
 
 	$effect(() => {
