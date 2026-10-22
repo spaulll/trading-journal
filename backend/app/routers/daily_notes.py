@@ -49,6 +49,44 @@ def get_note(day: date_type, session: Session = Depends(get_session)):
     return DailyNoteRead.model_validate(note.model_dump())
 
 
+@router.get("/{day}/adherence")
+def get_adherence(day: date_type, session: Session = Depends(get_session)):
+    """How the day lined up with the pre-market plan.
+
+    The plan is free text, so this is a reading of it: the setups it names,
+    the size it states and the trades the day actually took.
+    """
+    from datetime import datetime, timedelta
+
+    from sqlalchemy import or_
+
+    from app.models import Tag, Trade
+    from app.services.adherence import score_adherence
+
+    note = session.exec(select(DailyNote).where(DailyNote.date == day)).first()
+    start = datetime(day.year, day.month, day.day)
+    end = start + timedelta(days=1)
+    trades = session.exec(
+        select(Trade).where(
+            or_(
+                (Trade.timestamp_close >= start) & (Trade.timestamp_close < end),
+                (Trade.status == "OPEN")
+                & (Trade.timestamp_open >= start)
+                & (Trade.timestamp_open < end),
+            )
+        )
+    ).all()
+    known = [t.name for t in session.exec(select(Tag)).all()]
+    result = score_adherence(
+        day,
+        note.pre_market if note else None,
+        trades,
+        known_tags=known,
+        discipline_breach=bool(note.discipline_breach) if note else False,
+    )
+    return result.as_dict()
+
+
 @router.put("/{day}", response_model=DailyNoteRead)
 def put_note(day: date_type, patch: DailyNotePatch, session: Session = Depends(get_session)):
     note = session.exec(select(DailyNote).where(DailyNote.date == day)).first()
