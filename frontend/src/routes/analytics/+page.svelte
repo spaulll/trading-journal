@@ -11,6 +11,7 @@
 	import MonthlyCalendar from '$lib/components/dashboard/MonthlyCalendar.svelte';
 	import RadarAnalytics from '$lib/components/dashboard/RadarAnalytics.svelte';
 	import SessionGrid from '$lib/components/dashboard/SessionGrid.svelte';
+	import SetupMatrix from '$lib/components/dashboard/SetupMatrix.svelte';
 	import StatPanels from '$lib/components/dashboard/StatPanels.svelte';
 	import SymbolPerformanceTable from '$lib/components/dashboard/SymbolPerformanceTable.svelte';
 	import PageHead from '$lib/components/PageHead.svelte';
@@ -34,6 +35,7 @@
 		type PropStatusDto,
 		type RadarProfiles,
 		type RBucket,
+		type SetupMatrix as SetupMatrixDto,
 		type SummaryDto,
 		type SymbolPerformance,
 		type TagPerf
@@ -45,6 +47,7 @@
 	let points = $state<EquityPoint[]>([]);
 	let tags = $state<TagPerf[]>([]);
 	let symbolPerf = $state<SymbolPerformance | null>(null);
+	let matrix = $state<SetupMatrixDto | null>(null);
 	let days = $state<CalendarDay[]>([]);
 	let year = $state(new Date().getFullYear());
 	let rBuckets = $state<RBucket[]>([]);
@@ -74,6 +77,7 @@
 		radarData: RadarProfiles | null;
 		rBuckets: RBucket[];
 		symbolPerf?: SymbolPerformance;
+		matrix?: SetupMatrixDto;
 	}
 
 	function applySnapshot(snap: AnalyticsSnapshot): void {
@@ -90,6 +94,7 @@
 		radarData = snap.radarData;
 		rBuckets = snap.rBuckets;
 		if (snap.symbolPerf) symbolPerf = snap.symbolPerf;
+		if (snap.matrix) matrix = snap.matrix;
 	}
 
 	async function loadYearDays(y: number): Promise<void> {
@@ -107,11 +112,12 @@
 		error = null;
 		const acct = $selectedAccountId;
 		try {
-			const [s, e, t, sp, c, k, mc, a, ls, rd, rb] = await Promise.all([
+			const [s, e, t, sp, sm, c, k, mc, a, ls, rd, rb] = await Promise.all([
 				api.summary(acct),
 				api.equityCurve(acct),
 				api.tagPerformance(acct),
 				api.symbolPerformance(acct),
+				api.setupMatrix(acct),
 				api.calendar(year, acct),
 				api.kpi(acct),
 				api.monthlyCalendar(monthCursor.y, monthCursor.m, acct),
@@ -129,6 +135,7 @@
 			points = e.points;
 			tags = t.tags;
 			symbolPerf = sp;
+			matrix = sm;
 			days = c.days;
 			year = c.year;
 			kpi = k;
@@ -147,6 +154,7 @@
 						points: e.points,
 						tags: t.tags,
 						symbolPerf: sp,
+						matrix: sm,
 						days: c.days,
 						year: c.year,
 						kpi: k,
@@ -327,6 +335,10 @@
 
 		{#if symbolPerf}
 			<SymbolPerformanceTable data={symbolPerf} />
+		{/if}
+
+		{#if matrix}
+			<SetupMatrix data={matrix} />
 		{/if}
 
 		<section class="rise grid grid-cols-1 gap-4 xl:grid-cols-12" style="animation-delay: 40ms">

@@ -295,6 +295,25 @@ export interface SymbolPerformance {
 	totals: PerformanceBucket;
 }
 
+export interface MatrixCell extends PerformanceBucket {
+	symbol: string;
+}
+
+export interface SetupMatrixRow extends PerformanceBucket {
+	setup: string | null;
+	label: string;
+	is_untagged: boolean;
+	cells: MatrixCell[];
+}
+
+export interface SetupMatrix {
+	setups: string[];
+	symbols: string[];
+	rows: SetupMatrixRow[];
+	column_totals: MatrixCell[];
+	grand_total: PerformanceBucket;
+}
+
 export interface CalendarDay {
 	date: string;
 	net_pnl: number;
@@ -579,6 +598,10 @@ export const api = {
 	symbolPerformance: (accountId?: number | null) =>
 		req<SymbolPerformance>(
 			`/api/analytics/symbol-performance${accountId ? `?account_id=${accountId}` : ''}`
+		),
+	setupMatrix: (accountId?: number | null) =>
+		req<SetupMatrix>(
+			`/api/analytics/setup-matrix${accountId ? `?account_id=${accountId}` : ''}`
 		),
 	calendar: (year?: number, accountId?: number | null) => {
 		const qs = new URLSearchParams();
