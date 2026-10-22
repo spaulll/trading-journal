@@ -23,6 +23,7 @@ from sqlmodel import Session, select
 from app.database import get_session
 from app.models import DailyNote, InsightReport, InsightReportRead, Trade, WeekendReviewRequest
 from app.services.timeutils import trade_close_day
+from app.services.trade_money import usd_net
 
 router = APIRouter(prefix="/api/insights", tags=["insights"])
 
@@ -112,9 +113,9 @@ def _has_content(trades: list[Trade], notes: list[DailyNote]) -> bool:
 
 
 def _stats_block(trades: list[Trade]) -> str:
-    wins = sum(1 for t in trades if (t.net_pnl or 0) > 0)
-    losses = sum(1 for t in trades if (t.net_pnl or 0) < 0)
-    net = sum(t.net_pnl or 0 for t in trades)
+    wins = sum(1 for t in trades if (usd_net(t) or 0) > 0)
+    losses = sum(1 for t in trades if (usd_net(t) or 0) < 0)
+    net = sum(usd_net(t) or 0 for t in trades)
     r_vals = [t.r_multiple for t in trades if t.r_multiple is not None]
     avg_r = sum(r_vals) / len(r_vals) if r_vals else None
     mistakes: dict[str, int] = {}
@@ -148,7 +149,7 @@ def _trade_lines(trades: list[Trade]) -> str:
         bits = [
             f"{day.date() if day else '?'}",
             f"{t.symbol or '?'} {t.direction or ''}".strip(),
-            f"net {t.net_pnl if t.net_pnl is not None else '?'}",
+            f"net {usd_net(t) if usd_net(t) is not None else '?'}",
             f"R {t.r_multiple if t.r_multiple is not None else '?'}",
         ]
         if tags:
