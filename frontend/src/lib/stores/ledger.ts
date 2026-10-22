@@ -102,6 +102,17 @@ export function resetLedgerPage(): void {
 	ledgerPage.update(($p) => ({ ...$p, page: 1 }));
 }
 
+/**
+ * Open the ledger on one tag.
+ *
+ * The drill-down from a tag performance bar lands here: the ledger's tag
+ * filter takes the name, the page goes back to the top, and the rows on
+ * screen are the trades behind the bar.
+ */
+export function drillIntoTag(name: string): void {
+	setLedgerFilters({ tag: name });
+}
+
 /** Back to the unfiltered ledger. */
 export function resetLedgerFilters(): void {
 	ledgerFilters.set({ ...INITIAL });

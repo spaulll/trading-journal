@@ -1,9 +1,11 @@
 <script lang="ts">
 	import { onDestroy, onMount } from 'svelte';
+	import { goto } from '$app/navigation';
 	import { Chart, registerables } from 'chart.js';
 	import type { TagPerf } from '$lib/api';
 	import { palette } from '$lib/utils/palette';
 	import { BE_TOL } from '$lib/utils/format';
+	import { drillIntoTag } from '$lib/stores/ledger';
 	import { theme } from '$lib/stores/theme';
 
 	Chart.register(...registerables);
@@ -14,6 +16,14 @@
 
 	let canvas: HTMLCanvasElement | null = null;
 	let chart: Chart | null = null;
+
+	/** Clicking a bar opens the ledger on that tag — the trades behind it. */
+	function drill(index: number): void {
+		const tag = top[index];
+		if (!tag) return;
+		drillIntoTag(tag.name);
+		void goto('/');
+	}
 
 	function render(list: TagPerf[]): void {
 		if (!canvas) return;
@@ -42,6 +52,13 @@
 				maintainAspectRatio: false,
 				indexAxis: 'y',
 				animation: { duration: 800, easing: 'easeOutQuart' },
+				onClick: (_event, elements) => {
+					if (elements.length > 0) drill(elements[0].index);
+				},
+				onHover: (event, elements) => {
+					if (!canvas) return;
+					canvas.style.cursor = elements.length > 0 ? 'pointer' : 'default';
+				},
 				plugins: {
 					legend: { display: false },
 					tooltip: {
@@ -52,7 +69,10 @@
 						borderWidth: 1,
 						padding: 10,
 						cornerRadius: 10,
-						displayColors: false
+						displayColors: false,
+						callbacks: {
+							afterLabel: () => 'click to see the trades'
+						}
 					}
 				},
 				scales: {
@@ -89,3 +109,4 @@
 </script>
 
 <div class="h-64 w-full"><canvas bind:this={canvas}></canvas></div>
+<p class="mt-2 text-[11px] text-dim">Click a bar to open the ledger on that tag.</p>

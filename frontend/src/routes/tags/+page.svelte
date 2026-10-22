@@ -1,11 +1,13 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { goto } from '$app/navigation';
 	import { GitMerge, Pencil, X } from 'lucide-svelte';
 	import { fade, scale } from 'svelte/transition';
 	import PageHead from '$lib/components/PageHead.svelte';
 	import SegControl from '$lib/components/SegControl.svelte';
 	import StateBlock from '$lib/components/StateBlock.svelte';
 	import { api, errMsg, type TagSummaryDto } from '$lib/api';
+	import { drillIntoTag } from '$lib/stores/ledger';
 	import { toasts } from '$lib/stores/toast';
 	import { fmtDate, fmtMoney, pnlTone, toneText } from '$lib/utils/format';
 	import { FADE, MODAL } from '$lib/utils/transitions';
@@ -51,6 +53,12 @@
 		fMerge = '';
 		formError = null;
 		modal = { tag };
+	}
+
+	/** Open the ledger on this tag — the same drill-down the performance bar does. */
+	function drill(name: string): void {
+		drillIntoTag(name);
+		void goto('/');
 	}
 
 	async function save(): Promise<void> {
@@ -150,9 +158,14 @@
 			{#each shown as t (t.id)}
 				<div class="row-line {cols} items-center border-b border-line/50 last:border-b-0">
 					<span class="flex min-w-0 items-center gap-2">
-						<span class="num truncate text-[13px] font-semibold text-fg">
+						<button
+							type="button"
+							onclick={() => drill(t.name)}
+							title="Open the ledger on #{t.name}"
+							class="num truncate text-[13px] font-semibold text-fg underline decoration-line/60 underline-offset-2 transition-colors hover:decoration-accent"
+						>
 							{t.category === 'mistake' ? '!' : '#'}{t.name}
-						</span>
+						</button>
 						<span class="rounded-md px-1.5 py-0.5 font-mono text-[10px] font-bold tracking-[0.1em] uppercase {t.category === 'mistake' ? 'tag-mistake' : 'tag-setup'}">
 							{t.category}
 						</span>
@@ -181,9 +194,14 @@
 			<article class="card p-3.5" aria-label="Tag #{t.name}">
 				<div class="flex items-center justify-between gap-2">
 					<span class="flex min-w-0 items-center gap-2">
-						<span class="num truncate text-sm font-semibold text-fg">
+						<button
+							type="button"
+							onclick={() => drill(t.name)}
+							title="Open the ledger on #{t.name}"
+							class="num truncate text-sm font-semibold text-fg underline decoration-line/60 underline-offset-2 transition-colors hover:decoration-accent"
+						>
 							{t.category === 'mistake' ? '!' : '#'}{t.name}
-						</span>
+						</button>
 						<span class="rounded-md px-1.5 py-0.5 font-mono text-[10px] font-bold tracking-[0.1em] uppercase {t.category === 'mistake' ? 'tag-mistake' : 'tag-setup'}">
 							{t.category}
 						</span>
