@@ -265,6 +265,36 @@ export interface TagPerf {
 	win_rate: number;
 }
 
+/** The shared metric row behind the depth tables. */
+export interface PerformanceBucket {
+	trade_count: number;
+	priced: number;
+	unpriced: number;
+	wins: number;
+	losses: number;
+	breakeven: number;
+	net_pnl: number;
+	win_rate: number;
+	expectancy: number;
+	profit_factor: number | null;
+	avg_r: number | null;
+	r_trades: number;
+	by_currency?: Record<string, number>;
+}
+
+export interface SymbolPerformanceRow extends PerformanceBucket {
+	symbol: string;
+	display: string;
+	registered: boolean;
+	category: string | null;
+	contract_size: number | null;
+}
+
+export interface SymbolPerformance {
+	symbols: SymbolPerformanceRow[];
+	totals: PerformanceBucket;
+}
+
 export interface CalendarDay {
 	date: string;
 	net_pnl: number;
@@ -545,6 +575,10 @@ export const api = {
 	tagPerformance: (accountId?: number | null) =>
 		req<{ tags: TagPerf[] }>(
 			`/api/analytics/tag-performance${accountId ? `?account_id=${accountId}` : ''}`
+		),
+	symbolPerformance: (accountId?: number | null) =>
+		req<SymbolPerformance>(
+			`/api/analytics/symbol-performance${accountId ? `?account_id=${accountId}` : ''}`
 		),
 	calendar: (year?: number, accountId?: number | null) => {
 		const qs = new URLSearchParams();

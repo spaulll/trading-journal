@@ -12,6 +12,7 @@
 	import RadarAnalytics from '$lib/components/dashboard/RadarAnalytics.svelte';
 	import SessionGrid from '$lib/components/dashboard/SessionGrid.svelte';
 	import StatPanels from '$lib/components/dashboard/StatPanels.svelte';
+	import SymbolPerformanceTable from '$lib/components/dashboard/SymbolPerformanceTable.svelte';
 	import PageHead from '$lib/components/PageHead.svelte';
 	import StateBlock from '$lib/components/StateBlock.svelte';
 	import DayPanel from '$lib/components/DayPanel.svelte';
@@ -34,6 +35,7 @@
 		type RadarProfiles,
 		type RBucket,
 		type SummaryDto,
+		type SymbolPerformance,
 		type TagPerf
 	} from '$lib/api';
 
@@ -42,6 +44,7 @@
 	let summary = $state<SummaryDto | null>(null);
 	let points = $state<EquityPoint[]>([]);
 	let tags = $state<TagPerf[]>([]);
+	let symbolPerf = $state<SymbolPerformance | null>(null);
 	let days = $state<CalendarDay[]>([]);
 	let year = $state(new Date().getFullYear());
 	let rBuckets = $state<RBucket[]>([]);
@@ -70,6 +73,7 @@
 		longShort: { buy: DirectionStats; sell: DirectionStats; all?: DirectionStats } | null;
 		radarData: RadarProfiles | null;
 		rBuckets: RBucket[];
+		symbolPerf?: SymbolPerformance;
 	}
 
 	function applySnapshot(snap: AnalyticsSnapshot): void {
@@ -85,6 +89,7 @@
 		longShort = snap.longShort;
 		radarData = snap.radarData;
 		rBuckets = snap.rBuckets;
+		if (snap.symbolPerf) symbolPerf = snap.symbolPerf;
 	}
 
 	async function loadYearDays(y: number): Promise<void> {
@@ -102,10 +107,11 @@
 		error = null;
 		const acct = $selectedAccountId;
 		try {
-			const [s, e, t, c, k, mc, a, ls, rd, rb] = await Promise.all([
+			const [s, e, t, sp, c, k, mc, a, ls, rd, rb] = await Promise.all([
 				api.summary(acct),
 				api.equityCurve(acct),
 				api.tagPerformance(acct),
+				api.symbolPerformance(acct),
 				api.calendar(year, acct),
 				api.kpi(acct),
 				api.monthlyCalendar(monthCursor.y, monthCursor.m, acct),
@@ -122,6 +128,7 @@
 			summary = s;
 			points = e.points;
 			tags = t.tags;
+			symbolPerf = sp;
 			days = c.days;
 			year = c.year;
 			kpi = k;
@@ -139,6 +146,7 @@
 						summary: s,
 						points: e.points,
 						tags: t.tags,
+						symbolPerf: sp,
 						days: c.days,
 						year: c.year,
 						kpi: k,
@@ -315,6 +323,10 @@
 
 		{#if kpi}
 			<KpiStrip {kpi} />
+		{/if}
+
+		{#if symbolPerf}
+			<SymbolPerformanceTable data={symbolPerf} />
 		{/if}
 
 		<section class="rise grid grid-cols-1 gap-4 xl:grid-cols-12" style="animation-delay: 40ms">
