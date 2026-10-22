@@ -256,7 +256,7 @@ def _position_layout(header: list[str]) -> Optional[dict]:
         return None
     return {
         "kind": "positions",
-        "ticket": _pick(header, "position", "order", "deal"),
+        "ticket": _pick(header, "position", "order", "deal", "ticket"),
         "symbol": symbol,
         "side": side,
         "volume": volume,
@@ -281,7 +281,7 @@ def _deal_layout(header: list[str]) -> Optional[dict]:
         return None
     return {
         "kind": "deals",
-        "ticket": _pick(header, "position", "deal"),
+        "ticket": _pick(header, "position", "deal", "ticket"),
         "symbol": symbol,
         "side": side,
         "volume": volume,
@@ -382,31 +382,74 @@ def _pair_deals(deals: list[dict], warnings: list[str]) -> list[dict]:
     """Reconstruct positions from a flat deal list (FIFO per symbol/side).
 
     An ``out`` deal closes the oldest open deal on the opposite side. A
-    partial close matches the same entry again with the next out deal, and
-    each pair becomes its own ledger row — summing the rows still gives
-    the position's profit, and ``entry deal / exit deal`` keeps the tickets
-    stable across re-imports. A position with no matching close is left
-    out: it is still open, and the live journal owns it.
+    partial close consumes only part of that entry, so the next out deal
+    matches the same entry again; each consumed slice becomes its own ledger
+    row. Summing the rows still gives the position's profit, and the
+    ``entry deal / exit deal`` ticket stays stable across re-imports. A
+    position with no matching close is left out: it is still open, and the
+    live journal owns it.
     """
     open_deals: dict[str, list[dict]] = {}
     pairs: list[dict] = []
     unpaired = 0
+    partial_unmatched = 0
+    eps = 1e-9
+
     for deal in sorted(deals, key=lambda d: d["time"] or datetime.min):
         stack = open_deals.setdefault(deal["symbol"], [])
-        if deal["direction"] in ("in", "inout"):
-            stack.append(deal)
-            if deal["direction"] == "inout":
-                stack.pop()
-                pairs.append({"entry": deal, "exit": deal, "closed_in_place": True})
+        if deal["direction"] == "inout":
+            pairs.append(
+                {
+                    "entry": deal,
+                    "exit": deal,
+                    "closed_in_place": True,
+                    "size": deal["size"],
+                }
+            )
             continue
+        if deal["direction"] == "in":
+            stack.append({**deal, "remaining": deal["size"]})
+            continue
+
         opposite = "sell" if deal["side"] == "buy" else "buy"
-        match_at = next((i for i, d in enumerate(stack) if d["side"] == opposite), None)
-        if match_at is None:
+        remaining = deal["size"]
+        matched = False
+        while remaining > eps:
+            match_at = next(
+                (
+                    i
+                    for i, d in enumerate(stack)
+                    if d["side"] == opposite and d["remaining"] > eps
+                ),
+                None,
+            )
+            if match_at is None:
+                break
+            entry = stack[match_at]
+            take = min(remaining, entry["remaining"])
+            pairs.append(
+                {
+                    "entry": entry,
+                    "exit": deal,
+                    "closed_in_place": False,
+                    "size": take,
+                    # Split the entry's and exit's money by the volume each
+                    # slice actually carried, so a partial close is not
+                    # charged the whole entry commission twice.
+                    "entry_share": take / entry["size"],
+                    "exit_share": take / deal["size"],
+                }
+            )
+            entry["remaining"] = round(entry["remaining"] - take, 8)
+            remaining = round(remaining - take, 8)
+            if entry["remaining"] <= eps:
+                stack.pop(match_at)
+            matched = True
+
+        if not matched:
             unpaired += 1
-            continue
-        entry = stack[match_at]
-        stack.pop(match_at)
-        pairs.append({"entry": entry, "exit": deal, "closed_in_place": False})
+        elif remaining > eps:
+            partial_unmatched += 1
 
     rows: list[dict] = []
     for pair in pairs:
@@ -414,16 +457,25 @@ def _pair_deals(deals: list[dict], warnings: list[str]) -> list[dict]:
         if entry["time"] is None or exit_["time"] is None:
             # A deal with no stamp cannot be placed on the calendar.
             continue
-        gross = round((entry["profit"] or 0.0) + (exit_["profit"] or 0.0), 2)
-        fees = round(
-            -(
-                entry["commission"]
-                + exit_["commission"]
-                + entry["swap"]
-                + exit_["swap"]
-            ),
-            2,
-        )
+        if pair["closed_in_place"]:
+            # In-out is one deal: its profit is the whole result, counted once.
+            gross = round(exit_["profit"] or 0.0, 2)
+            fees = round(-((exit_["commission"] or 0.0) + (exit_["swap"] or 0.0)), 2)
+        else:
+            gross = round(
+                (entry["profit"] or 0.0) * pair["entry_share"]
+                + (exit_["profit"] or 0.0) * pair["exit_share"],
+                2,
+            )
+            fees = round(
+                -(
+                    (entry["commission"] or 0.0) * pair["entry_share"]
+                    + (exit_["commission"] or 0.0) * pair["exit_share"]
+                    + (entry["swap"] or 0.0) * pair["entry_share"]
+                    + (exit_["swap"] or 0.0) * pair["exit_share"]
+                ),
+                2,
+            )
         deal_id = entry["deal"]
         ticket = (
             f"MT5-{deal_id}"
@@ -435,7 +487,7 @@ def _pair_deals(deals: list[dict], warnings: list[str]) -> list[dict]:
                 "ticket": ticket,
                 "symbol": entry["symbol"],
                 "direction": entry["side"],
-                "size": exit_["size"],
+                "size": pair["size"],
                 "entry_price": entry["price"],
                 "initial_sl": None,
                 "tp": None,
@@ -452,6 +504,11 @@ def _pair_deals(deals: list[dict], warnings: list[str]) -> list[dict]:
         )
     if unpaired:
         warnings.append(f"{unpaired} deal(s) had no matching entry and were skipped.")
+    if partial_unmatched:
+        warnings.append(
+            f"{partial_unmatched} deal(s) closed more volume than the open entry; "
+            "the unmatched part was skipped."
+        )
     return rows
 
 
