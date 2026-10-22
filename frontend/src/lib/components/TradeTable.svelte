@@ -4,8 +4,8 @@
 	import { onMount } from 'svelte';
 	import { get } from 'svelte/store';
 	import { api, type TradeDto } from '$lib/api';
-	import { aliasOf, accounts, accountMap, chipAlias, loadAccounts, selectedAccountId } from '$lib/stores/accounts';
-	import { gotoPage, ledgerFilters, ledgerQuery, pageCount, setLedgerAccount, setLedgerFilters, setPageSize, type LedgerSort, type LedgerStatus } from '$lib/stores/ledger';
+	import { aliasOf, accounts, accountMap, chipAlias, ledgerAccountScope, loadAccounts, selectedAccountId, setLedgerAccountScope } from '$lib/stores/accounts';
+	import { gotoPage, ledgerFilters, ledgerQuery, pageCount, resetLedgerPage, setLedgerFilters, setPageSize, type LedgerSort, type LedgerStatus } from '$lib/stores/ledger';
 	import { loadTrades, openTrade, requestClose, tradeCounts, trades, tradesPage, tradesPageSize, tradesTotal, upsertTrade } from '$lib/stores/trades';
 	import { toasts } from '$lib/stores/toast';
 	import { fmtCurrency, fmtDateTime, fmtMoney, fmtR, isUnpriced, pnlTone, rTone, toneBg, toneText, usdNet } from '$lib/utils/format';
@@ -27,10 +27,14 @@
 
 	onMount(() => {
 		void loadAccounts();
-		// The saved account scope is the ledger's starting filter; the shared
-		// selection keeps it in step with the rest of the app.
+		// The account scope lives in the shared accounts store: the saved
+		// selection is the ledger's starting filter, and a change made
+		// elsewhere (the analytics account picker) follows here.
 		selectedAccountId.subscribe((v) => {
-			setLedgerAccount(v === null ? '' : String(v));
+			const scope = v === null ? '' : String(v);
+			if (scope === $ledgerAccountScope) return;
+			setLedgerAccountScope(scope);
+			resetLedgerPage();
 		});
 	});
 
@@ -188,8 +192,11 @@
 		>
 			<span class="font-mono text-[10px] tracking-[0.16em] uppercase">Acct</span>
 			<select
-				value={$ledgerFilters.account}
-				onchange={(e) => setLedgerFilters({ account: e.currentTarget.value })}
+				value={$ledgerAccountScope}
+				onchange={(e) => {
+					setLedgerAccountScope(e.currentTarget.value);
+					resetLedgerPage();
+				}}
 				class="h-full max-w-32 appearance-none border-0 bg-none bg-transparent py-0 pr-6 text-[13px] text-fg outline-none [color-scheme:inherit] [&>option]:bg-panel [&>option]:text-fg"
 				aria-label="Filter by account"
 			>

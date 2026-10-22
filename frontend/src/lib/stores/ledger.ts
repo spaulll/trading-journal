@@ -1,4 +1,5 @@
 import { derived, writable } from 'svelte/store';
+import { ledgerAccountScope } from './accounts';
 
 /** The ledger's filter state — one definition, shared by the table, the summary and the export. */
 export type LedgerStatus = 'ALL' | 'OPEN' | 'CLOSED';
@@ -10,8 +11,6 @@ export interface LedgerFilters {
 	query: string;
 	/** A tag name, with or without the #/! prefix. */
 	tag: string;
-	/** '' (every account), 'unassigned', or an account id. */
-	account: string;
 	/** Open-day bounds, YYYY-MM-DD. */
 	dateFrom: string;
 	dateTo: string;
@@ -22,22 +21,12 @@ const INITIAL: LedgerFilters = {
 	status: 'ALL',
 	query: '',
 	tag: '',
-	account: '',
 	dateFrom: '',
 	dateTo: '',
 	sort: 'newest'
 };
 
-/** The saved account scope is where the ledger starts. */
-function savedAccount(): string {
-	try {
-		return localStorage.getItem('selected-account-id') ?? '';
-	} catch {
-		return '';
-	}
-}
-
-export const ledgerFilters = writable<LedgerFilters>({ ...INITIAL, account: savedAccount() });
+export const ledgerFilters = writable<LedgerFilters>({ ...INITIAL });
 
 /** The ledger's pagination — the browser asks for one page at a time. */
 export interface LedgerPage {
@@ -52,6 +41,7 @@ export const ledgerPage = writable<LedgerPage>({ page: 1, pageSize: 50 });
  *
  * The list, the id list, the summary and the CSV export all send this, so
  * a filter can never mean one thing in the table and another in the export.
+ * The account scope comes from the shared accounts store, not from here.
  */
 export function buildLedgerQuery(
 	filters: LedgerFilters,
@@ -79,18 +69,18 @@ export function buildLedgerQuery(
 
 /** The query the ledger's own request uses. */
 export const ledgerQuery = derived(
-	[ledgerFilters, ledgerPage],
-	([$f, $p]) => buildLedgerQuery($f, $f.account, { page: $p.page, page_size: $p.pageSize })
+	[ledgerFilters, ledgerAccountScope, ledgerPage],
+	([$f, $a, $p]) => buildLedgerQuery($f, $a, { page: $p.page, page_size: $p.pageSize })
 );
 
 /** True when the ledger is showing something narrower than the whole history. */
 export const ledgerHasFilter = derived(
-	ledgerFilters,
-	($f) =>
+	[ledgerFilters, ledgerAccountScope],
+	([$f, $a]) =>
 		$f.status !== 'ALL' ||
 		$f.query.trim() !== '' ||
 		$f.tag.trim() !== '' ||
-		$f.account !== '' ||
+		$a !== '' ||
 		$f.dateFrom !== '' ||
 		$f.dateTo !== ''
 );
@@ -101,15 +91,9 @@ export function setLedgerFilters(patch: Partial<LedgerFilters>): void {
 	ledgerPage.update(($p) => ({ ...$p, page: 1 }));
 }
 
-/**
- * Set the account scope on its own.
- *
- * The saved account is read on mount, not chosen by the user, so it must not
- * send the ledger back to page one — that would drop the page the reader is
- * on every time the table re-mounts.
- */
-export function setLedgerAccount(account: string): void {
-	ledgerFilters.update(($f) => ($f.account === account ? $f : { ...$f, account }));
+/** Back to the first page — a new filter starts at the top of the list. */
+export function resetLedgerPage(): void {
+	ledgerPage.update(($p) => ({ ...$p, page: 1 }));
 }
 
 /** Back to the unfiltered ledger. */

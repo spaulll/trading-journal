@@ -6,6 +6,32 @@ export const accounts = writable<AccountDto[]>([]);
 export const accountsLoading = writable(true);
 export const accountsError = writable<string | null>(null);
 export const selectedAccountId = writable<number | null>(null);
+
+/**
+ * The ledger's account scope — '' (every account), 'unassigned', or an id.
+ *
+ * It lives here, with the accounts, so the filter is shared: the ledger, the
+ * analytics and the saved selection all talk about the same account.
+ */
+export const ledgerAccountScope = writable<string>('');
+
+function savedScope(): string {
+	try {
+		return localStorage.getItem('selected-account-id') ?? '';
+	} catch {
+		return '';
+	}
+}
+ledgerAccountScope.set(savedScope());
+
+/** Set the ledger's account scope and keep the app-wide selection in step. */
+export function setLedgerAccountScope(scope: string): void {
+	ledgerAccountScope.set(scope);
+	// 'unassigned' is not an account: the app-wide selection keeps its own
+	// value, and the ledger shows the unassigned bucket on its own.
+	if (scope !== 'unassigned') selectedAccountId.set(scope === '' ? null : Number(scope));
+}
+
 try {
 	const v = localStorage.getItem('selected-account-id');
 	if (v) selectedAccountId.set(Number(v));
@@ -13,6 +39,11 @@ try {
 	// ignore
 }
 selectedAccountId.subscribe((v) => {
+	// 'unassigned' is the ledger's own scope — the app-wide selection cannot
+	// express it, so it survives a change made elsewhere.
+	const current = get(ledgerAccountScope);
+	const scope = v === null ? '' : String(v);
+	if (current !== 'unassigned' && current !== scope) ledgerAccountScope.set(scope);
 	try {
 		if (v === null) localStorage.removeItem('selected-account-id');
 		else localStorage.setItem('selected-account-id', String(v));
