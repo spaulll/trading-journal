@@ -19,6 +19,7 @@
 	let fAlias = $state('');
 	let fLogin = $state('');
 	let fPhase = $state<string>('funded');
+	let fBase = $state('USD');
 	let fStart = $state('100000');
 	let fDaily = $state('5000');
 	let fDailyBasis = $state('balance');
@@ -39,6 +40,7 @@
 		fAlias = '';
 		fLogin = '';
 		fPhase = 'funded';
+		fBase = 'USD';
 		fStart = '100000';
 		fDaily = '5';
 		fDailyBasis = 'balance';
@@ -56,6 +58,7 @@
 		fAlias = a.alias;
 		fLogin = a.login ?? '';
 		fPhase = a.phase;
+		fBase = a.base_currency;
 		fStart = String(a.start_balance);
 		fDaily = String(a.daily_loss_pct);
 		fDailyBasis = a.daily_basis;
@@ -79,23 +82,24 @@
 	const str = (v: string | number | null | undefined): string =>
 		v === null || v === undefined ? '' : String(v);
 
-	/** Live $ previews for % inputs against the start balance (derived so they track all fields). */
+	/** Live money previews for % inputs, in the account's declared currency. */
+	const baseCode = $derived(fBase.trim().toUpperCase() || 'USD');
 	const startN = $derived(num(fStart));
 	const dailyUsd = $derived.by(() => {
 		const pct = num(fDaily);
 		if (startN === null || pct === null || !Number.isFinite(startN) || !Number.isFinite(pct)) return '—';
-		return `$${Math.round(startN * pct / 100).toLocaleString()}`;
+		return `${baseCode} ${Math.round(startN * pct / 100).toLocaleString()}`;
 	});
 	const maxUsd = $derived.by(() => {
 		const pct = num(fMax);
 		if (startN === null || pct === null || !Number.isFinite(startN) || !Number.isFinite(pct)) return '—';
-		return `$${Math.round(startN * pct / 100).toLocaleString()}`;
+		return `${baseCode} ${Math.round(startN * pct / 100).toLocaleString()}`;
 	});
 	const targetUsd = $derived.by(() => {
 		const pct = num(fTarget);
 		if (str(fTarget).trim() === '') return '—';
 		if (startN === null || pct === null || !Number.isFinite(startN) || !Number.isFinite(pct)) return '—';
-		return `$${Math.round(startN * pct / 100).toLocaleString()}`;
+		return `${baseCode} ${Math.round(startN * pct / 100).toLocaleString()}`;
 	});
 
 	async function submit(e: SubmitEvent): Promise<void> {
@@ -104,6 +108,10 @@
 		const alias = fAlias.trim().toLowerCase();
 		if (!/^[a-z0-9][a-z0-9\-_]{1,23}$/.test(alias)) {
 			formError = 'Alias must be lowercase a-z0-9-_, 2-24 chars (e.g. ftmo100k-f1).';
+			return;
+		}
+		if (!/^[A-Za-z]{3,5}$/.test(fBase.trim())) {
+			formError = 'Base currency must be a 3-5 letter code (e.g. USD, EUR, JPY).';
 			return;
 		}
 		const start = num(fStart) ?? 0;
@@ -119,6 +127,7 @@
 			alias,
 			login: fLogin.trim() || null,
 			phase: fPhase,
+			base_currency: baseCode,
 			start_balance: start,
 			daily_loss_pct: daily,
 			daily_basis: fDailyBasis,
@@ -208,7 +217,7 @@
 				<div class="flex flex-wrap items-center gap-2">
 					<h2 class="num text-lg font-semibold text-fg">@{a.alias}</h2>
 					<span class="rounded-lg bg-raised px-2 py-0.5 font-mono text-[10px] font-semibold tracking-[0.14em] text-mut uppercase">
-						{a.firm || 'no firm'} · {a.phase}
+						{a.firm || 'no firm'} · {a.phase} · {a.base_currency}
 					</span>
 					<span class="rounded-lg px-2 py-0.5 font-mono text-[10px] font-semibold tracking-[0.14em] uppercase {a.status === 'active' ? 'bg-win/12 text-win' : a.status === 'archived' ? 'bg-flat/12 text-flat' : 'bg-loss/12 text-loss'}">
 						{a.status}
@@ -228,10 +237,10 @@
 					</p>
 				{/if}
 				<dl class="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-4">
-					<div><dt class="eyebrow">Start</dt><dd class="num mt-1 text-sm text-fg tabular-nums">{a.start_balance.toLocaleString()}</dd></div>
-					<div><dt class="eyebrow">Daily max</dt><dd class="num mt-1 text-sm text-fg tabular-nums">{a.daily_loss_pct}% <span class="text-dim">≈ ${Math.round(a.start_balance * a.daily_loss_pct / 100).toLocaleString()} ({a.daily_basis})</span></dd></div>
+					<div><dt class="eyebrow">Start</dt><dd class="num mt-1 text-sm text-fg tabular-nums">{a.base_currency} {a.start_balance.toLocaleString()}</dd></div>
+					<div><dt class="eyebrow">Daily max</dt><dd class="num mt-1 text-sm text-fg tabular-nums">{a.daily_loss_pct}% <span class="text-dim">≈ {a.base_currency} {Math.round(a.start_balance * a.daily_loss_pct / 100).toLocaleString()} ({a.daily_basis})</span></dd></div>
 					<div><dt class="eyebrow">Max loss</dt><dd class="num mt-1 text-sm text-fg tabular-nums">{a.max_loss_pct}% <span class="text-dim">({a.max_mode})</span></dd></div>
-					<div><dt class="eyebrow">Target</dt><dd class="num mt-1 text-sm text-fg tabular-nums">{a.profit_target_pct === null ? '—' : `${a.profit_target_pct}% ≈ $${Math.round(a.start_balance * a.profit_target_pct / 100).toLocaleString()}`}</dd></div>
+					<div><dt class="eyebrow">Target</dt><dd class="num mt-1 text-sm text-fg tabular-nums">{a.profit_target_pct === null ? '—' : `${a.profit_target_pct}% ≈ ${a.base_currency} ${Math.round(a.start_balance * a.profit_target_pct / 100).toLocaleString()}`}</dd></div>
 				</dl>
 				<p class="num mt-3 border-t border-line pt-2.5 text-[11px] text-dim">
 					{a.open_trades} open · {a.total_trades} total{#if a.login} · login {a.login}{/if}
@@ -269,7 +278,8 @@
 							{#each PHASES as p}<option value={p}>{p}</option>{/each}
 						</select>
 					</label>
-					<label class={label}>Start balance<input type="number" bind:value={fStart} step="any" class={field} /></label>
+					<label class={label}>Base currency<input type="text" bind:value={fBase} maxlength={5} placeholder="USD" autocomplete="off" class="{field} uppercase" /></label>
+					<label class={label}>Start balance ({baseCode})<input type="number" bind:value={fStart} step="any" class={field} /></label>
 					<label class={label}>Profit target % <span class="normal-case tracking-normal text-dim">(empty = none · {targetUsd})</span><input type="number" bind:value={fTarget} step="any" class={field} /></label>
 					<label class={label}>Daily max loss % <span class="normal-case tracking-normal text-dim">({dailyUsd})</span><input type="number" bind:value={fDaily} step="any" class={field} /></label>
 					<label class={label}>Daily basis
@@ -302,7 +312,7 @@
 						</select>
 					</label>
 				</div>
-				<p class="num mt-3 text-[11px] text-dim">Limits are % of start balance — $ resolves live (1k/5k/10k/100k all work). Day resets at UTC midnight.</p>
+				<p class="num mt-3 text-[11px] text-dim">Limits are % of start balance and resolve in {baseCode} live (1k/5k/10k/100k all work). Day resets at UTC midnight.</p>
 				{#if formError}<p class="mt-3 text-[13px] font-medium text-loss" role="alert">{formError}</p>{/if}
 				<div class="mt-5 flex justify-end gap-2 border-t border-line pt-4">
 					<button type="button" onclick={() => (modal = null)} class="btn btn-ghost h-10 px-4 text-sm">Cancel</button>

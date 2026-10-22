@@ -34,6 +34,7 @@ def create_db_and_tables() -> None:
     _migrate_symbol_spec()
     _migrate_trade_currency_columns()
     _migrate_trade_risk_columns()
+    _migrate_account_base_currency()
     _migrate_fx_rate_indexes()
 
 
@@ -75,6 +76,25 @@ def _migrate_trade_currency_columns() -> None:
         )
         conn.exec_driver_sql(
             "CREATE INDEX IF NOT EXISTS ix_trade_quote_currency ON trade (quote_currency)"
+        )
+
+
+def _migrate_account_base_currency() -> None:
+    """Give every account a declared base currency (USD is the old one)."""
+    if not DATABASE_URL.startswith("sqlite"):
+        return
+    with engine.begin() as conn:
+        cols = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(account)")}
+        if "base_currency" not in cols:
+            conn.exec_driver_sql(
+                "ALTER TABLE account ADD COLUMN base_currency VARCHAR NOT NULL DEFAULT 'USD'"
+            )
+        conn.exec_driver_sql(
+            "UPDATE account SET base_currency = 'USD' "
+            "WHERE base_currency IS NULL OR base_currency = ''"
+        )
+        conn.exec_driver_sql(
+            "CREATE INDEX IF NOT EXISTS ix_account_base_currency ON account (base_currency)"
         )
 
 
