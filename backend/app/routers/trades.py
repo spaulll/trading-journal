@@ -458,8 +458,9 @@ async def import_mt5_statement(
 
     The account comes from the form when chosen, otherwise from the login
     printed in the HTML report (matched against ``Account.login``). A row
-    whose ticket already exists is not duplicated; the reconciliation pass
-    refreshes it from the statement.
+    whose ticket already exists is reconciled in place: the broker fields
+    are refreshed, the trader's notes and tags are kept, and a row that
+    already matches changes nothing. Re-importing the same file is a no-op.
     """
     from app.services.mt5_import import (
         StatementError,
@@ -487,7 +488,7 @@ async def import_mt5_statement(
         session,
         parsed.rows,
         account_id=target_account,
-        update_existing=False,
+        update_existing=True,
     )
     return {
         "filename": filename,
