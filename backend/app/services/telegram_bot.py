@@ -547,12 +547,77 @@ def _fmt_left(v) -> str:
     return f"{v:,.0f}" if float(v) == int(float(v)) else f"{v:,.2f}"
 
 
+RULE_EMOJI = {
+    "profit_target": "🎯",
+    "max_loss": "🛡️",
+    "daily_loss": "📉",
+    "min_days": "📅",
+    "consistency": "⚖️",
+}
+
+RULE_STATUS = {
+    "met": "✅ met",
+    "breached": "🚨 breached",
+    "missed": "🚨 missed",
+}
+
+
+def _fmt_pct(v: Optional[float]) -> str:
+    """Percent without trailing zeroes: 5.0 → 5%, 5.25 → 5.25%."""
+    if v is None:
+        return "—"
+    return f"{v:.2f}".rstrip("0").rstrip(".") + "%"
+
+
+def _rule_value(rule) -> str:
+    """Current and target in the rule's own unit.
+
+    ``min_days`` is a count, ``consistency`` is a ceiling, and the loss
+    rules read as usage against a limit — so no generic "x / y" everywhere.
+    """
+    if rule.kind == "min_days":
+        return f"{_fmt_left(rule.current)} / {_fmt_left(rule.target)} days"
+    if rule.kind == "consistency":
+        return f"{_fmt_pct(rule.current)} ≤ {_fmt_pct(rule.target)}"
+    if rule.kind == "daily_loss":
+        return f"{_fmt_pct(rule.current)} today / {_fmt_pct(rule.target)}"
+    return f"{_fmt_pct(rule.current)} / {_fmt_pct(rule.target)}"
+
+
+def _rule_line(rule) -> str:
+    icon = RULE_EMOJI.get(rule.kind, "•")
+    line = f"{icon} {esc(rule.label)}  <b>{_rule_value(rule)}</b>"
+    status = RULE_STATUS.get(rule.status)
+    if status:
+        line += f"  {status}"
+        if rule.met_at is not None and rule.status in {"met", "breached"}:
+            line += f" <i>· {(rule.met_at + IST_OFFSET).strftime('%d %b')}</i>"
+    return line
+
+
+def _rule_block(rules) -> str:
+    """The rule lines plus the one warning that needs a sentence.
+
+    A breached limit already says so in the status; the days warning is
+    the one that needs to explain *why* it is about to be missed. It is
+    the same string the web card shows.
+    """
+    if not rules:
+        return ""
+    lines = [_rule_line(rule) for rule in rules]
+    for rule in rules:
+        if rule.kind == "min_days" and rule.warning:
+            lines.append(f"⚠️ <i>{esc(rule.warning)}</i>")
+    return "\n".join(lines)
+
+
 def accounts_page_content(session: Session, page: int = 0) -> tuple[str, Optional[dict]] | None:
     """Render one list page. Returns None when no accounts exist."""
     from sqlmodel import select
 
     from app.models import Account, Trade
     from app.routers.accounts import _prop_numbers
+    from app.services.account_rules import sync_account_rules
 
     accs = list(
         session.exec(
@@ -568,12 +633,21 @@ def accounts_page_content(session: Session, page: int = 0) -> tuple[str, Optiona
     lines = [f"🏦 <b>Prop Accounts</b> · {len(accs)}" + (f"  <i>({page + 1}/{pages})</i>" if pages > 1 else "")]
     for a in chunk:
         p = _prop_numbers(a, session)
+        rules = sync_account_rules(session, a, numbers=p)
+        days = next((rule for rule in rules if rule.kind == "min_days"), None)
+        days_bit = ""
+        if days is not None:
+            days_bit = f"  ·  📅 {_fmt_left(days.current)}/{_fmt_left(days.target)}d"
+            if days.status == "missed":
+                days_bit += " 🚨"
+            elif days.warning:
+                days_bit += " ⚠️"
         dot = STATUS_EMOJI.get(p["status"], "⚪")
         tgt = f"{p['target_pct']:.1f}%" if p["target_pct"] is not None else "—"
         lines.append(
             f"{dot} <b>@{esc(a.alias)}</b>  <i>{esc(a.firm or '—')} · {esc(a.phase)}</i>\n"
             f"   💰 {p['balance']:,.2f} <i>({p['total_net']:+,.2f})</i>  ·  "
-            f"📉 Daily left <b>{_fmt_left(p['daily_left'])}</b>  ·  🎯 {tgt}"
+            f"📉 Daily left <b>{_fmt_left(p['daily_left'])}</b>  ·  🎯 {tgt}{days_bit}"
         )
     unassigned = len(session.exec(select(Trade).where(Trade.account_id.is_(None))).all())
     if unassigned:
@@ -598,8 +672,10 @@ def account_detail_content(session: Session, account_id: int) -> tuple[str, Opti
     if acc is None:
         return None
     from app.routers.accounts import _prop_numbers
+    from app.services.account_rules import sync_account_rules
 
     p = _prop_numbers(acc, session)
+    rule_block = _rule_block(sync_account_rules(session, acc, numbers=p))
     open_n = p.get("open_trades", 0)
     total_n = p.get("total_trades", 0)
     state = "🚨 <b>BREACH</b>" if p["breached"] else f"{STATUS_EMOJI.get(p['status'], '⚪')} {esc(p['status']).upper()}"
@@ -623,7 +699,8 @@ def account_detail_content(session: Session, account_id: int) -> tuple[str, Opti
         f"<i>({p['daily_loss_pct']}% {esc(p['daily_basis'])})</i>\n"
         f"{max_line}\n"
         f"{tgt_line}\n"
-        f"📊 Trades  {open_n} open · {total_n} total"
+        + (f"━━━━━━━━━━━━\n{rule_block}\n" if rule_block else "")
+        + f"📊 Trades  {open_n} open · {total_n} total"
     )
     return text, {"inline_keyboard": [[{"text": "◀ All accounts", "callback_data": "accs:0"}]]}
 

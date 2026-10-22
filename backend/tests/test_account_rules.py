@@ -365,3 +365,86 @@ def test_meeting_the_days_requirement_clears_the_warning(client):
     assert rule["status"] == "met"
     assert rule["met_at"] is not None
     assert rule["warning"] is None
+
+
+def test_the_telegram_detail_shows_every_rule(client, session):
+    today = datetime.now(timezone.utc).date()
+    account = _account(
+        client,
+        profit_target_pct=5.0,
+        max_loss_pct=10.0,
+        daily_loss_pct=5.0,
+        min_trading_days=10,
+        consistency_pct=40.0,
+        deadline=(today + timedelta(days=2)).isoformat(),
+    )
+    _trade(client, account["id"], "TG-1", (today - timedelta(days=2)).isoformat(), 3000.0)
+    _trade(client, account["id"], "TG-2", (today - timedelta(days=1)).isoformat(), 2000.0)
+    _trade(client, account["id"], "TG-3", today.isoformat(), 1000.0)
+
+    from app.services.telegram_bot import account_detail_content
+
+    rendered = account_detail_content(session, account["id"])
+    assert rendered is not None
+    text, keyboard = rendered
+
+    assert "🏦 <b>@prop-eval</b>" in text
+    assert "🎯 Profit target" in text
+    assert "6% / 5%" in text
+    assert "✅ met" in text
+    from app.services.broker_clock import IST_OFFSET
+
+    web = {
+        rule["kind"]: rule
+        for rule in client.get(f"/api/accounts/{account['id']}/rules").json()
+    }
+    met_at = datetime.fromisoformat(web["profit_target"]["met_at"])
+    assert f"· {(met_at + IST_OFFSET).strftime('%d %b')}" in text
+    assert "🛡️ Max loss" in text
+    assert "0% / 10%" in text
+    assert "📉 Daily loss" in text
+    assert "0% today / 5%" in text
+    assert "📅 Trading days" in text
+    assert "3 / 10 days" in text
+    assert "⚖️ Consistency" in text
+    assert "50% ≤ 40%" in text
+    assert "At risk:" in text
+    assert "📊 Trades  0 open · 3 total" in text
+    assert keyboard is not None
+
+
+def test_the_telegram_accounts_page_shows_days_progress(client, session):
+    today = datetime.now(timezone.utc).date()
+    account = _account(
+        client,
+        min_trading_days=10,
+        deadline=(today + timedelta(days=2)).isoformat(),
+    )
+    _trade(
+        client,
+        account["id"],
+        "TG-LIST",
+        (today - timedelta(days=1)).isoformat(),
+        100.0,
+    )
+
+    from app.services.telegram_bot import accounts_page_content
+
+    rendered = accounts_page_content(session, 0)
+    assert rendered is not None
+    text, keyboard = rendered
+
+    assert "📅 1/10d ⚠️" in text
+    assert keyboard is not None
+
+
+def test_a_telegram_account_without_rules_has_no_rule_block(client, session):
+    account = _account(client)
+
+    from app.services.telegram_bot import account_detail_content
+
+    rendered = account_detail_content(session, account["id"])
+    assert rendered is not None
+    text, _ = rendered
+    assert "Profit target" not in text
+    assert text.count("━━━━━━━━━━━━") == 1
