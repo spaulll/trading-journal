@@ -9,6 +9,7 @@ from datetime import date as date_type
 from datetime import datetime, timezone
 from typing import Optional
 
+from sqlalchemy import UniqueConstraint
 from sqlmodel import Field, Relationship, SQLModel
 
 
@@ -20,6 +21,29 @@ class TradeTagLink(SQLModel, table=True):
     __tablename__ = "trade_tag_link"
     trade_id: Optional[int] = Field(default=None, foreign_key="trade.id", primary_key=True)
     tag_id: Optional[int] = Field(default=None, foreign_key="tag.id", primary_key=True)
+
+
+class FxRate(SQLModel, table=True):
+    """One daily FX quote: 1 ``base`` buys ``rate`` units of ``quote``.
+
+    Rates are stored per day and looked up with a backwards fallback, so a
+    weekend or a forgotten entry does not make a trade unpriceable — a
+    missing day uses the most recent earlier rate and the conversion
+    reports how stale that rate was.
+    """
+
+    __tablename__ = "fx_rate"
+    __table_args__ = (
+        UniqueConstraint("date", "base", "quote", name="uq_fx_rate_triple"),
+    )
+    id: Optional[int] = Field(default=None, primary_key=True)
+    date: date_type = Field(index=True)
+    base: str = Field(index=True)
+    quote: str = Field(index=True)
+    rate: float  # quote units per 1.0 base
+    source: str = Field(default="manual")  # manual | provider name
+    created_at: datetime = Field(default_factory=_utcnow)
+    updated_at: datetime = Field(default_factory=_utcnow)
 
 
 class Tag(SQLModel, table=True):
@@ -364,6 +388,40 @@ class SymbolPreview(SQLModel):
     pips: Optional[float] = None
     risk_distance: Optional[float] = None
     risk_pips: Optional[float] = None
+
+
+class FxRateRead(SQLModel):
+    id: int
+    date: date_type
+    base: str
+    quote: str
+    rate: float
+    source: str
+    created_at: datetime
+    updated_at: datetime
+
+
+class FxRateCreate(SQLModel):
+    date: Optional[date_type] = None
+    base: str
+    quote: str
+    rate: float
+    source: Optional[str] = None
+
+
+class FxEffectiveRate(SQLModel):
+    """The rate a conversion would actually use, with its provenance."""
+
+    base: str
+    quote: str
+    requested_date: date_type
+    rate: Optional[float] = None
+    as_of: Optional[date_type] = None
+    source: str = "missing"  # identity | direct | inverse | cross | missing
+    via: Optional[str] = None
+    fallback: bool = False
+    fallback_days: int = 0
+    missing: bool = True
 
 
 class DailyNoteRead(SQLModel):
