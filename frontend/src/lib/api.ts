@@ -109,6 +109,21 @@ export interface DailyNoteDto {
 	updated_at: string;
 }
 
+/** How the day lined up with the pre-market plan. */
+export interface AdherenceDto {
+	day: string;
+	has_plan: boolean;
+	score: number | null;
+	planned_setups: string[];
+	traded_setups: string[];
+	setup_match: number | null;
+	planned_size: number | null;
+	size_match: number | null;
+	trades: number;
+	discipline_breach: boolean;
+	notes: string[];
+}
+
 export interface AccountDto {
 	id: number;
 	firm: string;
@@ -571,7 +586,8 @@ export const api = {
 	},
 	putNote: (day: string, patch: { pre_market?: string | null; eod_review?: string | null }) =>
 		req<DailyNoteDto>(`/api/daily-notes/${day}`, json({ method: 'PUT', body: JSON.stringify(patch) })),
-	deleteNote: (day: string) => req<{ deleted: string }>(`/api/daily-notes/${day}`, { method: 'DELETE' }),
+	/** The plan score for a day — did the day follow the pre-market note? */
+	adherence: (day: string) => req<AdherenceDto>(`/api/daily-notes/${day}/adherence`),	deleteNote: (day: string) => req<{ deleted: string }>(`/api/daily-notes/${day}`, { method: 'DELETE' }),
 	weekendReview: (from?: string, to?: string) =>
 		req<WeekendReviewResult>(
 			'/api/insights/weekend-review',
