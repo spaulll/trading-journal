@@ -7,7 +7,8 @@ Text syntax:
     Open:  buy gold, 0.1, 4000, 3990, 4020, #fvg
     TSL:   tsl gold, 4005
     Close: close gold, 4015, +150, fee: 3.5, !early, notes
-Commands: /start, /help, /open, /stats_daily, /brokertime, /cancel.
+Commands: /start, /help, /open, /accounts, /tag, /note, /pnl, /winrate,
+/stats_daily, /brokertime, /cancel.
 
 Photos are downloaded via getFile and streamed straight into
 immich_client (never touch local disk), then recorded in screenshots.
@@ -881,10 +882,18 @@ HELP = (
     "(you pick one if several are open). Backfilled trades show a "
     "📸 Attach Chart button — tap it, then send the photo.\n"
     "\n"
+    "<b>TAG / NOTE a trade:</b>\n"
+    "<code>/tag SYMBOL_OR_TICKET #fvg !early</code> — add setup/mistake tags\n"
+    "<code>/note SYMBOL_OR_TICKET review text…</code> — append a note "
+    "(<code>clear</code> removes it). A symbol picks its most recent trade; "
+    "add <code>@alias</code> to narrow it.\n"
+    "\n"
     "<b>COMMANDS:</b>\n"
     "/start — greeting · /help — this guide · /open — list open trades · "
     "/accounts — prop accounts + status · "
-    "/stats_daily — today's stats · /brokertime — set broker clock · /cancel — drop the pending question\n"
+    "/tag — add tags · /note — append a note · /pnl — P&amp;L summary · "
+    "/winrate — win rate · /stats_daily — today's stats · "
+    "/brokertime — set broker clock · /cancel — drop the pending question\n"
     "\n"
     "Buttons under each confirmation: Move to BE · Update TSL · Close Trade · "
     "Attach Chart. Stale-trade nudges can be snoozed 2h; reply to the nightly "
@@ -993,6 +1002,270 @@ async def handle_stats_daily(chat_id: int, session: Session) -> None:
     await send_text(chat_id, daily_stats_text(session))
 
 
+# --- annotations (Phase 8): /tag and /note ---
+
+
+TAG_USAGE = (
+    "🏷️ <b>Tag a trade</b>\n"
+    "<code>/tag SYMBOL_OR_TICKET #fvg !early</code>\n"
+    "Use <code>#tag</code> for a setup and <code>!tag</code> for a mistake. "
+    "A bare word is a setup tag. Add <code>@alias</code> to narrow a symbol to one account."
+)
+
+NOTE_USAGE = (
+    "📝 <b>Note a trade</b>\n"
+    "<code>/note SYMBOL_OR_TICKET your review…</code>\n"
+    "The text is appended to the trade's review note; <code>/note TICKET clear</code> "
+    "removes it. No text shows the current note."
+)
+
+PNL_PERIODS = ("today", "week", "month", "all")
+
+
+def _annotation_parts(body: str) -> tuple[str, str, Optional[str]]:
+    """Split `/tag` or `/note` into target, payload and an explicit @alias."""
+    cleaned, alias = extract_alias(body)
+    parts = cleaned.split(maxsplit=2)
+    target = parts[1].strip() if len(parts) > 1 else ""
+    payload = parts[2].strip() if len(parts) > 2 else ""
+    return target, payload, alias
+
+
+def _annotation_account_id(session: Session, alias: Optional[str]):
+    """Explicit @alias only — annotations never inherit the last-used account."""
+    if alias is None:
+        return None
+    account = get_account_by_alias(session, alias)
+    return account.id if account is not None else False
+
+
+def _annotation_trade(session: Session, target: str, account_id: Optional[int] = None):
+    """A trade by ticket, else the most recent trade on that symbol."""
+    token = (target or "").strip()
+    if not token:
+        return None
+    trade = session.exec(select(Trade).where(Trade.ticket == token)).first()
+    if trade is not None:
+        return trade
+    symbol = token.upper().rstrip(".")
+    stmt = select(Trade).where(Trade.symbol == symbol)
+    if account_id is not None:
+        stmt = stmt.where(Trade.account_id == account_id)
+    trades = session.exec(stmt).all()
+    if not trades:
+        return None
+
+    def when(t) -> datetime:
+        return (
+            as_naive_utc(
+                t.timestamp_close or t.exit_time or t.timestamp_open or t.entry_time or t.created_at
+            )
+            or datetime.min
+        )
+
+    return max(trades, key=when)
+
+
+def _tag_text(tag) -> str:
+    return f"{'#' if tag.category == 'setup' else '!'}{tag.name}"
+
+
+def _tag_list(trade: Trade) -> str:
+    ordered = sorted(trade.tags, key=lambda t: (t.category, t.name))
+    return " ".join(_tag_text(t) for t in ordered)
+
+
+def _annotation_target(trade: Trade) -> str:
+    return f"{trade.direction.upper() if trade.direction else '?'} {trade.symbol} 🎫 {esc(trade.ticket)}"
+
+
+async def handle_tag_command(chat_id: int, body: str, session: Session) -> None:
+    target, payload, alias = _annotation_parts(body)
+    if not target:
+        await send_text(chat_id, TAG_USAGE)
+        return
+    account_id = _annotation_account_id(session, alias)
+    if account_id is False:
+        await send_text(chat_id, f"❌ Unknown account @{esc(alias)}.")
+        return
+    trade = _annotation_trade(session, target, account_id)
+    if trade is None:
+        suffix = f" on @{esc(alias)}" if alias else ""
+        await send_text(
+            chat_id, f"❌ No trade found for <code>{esc(target)}</code>{suffix}. Use a ticket or symbol."
+        )
+        return
+    if not payload:
+        current = _tag_list(trade)
+        state = current if current else "no tags yet"
+        await send_text(chat_id, f"🏷️ {_annotation_target(trade)} — {state}")
+        return
+
+    from app.services.migrate_csv import get_or_create_tag, parse_tags
+
+    added: list[str] = []
+    seen = {t.name for t in trade.tags}
+    for name, category in parse_tags(payload):
+        if name in seen:
+            continue
+        tag = get_or_create_tag(session, name, category)
+        trade.tags.append(tag)
+        seen.add(name)
+        added.append(_tag_text(tag))
+    if not added:
+        await send_text(chat_id, f"🏷️ No new tags — {_annotation_target(trade)}: {_tag_list(trade)}")
+        return
+
+    trade.updated_at = _now()
+    session.add(trade)
+    session.commit()
+    await send_text(
+        chat_id,
+        f"🏷️ Added {esc(', '.join(added))} to {_annotation_target(trade)}.\n"
+        f"Now: {esc(_tag_list(trade))}",
+    )
+
+
+async def handle_note_command(chat_id: int, body: str, session: Session) -> None:
+    target, payload, alias = _annotation_parts(body)
+    if not target:
+        await send_text(chat_id, NOTE_USAGE)
+        return
+    account_id = _annotation_account_id(session, alias)
+    if account_id is False:
+        await send_text(chat_id, f"❌ Unknown account @{esc(alias)}.")
+        return
+    trade = _annotation_trade(session, target, account_id)
+    if trade is None:
+        suffix = f" on @{esc(alias)}" if alias else ""
+        await send_text(
+            chat_id, f"❌ No trade found for <code>{esc(target)}</code>{suffix}. Use a ticket or symbol."
+        )
+        return
+
+    existing = (trade.review_notes or "").strip()
+    if not payload:
+        if not existing:
+            await send_text(chat_id, f"📝 {_annotation_target(trade)} has no review note yet.")
+            return
+        shown = existing if len(existing) <= 600 else existing[:600] + "…"
+        await send_text(chat_id, f"📝 {_annotation_target(trade)} note:\n{esc(shown)}")
+        return
+
+    if payload.lower() == "clear":
+        trade.review_notes = None
+        trade.updated_at = _now()
+        session.add(trade)
+        session.commit()
+        await send_text(chat_id, f"📝 Cleared the note on {_annotation_target(trade)}.")
+        return
+
+    trade.review_notes = f"{existing}\n{payload}" if existing else payload
+    trade.updated_at = _now()
+    session.add(trade)
+    session.commit()
+    preview = payload if len(payload) <= 160 else payload[:160] + "…"
+    await send_text(chat_id, f"📝 Note saved on {_annotation_target(trade)}.\n{esc(preview)}")
+
+
+# --- quick performance (Phase 8): /pnl and /winrate ---
+
+
+def _period_start(session: Session, period: str) -> tuple[Optional[datetime], str]:
+    """The naive-UTC start of a named period, and its label."""
+    from app.services.trading_day import get_trading_day
+
+    if period == "all":
+        return None, "all time"
+    setting = get_trading_day(session)
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    day = setting.day_of(now)
+    if period == "today":
+        return setting.bounds(day)[0], day.isoformat()
+    if period == "week":
+        return setting.bounds(day - timedelta(days=6))[0], "last 7 days"
+    first = day.replace(day=1)
+    return setting.bounds(first)[0], first.strftime("%b %Y")
+
+
+def _performance(session: Session, period: str) -> dict:
+    since, label = _period_start(session, period)
+    closed = session.exec(select(Trade).where(Trade.status == "CLOSED")).all()
+    if since is not None:
+        closed = [
+            t
+            for t in closed
+            if (as_naive_utc(t.timestamp_close or t.exit_time) or datetime.min) >= since
+        ]
+    nets = [usd_net(t) for t in closed]
+    counts = split_outcomes(nets)
+    known = [n for n in nets if n is not None]
+    return {
+        "label": label,
+        "closed": len(closed),
+        "known": known,
+        "counts": counts,
+        "total": sum(known),
+        "avg": (sum(known) / len(known)) if known else None,
+        "best": max(known) if known else None,
+        "worst": min(known) if known else None,
+        "r_total": sum(t.r_multiple for t in closed if t.r_multiple is not None),
+        "wr": win_rate(counts.wins, counts.losses) if counts.decided else None,
+    }
+
+
+def _outcome_buckets(counts) -> str:
+    text = f"{counts.wins}W · {counts.losses}L · {counts.breakeven}BE"
+    if counts.unpriced:
+        text += f" · {counts.unpriced} unpriced"
+    return text
+
+
+def pnl_text(session: Session, period: str = "all") -> str:
+    stats = _performance(session, period)
+    if stats["closed"] == 0:
+        return f"📈 P&L — {stats['label']}: no closed trades yet."
+    known = stats["known"]
+    if not known:
+        return (
+            f"📈 P&L — {stats['label']}: {stats['closed']} closed, all unpriced "
+            "(no contract or FX rate)."
+        )
+    wr = f"{stats['wr']:.0f}%" if stats["wr"] is not None else "n/a"
+    return (
+        f"📈 P&L — {stats['label']}\n"
+        f"{stats['closed']} closed · net {stats['total']:+.2f} USD · win rate {wr} · "
+        f"R {stats['r_total']:+.2f}\n"
+        f"{_outcome_buckets(stats['counts'])} · avg {stats['avg']:+.2f}\n"
+        f"best {stats['best']:+.2f} · worst {stats['worst']:+.2f}"
+    )
+
+
+def winrate_text(session: Session, period: str = "all") -> str:
+    stats = _performance(session, period)
+    counts = stats["counts"]
+    if stats["closed"] == 0:
+        return f"🎯 Win rate — {stats['label']}: no closed trades yet."
+    if counts.decided == 0:
+        return (
+            f"🎯 Win rate — {stats['label']}: no decided trades yet "
+            f"({_outcome_buckets(counts)})."
+        )
+    return (
+        f"🎯 Win rate — {stats['label']}: {stats['wr']:.0f}% over {counts.decided} decided\n"
+        f"{_outcome_buckets(counts)} · net {stats['total']:+.2f} USD over {stats['closed']} closed"
+    )
+
+
+def _period_arg(body: str) -> str:
+    parts = body.split(maxsplit=1)
+    period = parts[1].strip().lower() if len(parts) > 1 else "all"
+    if period not in PNL_PERIODS:
+        raise BotParseError(f"period must be one of {', '.join(PNL_PERIODS)}")
+    return period
+
+
+
 BROKER_SETUP_RE = re.compile(
     r"^MT5\s+(\d{4}-\d{2}-\d{2}\s+\d{1,2}:\d{2}(?::\d{2})?)\s+IST\s+(\d{4}-\d{2}-\d{2}\s+\d{1,2}:\d{2}(?::\d{2})?)\s*$",
     re.IGNORECASE,
@@ -1074,6 +1347,24 @@ async def handle_text(chat_id: int, text: str, session: Session) -> None:
         return
     if cmd == "/brokertime":
         await handle_broker_clock(chat_id, body, session)
+        return
+    if cmd == "/tag":
+        await handle_tag_command(chat_id, body, session)
+        return
+    if cmd == "/note":
+        await handle_note_command(chat_id, body, session)
+        return
+    if cmd == "/pnl":
+        try:
+            await send_text(chat_id, pnl_text(session, _period_arg(body)))
+        except BotParseError as exc:
+            await send_text(chat_id, f"❌ {exc}")
+        return
+    if cmd == "/winrate":
+        try:
+            await send_text(chat_id, winrate_text(session, _period_arg(body)))
+        except BotParseError as exc:
+            await send_text(chat_id, f"❌ {exc}")
         return
 
     state = _pending.get(chat_id)
@@ -1453,7 +1744,7 @@ async def _process_update(update: dict) -> None:
         if photos:
             await handle_photo(chat_id, photos[-1]["file_id"], session)
             # A captioned command still executes (photo already routed above).
-            if text.strip() and re.match(r"(?i)^\s*(buy|sell|tsl|close|past|/open|/accounts|/cancel|/start|/help|/stats_daily|/stats)", text.strip()):
+            if text.strip() and re.match(r"(?i)^\s*(buy|sell|tsl|close|past|/open|/accounts|/cancel|/start|/help|/stats_daily|/stats|/tag|/note|/pnl|/winrate)", text.strip()):
                 await handle_text(chat_id, text, session)
         elif text:
             # EOD review replies (Phase 3) are picked up there; ignore here
@@ -1478,6 +1769,10 @@ COMMAND_MENU = [
     {"command": "help", "description": "Full trade entry syntax guide"},
     {"command": "open", "description": "List your open trades"},
     {"command": "accounts", "description": "Prop accounts + status"},
+    {"command": "tag", "description": "Add setup/mistake tags to a trade"},
+    {"command": "note", "description": "Append a review note to a trade"},
+    {"command": "pnl", "description": "P&L summary (today/week/month/all)"},
+    {"command": "winrate", "description": "Win rate summary"},
     {"command": "stats_daily", "description": "Show today's trading stats"},
     {"command": "brokertime", "description": "Set broker clock offset (MT5 vs IST)"},
     {"command": "cancel", "description": "Drop the pending question"},
