@@ -44,6 +44,8 @@ _TABLES = (
     "trade",
     "tag",
     "daily_note",
+    "account_rule",
+    "account_event",
     "account",
     "app_setting",
     "import_run",
