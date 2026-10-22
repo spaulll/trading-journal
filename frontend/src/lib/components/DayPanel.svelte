@@ -2,7 +2,7 @@
 	import { onDestroy, onMount } from 'svelte';
 	import { fade, fly } from 'svelte/transition';
 	import { Trash2, X } from 'lucide-svelte';
-	import { api, type DailyNoteDto } from '$lib/api';
+	import { api, type AdherenceDto, type DailyNoteDto } from '$lib/api';
 	import { bumpNotes, closeDay, selectedDay } from '$lib/stores/journal';
 	import { dayTrades, loadDayTrades, openTrade, openTrades } from '$lib/stores/trades';
 	import { toasts } from '$lib/stores/toast';
@@ -15,13 +15,34 @@
 	/** The day's closes come from the server, bucketed by close day. */
 	const closes = $derived(day === null ? [] : $dayTrades);
 
+	/** How the day lined up with the pre-market plan. */
+	let adherence = $state<AdherenceDto | null>(null);
+
+	const adherenceTone = $derived.by(() => {
+		const score = adherence?.score;
+		if (score === null || score === undefined) return 'text-dim';
+		if (score >= 80) return 'text-win';
+		if (score >= 50) return 'text-flat';
+		return 'text-loss';
+	});
+
+	async function loadAdherence(forDay: string): Promise<void> {
+		try {
+			adherence = await api.adherence(forDay);
+		} catch {
+			adherence = null;
+		}
+	}
+
 	$effect(() => {
 		const wanted = day;
 		if (wanted === null) {
 			dayTrades.set([]);
+			adherence = null;
 			return;
 		}
 		void loadDayTrades(wanted);
+		void loadAdherence(wanted);
 	});
 
 	/** USD view per close; a trade with no convertible P&L is unpriced. */
@@ -201,6 +222,8 @@
 		try {
 			note = await api.putNote(key, { pre_market: preMarket || null, eod_review: eod || null });
 			bumpNotes();
+			// The plan just changed, so its score did too.
+			void loadAdherence(key);
 			noteState = 'saved';
 			noteHint = `Saved ${noteStamp()}`;
 			if (!quiet) toasts.push('success', 'Day note saved.');
@@ -337,6 +360,39 @@
 						</dd>
 					</div>
 				</dl>
+
+				{#if adherence}
+					<div class="mt-4 rounded-xl border border-line bg-raised/40 px-3 py-2.5">
+						<div class="flex items-center gap-2">
+							<p class="eyebrow">Plan adherence</p>
+							{#if adherence.score !== null}
+								<span class="num ml-auto text-sm font-semibold tabular-nums {adherenceTone}">
+									{adherence.score.toFixed(0)}/100
+								</span>
+							{/if}
+						</div>
+						{#if !adherence.has_plan}
+							<p class="num mt-1 text-[12px] text-dim">No pre-market plan for this day.</p>
+						{:else}
+							<p class="num mt-1 text-[12px] text-dim">
+								{#if adherence.planned_setups.length > 0}
+									Plan {adherence.planned_setups.map((s) => `#${s}`).join(' ')}
+								{/if}
+								{#if adherence.traded_setups.length > 0}
+									· traded {adherence.traded_setups.map((s) => `#${s}`).join(' ')}
+								{/if}
+								{#if adherence.planned_size !== null}
+									· size {adherence.planned_size}
+								{/if}
+							</p>
+							<ul class="mt-1.5 flex flex-col gap-0.5">
+								{#each adherence.notes as n (n)}
+									<li class="num text-[11.5px] text-mut">· {n}</li>
+								{/each}
+							</ul>
+						{/if}
+					</div>
+				{/if}
 
 				{#if closes.length > 0}
 					<p class="eyebrow mt-5 mb-2">Trades closed</p>
