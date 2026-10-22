@@ -107,3 +107,19 @@ def test_only_the_days_trades_are_counted(client):
 
     body = client.get("/api/daily-notes/2026-09-20/adherence").json()
     assert body["trades"] == 0
+
+
+def test_the_discipline_breach_flag_can_be_set_and_cleared(client):
+    _note(client, "2026-09-20", "Plan: #fvg on gold.")
+
+    response = client.put("/api/daily-notes/2026-09-20", json={"discipline_breach": True})
+    assert response.status_code == 200
+    assert response.json()["discipline_breach"] is True
+
+    body = client.get("/api/daily-notes/2026-09-20/adherence").json()
+    assert body["discipline_breach"] is True
+    assert any("breach" in note for note in body["notes"])
+
+    response = client.put("/api/daily-notes/2026-09-20", json={"discipline_breach": False})
+    assert response.status_code == 200
+    assert response.json()["discipline_breach"] is False

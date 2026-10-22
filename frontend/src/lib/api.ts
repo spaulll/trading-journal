@@ -584,8 +584,10 @@ export const api = {
 			throw e;
 		}
 	},
-	putNote: (day: string, patch: { pre_market?: string | null; eod_review?: string | null }) =>
-		req<DailyNoteDto>(`/api/daily-notes/${day}`, json({ method: 'PUT', body: JSON.stringify(patch) })),
+	putNote: (
+		day: string,
+		patch: { pre_market?: string | null; eod_review?: string | null; discipline_breach?: boolean }
+	) => req<DailyNoteDto>(`/api/daily-notes/${day}`, json({ method: 'PUT', body: JSON.stringify(patch) })),
 	/** The plan score for a day — did the day follow the pre-market note? */
 	adherence: (day: string) => req<AdherenceDto>(`/api/daily-notes/${day}/adherence`),	deleteNote: (day: string) => req<{ deleted: string }>(`/api/daily-notes/${day}`, { method: 'DELETE' }),
 	weekendReview: (from?: string, to?: string) =>

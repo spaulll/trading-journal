@@ -2,7 +2,7 @@
 	import { onDestroy, onMount } from 'svelte';
 	import { fade, fly } from 'svelte/transition';
 	import { Trash2, X } from 'lucide-svelte';
-	import { api, type AdherenceDto, type DailyNoteDto } from '$lib/api';
+	import { api, errMsg, type AdherenceDto, type DailyNoteDto } from '$lib/api';
 	import { bumpNotes, closeDay, selectedDay } from '$lib/stores/journal';
 	import { dayTrades, loadDayTrades, openTrade, openTrades } from '$lib/stores/trades';
 	import { toasts } from '$lib/stores/toast';
@@ -60,6 +60,7 @@
 
 	let loading = $state(false);
 	let saving = $state(false);
+	let breachBusy = $state(false);
 	// Chained saves. A request that arrives while another is running waits
 	// for it instead of being dropped, and the counter keeps the spinner up
 	// until the last queued write has landed.
@@ -251,8 +252,37 @@
 		return run;
 	}
 
-	async function doDelete(): Promise<void> {
-		if (!day) return;
+	/**
+	 * Flag the day as a discipline breach — or clear the flag.
+	 *
+	 * The bot raises the flag on its own; the trader can also set it from
+	 * the drawer, and clear it when the day was read wrongly.
+	 */
+	async function toggleBreach(): Promise<void> {
+		if (!day || breachBusy) return;
+		breachBusy = true;
+		const next = !(note?.discipline_breach ?? false);
+		try {
+			if (noteTimer) {
+				clearTimeout(noteTimer);
+				noteTimer = null;
+			}
+			if (dirty) await saveNote(true);
+			note = await api.putNote(day, { discipline_breach: next });
+			bumpNotes();
+			void loadAdherence(day);
+			toasts.push(
+				'success',
+				next ? 'Day flagged as a discipline breach.' : 'Discipline breach cleared.'
+			);
+		} catch (err) {
+			toasts.push('error', `Could not update the breach flag — ${errMsg(err)}`);
+		} finally {
+			breachBusy = false;
+		}
+	}
+
+	async function doDelete(): Promise<void> {		if (!day) return;
 		if (!confirmDelete) {
 			confirmDelete = true;
 			setTimeout(() => (confirmDelete = false), 4000);
@@ -333,6 +363,18 @@
 					</span>
 				{/if}
 				<span class="ml-auto flex shrink-0 items-center gap-2">
+					<button
+						type="button"
+						onclick={() => void toggleBreach()}
+						disabled={breachBusy}
+						class="rounded-lg border px-2 py-1 font-mono text-[10px] font-bold tracking-[0.12em] uppercase transition-all disabled:opacity-50 {note?.discipline_breach
+							? 'border-loss/50 bg-loss/12 text-loss'
+							: 'border-line text-dim hover:border-loss/40 hover:text-loss'}"
+						aria-pressed={note?.discipline_breach ?? false}
+						title="Flag this day as a discipline breach"
+					>
+						{note?.discipline_breach ? 'Clear breach' : 'Flag breach'}
+					</button>
 					<button type="button" onclick={() => void flushAndClose()} aria-label="Close" class="btn-icon h-8 w-8">
 						<X size={17} strokeWidth={1.8} aria-hidden="true" />
 					</button>
