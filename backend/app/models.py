@@ -78,6 +78,12 @@ class Trade(SQLModel, table=True):
     gross_pnl: Optional[float] = None
     fees: float = Field(default=0.0)
     net_pnl: Optional[float] = None
+    # The P&L above is stated in the trade's quote currency (JPY for
+    # USDJPY). These two are the same amounts converted to USD at the
+    # close-day FX rate — the single number analytics and guardrails use.
+    quote_currency: Optional[str] = Field(default=None, index=True)
+    gross_pnl_usd: Optional[float] = None
+    net_pnl_usd: Optional[float] = None
     r_multiple: Optional[float] = None
     # Dollar risk, from the symbol registry's contract size.
     # initial_risk  — the risk the plan committed to (the initial stop).
@@ -243,6 +249,12 @@ class TradeRead(SQLModel):
     gross_pnl: Optional[float] = None
     fees: Optional[float] = None
     net_pnl: Optional[float] = None
+    quote_currency: Optional[str] = None
+    gross_pnl_usd: Optional[float] = None
+    net_pnl_usd: Optional[float] = None
+    # True when the quote-currency P&L exists but no FX rate could convert
+    # it to USD. Analytical totals treat such a trade as unpriced.
+    fx_missing: bool = False
     r_multiple: Optional[float] = None
     initial_risk: Optional[float] = None
     realized_risk: Optional[float] = None
@@ -273,6 +285,7 @@ class TradePatch(SQLModel):
     gross_pnl: Optional[float] = None
     fees: Optional[float] = None
     net_pnl: Optional[float] = None
+    quote_currency: Optional[str] = None
     r_multiple: Optional[float] = None
     status: Optional[str] = None
     thesis: Optional[str] = None
@@ -380,6 +393,7 @@ class SymbolPreview(SQLModel):
     pip_size: Optional[float] = None
     quote_currency: str = ""
     gross_pnl: Optional[float] = None
+    gross_pnl_usd: Optional[float] = None
     r_multiple: Optional[float] = None
     initial_risk: Optional[float] = None
     realized_risk: Optional[float] = None

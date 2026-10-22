@@ -136,6 +136,10 @@ def row_to_trade_fields(row: pd.Series) -> dict:
         "gross_pnl": gross,
         "fees": fees if fees is not None else 0.0,
         "net_pnl": net,
+        # The v1 CSV is already in USD; keep that meaning explicit.
+        "quote_currency": "USD",
+        "gross_pnl_usd": gross,
+        "net_pnl_usd": net,
         "r_multiple": r_multiple,
         "status": status,
         "thesis": _to_str(get("thesis")),
@@ -180,6 +184,8 @@ def migrate_csv(session: Session, csv_path: Optional[str] = None, dry_run: bool 
                         "timestamp_close",
                         "exit_price",
                         "net_pnl",
+                        "net_pnl_usd",
+                        "gross_pnl_usd",
                         "r_multiple",
                     ):
                         setattr(exists, key, value)

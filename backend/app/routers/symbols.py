@@ -27,6 +27,7 @@ from app.services.symbol_registry import (
     list_specs,
     normalize_symbol,
     price_gross,
+    price_gross_quote,
     risk_amount,
 )
 
@@ -78,6 +79,7 @@ def preview_symbol(
             pip_size=None,
             quote_currency="",
             gross_pnl=None,
+            gross_pnl_usd=None,
             r_multiple=None,
             initial_risk=None,
             realized_risk=None,
@@ -88,7 +90,10 @@ def preview_symbol(
             risk_pips=None,
         )
 
-    gross = price_gross(spec, direction, size, entry, exit)
+    # gross_pnl is the quote-currency amount the trade stores; gross_pnl_usd
+    # is the dollar preview the modal displays. Both come from the server.
+    gross = price_gross_quote(spec, direction, size, entry, exit)
+    gross_usd = price_gross(spec, direction, size, entry, exit)
     r = compute_r_multiple(direction, entry, sl, current_sl, exit)
     initial_risk = risk_amount(spec, size, entry, sl)
     stop = effective_stop(direction, entry, sl, current_sl)
@@ -104,6 +109,7 @@ def preview_symbol(
         pip_size=spec.pip_size,
         quote_currency=spec.quote_currency,
         gross_pnl=gross,
+        gross_pnl_usd=gross_usd,
         r_multiple=round(r, 4) if r is not None else None,
         initial_risk=initial_risk,
         realized_risk=realized_risk,

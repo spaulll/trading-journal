@@ -27,6 +27,7 @@ from sqlmodel import Session, select
 
 from app.models import Screenshot, Trade
 from app.services.timeutils import as_naive_utc, wall_to_naive_utc
+from app.services.trade_money import quote_currency_for, set_trade_pnl, usd_net
 from app.services.broker_clock import IST_OFFSET
 
 log = logging.getLogger("telegram_bot")
@@ -672,6 +673,7 @@ async def do_open(chat_id: int, session: Session, args: dict) -> None:
         tp=args["tp"],
         fees=0.0,
         status="OPEN",
+        quote_currency=quote_currency_for(session, args["symbol"]),
     )
     session.add(trade)
     session.flush()
@@ -783,7 +785,7 @@ async def do_close_on_trade(chat_id: int, session: Session, trade_id: int, args:
     from app.services.symbol_registry import (
         apply_trade_risk,
         compute_r_multiple,
-        estimate_gross_pnl,
+        estimate_gross_quote_pnl,
     )
 
     trade = session.get(Trade, trade_id)
@@ -794,19 +796,15 @@ async def do_close_on_trade(chat_id: int, session: Session, trade_id: int, args:
     if args["gross_pnl"] is not None:
         gross = args["gross_pnl"]
     else:
-        gross = estimate_gross_pnl(
+        gross = estimate_gross_quote_pnl(
             session, trade.direction, trade.symbol, trade.size, trade.entry_price, args["exit_price"]
         )
         if gross is None:
             gross = trade.gross_pnl
-    net = (gross - (fees or 0.0)) if gross is not None else None
     r = compute_r_multiple(
         trade.direction, trade.entry_price, trade.initial_sl, trade.current_sl, args["exit_price"]
     )
     trade.exit_price = args["exit_price"]
-    trade.gross_pnl = gross
-    trade.fees = fees or 0.0
-    trade.net_pnl = net
     trade.r_multiple = r
     # Same close record as the API and the web drawer: the close time, the
     # mirrored exit time and the holding duration. The bot used to set only
@@ -819,6 +817,8 @@ async def do_close_on_trade(chat_id: int, session: Session, trade_id: int, args:
     trade.duration_minutes = duration_minutes(
         trade.entry_time or trade.timestamp_open, closed_at
     )
+    # Quote-currency P&L and its USD equivalent, written together.
+    set_trade_pnl(session, trade, gross, fees)
     # Same risk record as the API and the web drawer.
     apply_trade_risk(session, trade)
     trade.status = "CLOSED"
@@ -837,7 +837,8 @@ async def do_close_on_trade(chat_id: int, session: Session, trade_id: int, args:
         _flag_breach_day(session)
     session.commit()
     r_txt = f"{r:+.2f}R" if r is not None else "n/a"
-    net_txt = f"{net:+.2f}" if net is not None else "n/a"
+    usd = usd_net(trade)
+    net_txt = f"{usd:+.2f} USD" if usd is not None else "n/a"
     await send_text(chat_id, f"🏁 CLOSED {trade.symbol} {net_txt} ({r_txt}) 🎫 {trade.ticket}")
     if breached:
         await send_text(chat_id, "🚨 GUARDRAIL BREACH: daily loss limit hit. Walk away from the screen!")
@@ -925,7 +926,8 @@ async def do_past(chat_id: int, session: Session, args: dict) -> None:
     keyboard: Optional[dict] = None
     if trade is not None:
         r_txt = f"{trade.r_multiple:+.2f}R" if trade.r_multiple is not None else "n/a"
-        net_txt = f"{trade.net_pnl:+.2f}" if trade.net_pnl is not None else "n/a"
+        usd = usd_net(trade)
+        net_txt = f"{usd:+.2f} USD" if usd is not None else "n/a"
         dur = trade.duration_minutes if trade.duration_minutes is not None else 0
         info = f" {net_txt} ({r_txt}), {trade.session}, {dur}m"
         keyboard = closed_trade_actions_keyboard(trade.id)
@@ -952,7 +954,7 @@ def daily_stats_text(session: Session, today: Optional[date_type] = None) -> str
         for t in session.exec(select(Trade).where(Trade.status == "CLOSED")).all()
         if start <= (as_naive_utc(t.timestamp_close) or datetime.min) < end
     ]
-    nets = [t.net_pnl for t in closed]
+    nets = [usd_net(t) for t in closed]
     counts = split_outcomes(nets)
     known = [n for n in nets if n is not None]
     total = len(closed)
@@ -969,14 +971,15 @@ def daily_stats_text(session: Session, today: Optional[date_type] = None) -> str
     ]
     for t in sorted(closed, key=lambda x: x.timestamp_close or datetime.min):
         r_txt = f"{t.r_multiple:+.2f}R" if t.r_multiple is not None else "n/a"
-        if t.net_pnl is None:
-            # No contract, no price — say so instead of printing a zero.
+        if usd_net(t) is None:
+            # No contract, no price, or no FX rate — say so instead of
+            # printing a zero.
             lines.append(
                 f"• {(t.direction or '').upper()} {t.symbol} unpriced ({r_txt}) 🎫 {t.ticket}"
             )
             continue
         lines.append(
-            f"• {(t.direction or '').upper()} {t.symbol} {t.net_pnl:+.2f} ({r_txt}) 🎫 {t.ticket}"
+            f"• {(t.direction or '').upper()} {t.symbol} {usd_net(t):+.2f} USD ({r_txt}) 🎫 {t.ticket}"
         )
     if not closed:
         lines.append("No closed trades yet today.")

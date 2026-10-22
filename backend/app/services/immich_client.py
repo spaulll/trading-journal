@@ -95,7 +95,11 @@ def describe_trade(trade: Any, label: str) -> str:
     direction = (getattr(trade, "direction", "") or "?").upper()
     size = getattr(trade, "size", None)
     entry, exit_p = getattr(trade, "entry_price", None), getattr(trade, "exit_price", None)
-    net, rmult = getattr(trade, "net_pnl", None), getattr(trade, "r_multiple", None)
+    net = getattr(trade, "net_pnl_usd", None)
+    quote = (getattr(trade, "quote_currency", None) or "USD").upper()
+    if net is None and quote == "USD":
+        net = getattr(trade, "net_pnl", None)
+    rmult = getattr(trade, "r_multiple", None)
     ticket = getattr(trade, "ticket", "?") or "?"
     bits = f"{direction} {sym}" + (f" {size}" if size is not None else "")
     if entry is not None:

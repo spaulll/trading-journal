@@ -12,10 +12,9 @@ majors, 100 for gold ounces, 5000 for silver ounces, 1 for crypto coins and
 
 Quote currency
 --------------
-``quote_currency`` names the currency the price is quoted in. USD instruments
-need no conversion. A JPY-quoted instrument (USDJPY) is converted at the
-exit rate, so the P&L is stated in dollars rather than yen. Phase 4 replaces
-this with the daily FX rate table.
+``quote_currency`` names the currency the price is quoted in: USD for
+EURUSD, JPY for USDJPY. The trade stores its P&L in that currency and the
+FX rate table converts it to USD for the totals (see ``app.services.fx``).
 
 The R-multiple
 --------------
@@ -171,6 +170,41 @@ def to_usd(amount: float, quote_currency: str, rate: Optional[float]) -> Optiona
     return amount / rate
 
 
+def _gross_quote_amount(
+    spec: Optional[SymbolSpec],
+    direction: object,
+    size: Optional[float],
+    entry: Optional[float],
+    exit_price: Optional[float],
+) -> Optional[float]:
+    """Unrounded P&L in the instrument's quote currency."""
+    if spec is None or size is None or entry is None or exit_price is None:
+        return None
+    if size <= 0:
+        return None
+    sign = direction_sign(direction)
+    if sign == 0:
+        return None
+    distance = (exit_price - entry) * sign
+    return distance * size * spec.contract_size
+
+
+def price_gross_quote(
+    spec: Optional[SymbolSpec],
+    direction: object,
+    size: Optional[float],
+    entry: Optional[float],
+    exit_price: Optional[float],
+) -> Optional[float]:
+    """Gross P&L in the quote currency — the trade's stored number.
+
+    The same guards as :func:`price_gross`: an unregistered symbol, a
+    missing leg or a non-positive size has no price, so it stays None.
+    """
+    amount = _gross_quote_amount(spec, direction, size, entry, exit_price)
+    return round(amount, 2) if amount is not None else None
+
+
 def price_gross(
     spec: Optional[SymbolSpec],
     direction: object,
@@ -180,22 +214,20 @@ def price_gross(
 ) -> Optional[float]:
     """Dollar gross P&L for one position.
 
-    The price distance is turned into money with the contract size, then
-    converted into the quote currency's dollars. Returns None whenever the
-    trade cannot be priced — an unregistered symbol, a missing leg, a
+    The price distance is turned into quote-currency money with the
+    contract size, then converted to USD. Returns None whenever the trade
+    cannot be priced — an unregistered symbol, a missing leg, a
     non-positive size — so an unpriced trade stays unpriced instead of
     being guessed at.
+
+    This keeps the Phase-3 preview contract (USD). The stored P&L uses
+    :func:`price_gross_quote` plus the daily FX table, so a historical
+    trade is converted at its close-day rate rather than its exit price.
     """
-    if spec is None or size is None or entry is None or exit_price is None:
+    amount = _gross_quote_amount(spec, direction, size, entry, exit_price)
+    if amount is None:
         return None
-    if size <= 0:
-        return None
-    sign = direction_sign(direction)
-    if sign == 0:
-        return None
-    distance = (exit_price - entry) * sign
-    quote_amount = distance * size * spec.contract_size
-    usd = to_usd(quote_amount, spec.quote_currency, exit_price)
+    usd = to_usd(amount, spec.quote_currency, exit_price)
     return round(usd, 2) if usd is not None else None
 
 
@@ -241,6 +273,27 @@ def estimate_gross_pnl(
     if spec is None:
         return None
     return price_gross(spec, direction, size, entry, exit_price)
+
+
+def estimate_gross_quote_pnl(
+    session: Session,
+    direction: object,
+    symbol: object,
+    size: Optional[float],
+    entry: Optional[float],
+    exit_price: Optional[float],
+) -> Optional[float]:
+    """Gross P&L in the symbol's quote currency — what a trade stores.
+
+    The USD view is derived from this number by ``app.services.trade_money``
+    at the close-day FX rate. Keeping the quote amount as the source means
+    a later rate correction re-converts the same trade instead of
+    re-deriving its price.
+    """
+    spec = find_spec(session, symbol)
+    if spec is None:
+        return None
+    return price_gross_quote(spec, direction, size, entry, exit_price)
 
 
 def apply_trade_risk(session: Session, trade) -> None:
