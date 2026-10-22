@@ -73,8 +73,8 @@ export const ledgerQuery = derived(
 	([$f, $a, $p]) => buildLedgerQuery($f, $a, { page: $p.page, page_size: $p.pageSize })
 );
 
-/** The same filters without the page — the CSV export wants every match. */
-export const ledgerExportQuery = derived(
+/** The same filters without the page — the summary and the CSV export want every match. */
+export const ledgerFilterQuery = derived(
 	[ledgerFilters, ledgerAccountScope],
 	([$f, $a]) => buildLedgerQuery($f, $a)
 );

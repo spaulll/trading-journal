@@ -265,3 +265,33 @@ def test_the_export_matches_the_on_screen_filter(client):
     # One header row, then exactly the rows the table would show.
     assert len(export) - 1 == len(rows["items"])
     assert len(export) - 1 == rows["total"]
+
+
+# --- the summary ------------------------------------------------------------
+
+
+def test_the_summary_follows_the_active_filter(client):
+    client.post("/api/trades/backfill", json=_record(ticket="WON", symbol="gold", gross_pnl=500.0))
+    client.post(
+        "/api/trades/backfill",
+        json=_record(ticket="LOST", symbol="eurusd", gross_pnl=-100.0),
+    )
+
+    everything = client.get("/api/analytics/summary").json()
+    assert everything["total_trades"] == 2
+    assert everything["net_pnl"] == 400.0
+
+    filtered = client.get("/api/analytics/summary", params={"q": "gold"}).json()
+    # The ribbon must describe the filter, not the whole ledger.
+    assert filtered["total_trades"] == 1
+    assert filtered["net_pnl"] == 500.0
+    assert filtered["wins"] == 1
+    assert filtered["losses"] == 0
+
+
+def test_the_summary_reports_the_average_r(client):
+    client.post("/api/trades/backfill", json=_record(ticket="ONE-R"))
+    client.post("/api/trades/backfill", json=_record(ticket="TWO-R", gross_pnl=300.0))
+
+    summary = client.get("/api/analytics/summary").json()
+    assert summary["avg_r"] == 1.5

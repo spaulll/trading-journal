@@ -203,6 +203,8 @@ export interface SummaryDto {
 	expectancy: number;
 	avg_win: number;
 	avg_loss: number;
+	/** The average R of the closed trades in the filter. */
+	avg_r: number | null;
 	max_drawdown: number;
 	/** Quote-currency totals behind the USD figure, e.g. { JPY: 5000 }. */
 	by_currency?: Record<string, number>;
@@ -482,8 +484,16 @@ export const api = {
 		}
 		return req<SymbolPreviewDto>(`/api/symbols/preview?${qs.toString()}`);
 	},
-	summary: (accountId?: number | null) =>
-		req<SummaryDto>(`/api/analytics/summary${accountId ? `?account_id=${accountId}` : ''}`),
+	/** The summary over a filter — a query string, or one account id. */
+	summary: (params?: string | number | null) => {
+		const qs =
+			typeof params === 'string'
+				? params
+				: params
+					? `?account_id=${params}`
+					: '';
+		return req<SummaryDto>(`/api/analytics/summary${qs}`);
+	},
 	equityCurve: (accountId?: number | null) =>
 		req<{ points: EquityPoint[] }>(
 			`/api/analytics/equity-curve${accountId ? `?account_id=${accountId}` : ''}`

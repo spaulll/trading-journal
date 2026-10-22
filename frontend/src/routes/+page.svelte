@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { Plus } from 'lucide-svelte';
+	import { api, type SummaryDto } from '$lib/api';
 	import OpenTrades from '$lib/components/OpenTrades.svelte';
 	import PageHead from '$lib/components/PageHead.svelte';
 	import StateBlock from '$lib/components/StateBlock.svelte';
@@ -8,12 +9,11 @@
 	import TradeModal from '$lib/components/TradeModal.svelte';
 	import TradeOpenModal from '$lib/components/TradeOpenModal.svelte';
 	import TradeTable from '$lib/components/TradeTable.svelte';
-	import { ledgerHasFilter, ledgerQuery } from '$lib/stores/ledger';
+	import { ledgerFilterQuery, ledgerHasFilter, ledgerQuery } from '$lib/stores/ledger';
 	import {
 		lifecycleModal,
 		loadOpenPositions,
 		loadTrades,
-		openTrades,
 		requestOpen,
 		tradeCounts,
 		trades,
@@ -21,7 +21,7 @@
 		tradesLoading,
 		tradesTotal
 	} from '$lib/stores/trades';
-	import { BE_TOL, fmtMoney, fmtR, pnlTone, toneText, usdNet } from '$lib/utils/format';
+	import { fmtMoney, fmtR, pnlTone, toneText } from '$lib/utils/format';
 	import { countup } from '$lib/utils/motion';
 
 	// The ledger asks the server for the rows it shows: a filter change is a
@@ -37,56 +37,53 @@
 		void loadOpenPositions();
 	});
 
-	const closed = $derived($trades.filter((t) => t.status !== 'OPEN'));
+	/**
+	 * The ribbon reads the server's summary over the same filter.
+	 *
+	 * The browser holds one page of rows, so a client-side roll-up would
+	 * describe the page instead of the filter — the net, the win rate and
+	 * the average R have to come from the whole filtered set.
+	 */
+	let summary = $state<SummaryDto | null>(null);
 
-	/** Client-side roll-up over the filtered trade set.
-	 * Total count comes from the API `total`, not items.length.
-	 * BE rule and win-rate denominator mirror the API: |usd net| <= $5 is
-	 * breakeven, and the rate is wins / decided trades. Unpriced trades
-	 * (no contract, or no FX rate) count as neither a win nor a loss. */
-	const stats = $derived.by(() => {
-		const usd = closed.map((t) => ({ t, net: usdNet(t) }));
-		const known = usd.filter((x): x is { t: (typeof closed)[number]; net: number } => x.net !== null);
-		const wins = known.filter((x) => x.net > BE_TOL).length;
-		const losses = known.filter((x) => x.net < -BE_TOL).length;
-		const be = known.length - wins - losses;
-		const net = known.reduce((s, x) => s + x.net, 0);
-		const rs = closed
-			.map((t) => t.r_multiple)
-			.filter((v): v is number => v !== null && v !== undefined);
-		const avgR = rs.length ? rs.reduce((a, b) => a + b, 0) / rs.length : null;
-		const wr = wins + losses > 0 ? (wins / (wins + losses)) * 100 : null;
-		const unpriced = closed.length - known.length;
-		return { net, wr, avgR, closed: closed.length, wins, losses, be, unpriced };
+	$effect(() => {
+		const query = $ledgerFilterQuery;
+		void api
+			.summary(query)
+			.then((s) => (summary = s))
+			.catch(() => {
+				// The ribbon keeps the last numbers it had.
+			});
 	});
+
 
 	const ribbon = $derived([
 		{
 			label: 'Net realized',
-			value: stats.net,
+			value: summary?.net_pnl ?? 0,
 			format: (v: number) => fmtMoney(v),
-			tone: toneText[pnlTone(stats.net)],
-			hint: `${stats.closed} closed${stats.unpriced ? ` · ${stats.unpriced} unpriced` : ''}`
+			tone: toneText[pnlTone(summary?.net_pnl ?? 0)],
+			hint: `${summary?.total_trades ?? 0} closed${summary?.unpriced ? ` · ${summary.unpriced} unpriced` : ''}`
 		},
 		{
 			label: 'Win rate',
-			value: stats.wr ?? 0,
+			value: summary?.win_rate ?? 0,
 			format: (v: number) => `${v.toFixed(1)}%`,
 			tone: 'text-fg',
-			hint: `${stats.wins}W · ${stats.losses}L · ${stats.be}BE`
+			hint: `${summary?.wins ?? 0}W · ${summary?.losses ?? 0}L · ${summary?.breakeven ?? 0}BE`
 		},
 		{
 			label: 'Average R',
-			value: stats.avgR ?? 0,
+			value: summary?.avg_r ?? 0,
 			format: (v: number) => fmtR(v),
-			tone: toneText[pnlTone(stats.avgR)],
-			hint: stats.avgR === null ? 'no R data' : 'per closed trade'
+			tone: toneText[pnlTone(summary?.avg_r ?? 0)],
+			hint: summary?.avg_r === null || summary?.avg_r === undefined ? 'no R data' : 'per closed trade'
 		},
 		{
 			label: 'Open now',
-			value: $openTrades.length,
+			value: summary?.open_trades ?? 0,
 			format: (v: number) => `${Math.round(v)}`,
-			tone: $openTrades.length > 0 ? 'text-accent' : 'text-dim',
+			tone: (summary?.open_trades ?? 0) > 0 ? 'text-accent' : 'text-dim',
 			hint: 'live positions'
 		}
 	]);
