@@ -1,6 +1,7 @@
 import { derived, get, writable } from 'svelte/store';
 import { errMsg, type ScreenshotDto, type TradeDto, api } from '$lib/api';
 import { SNAPSHOT_KEYS, readSnapshot, saveSnapshot } from '$lib/offline-snapshot';
+import { usdNet } from '$lib/utils/format';
 import { markOffline, markOnline, snapshotAt } from './offline';
 import { toasts } from './toast';
 
@@ -54,7 +55,8 @@ export async function submitClose(tradeId: number, payload: Record<string, unkno
 		const trade = await api.closeTrade(tradeId, payload);
 		upsertTrade(trade);
 		lifecycleModal.set(null);
-		const net = trade.net_pnl === null ? 'n/a' : `${trade.net_pnl >= 0 ? '+' : ''}${trade.net_pnl.toFixed(2)}`;
+		const usd = usdNet(trade);
+		const net = usd === null ? 'n/a' : `${usd >= 0 ? '+' : ''}$${usd.toFixed(2)}`;
 		toasts.push('success', `Closed ${trade.symbol ?? ''} ${net} (${trade.r_multiple === null ? 'n/a' : `${trade.r_multiple.toFixed(2)}R`}).`);
 		return true;
 	} catch (e) {

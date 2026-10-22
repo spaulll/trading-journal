@@ -36,9 +36,16 @@ export interface TradeDto {
 	current_sl: number | null;
 	tp: number | null;
 	exit_price: number | null;
+	/** Broker-booked amounts, in `quote_currency`. */
 	gross_pnl: number | null;
 	fees: number | null;
 	net_pnl: number | null;
+	quote_currency: string;
+	/** The same amounts converted at the close-day FX rate (USD totals). */
+	gross_pnl_usd: number | null;
+	net_pnl_usd: number | null;
+	/** Quote P&L exists but no FX rate could convert it. */
+	fx_missing: boolean;
 	r_multiple: number | null;
 	initial_risk: number | null;
 	realized_risk: number | null;
@@ -71,7 +78,9 @@ export interface SymbolPreviewDto {
 	contract_size: number | null;
 	pip_size: number | null;
 	quote_currency: string;
+	/** Reward in the quote currency; `gross_pnl_usd` is its USD view. */
 	gross_pnl: number | null;
+	gross_pnl_usd: number | null;
 	r_multiple: number | null;
 	initial_risk: number | null;
 	realized_risk: number | null;
@@ -177,6 +186,8 @@ export interface SummaryDto {
 	avg_win: number;
 	avg_loss: number;
 	max_drawdown: number;
+	/** Quote-currency totals behind the USD figure, e.g. { JPY: 5000 }. */
+	by_currency?: Record<string, number>;
 }
 
 export interface EquityPoint {
@@ -206,6 +217,7 @@ export interface CalendarDay {
 	net_pnl: number;
 	trade_count: number;
 	unpriced: number;
+	by_currency?: Record<string, number>;
 }
 
 // --- PLAN-v2 Phase 4 TradeZella DTOs ---

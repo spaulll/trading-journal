@@ -14,7 +14,7 @@
 		upsertTrade
 	} from '$lib/stores/trades';
 	import { toasts } from '$lib/stores/toast';
-	import { fmtDateTime, fmtMoney, fmtNum, fmtR, mt5WallToUTC, parseStoredUTC, pnlTone, previewIST, previewMT5, rTone, toneText, utcToMT5Wall } from '$lib/utils/format';
+	import { fmtCurrency, fmtDateTime, fmtMoney, fmtNum, fmtR, mt5WallToUTC, parseStoredUTC, pnlTone, previewIST, previewMT5, rTone, toneText, usdNet, utcToMT5Wall } from '$lib/utils/format';
 	import { brokerOffset } from '$lib/stores/broker';
 	import { accounts, accountMap, chipAlias, loadAccounts } from '$lib/stores/accounts';
 	import { DRAWER, FADE } from '$lib/utils/transitions';
@@ -455,7 +455,8 @@
 			const updated = await api.patchTrade(trade.id, payload);
 			upsertTrade(updated);
 			if (wasOpen && updated.status === 'CLOSED') {
-				const net = updated.net_pnl === null ? 'n/a' : `${updated.net_pnl >= 0 ? '+' : ''}${updated.net_pnl.toFixed(2)}`;
+				const usd = usdNet(updated);
+				const net = usd === null ? 'n/a' : `${usd >= 0 ? '+' : ''}$${usd.toFixed(2)}`;
 				toasts.push('success', `Trade closed ${net} (${updated.r_multiple === null ? 'n/a' : `${updated.r_multiple.toFixed(2)}R`}).`);
 			} else {
 				toasts.push('success', 'Trade updated — net and R recomputed.');
@@ -556,7 +557,11 @@
 		{ label: 'Stop', get: (t: NonNullable<typeof trade>) => fmtNum(t.current_sl ?? t.initial_sl) },
 		{ label: 'Target', get: (t: NonNullable<typeof trade>) => fmtNum(t.tp) },
 		{ label: 'Size', get: (t: NonNullable<typeof trade>) => (t.size === null ? '—' : String(t.size)) },
-		{ label: 'Fees', get: (t: NonNullable<typeof trade>) => fmtMoney(t.fees) }
+		{
+			label: 'Fees',
+			get: (t: NonNullable<typeof trade>) =>
+				fmtCurrency(t.fees, t.quote_currency ?? 'USD')
+		}
 	] as const;
 </script>
 
@@ -648,10 +653,17 @@
 						</div>
 					{/each}
 					<div>
-						<dt class="eyebrow">Net</dt>
-						<dd class="num mt-1 text-sm font-semibold {toneText[pnlTone(trade.net_pnl)]}">
-							{fmtMoney(trade.net_pnl)}
+						<dt class="eyebrow">Net{usdNet(trade) === null && trade.net_pnl !== null ? ' (unpriced)' : ''}</dt>
+						<dd class="num mt-1 text-sm font-semibold {toneText[pnlTone(usdNet(trade))]}" title={trade.quote_currency !== 'USD' && trade.net_pnl !== null
+								? `Broker booked ${fmtCurrency(trade.net_pnl, trade.quote_currency)}`
+								: undefined}>
+							{fmtMoney(usdNet(trade))}
 						</dd>
+						{#if trade.quote_currency !== 'USD' && trade.net_pnl !== null}
+							<dd class="num mt-0.5 text-[10.5px] text-dim">
+								{fmtCurrency(trade.net_pnl, trade.quote_currency)}
+							</dd>
+						{/if}
 					</div>
 					<div>
 						<dt class="eyebrow">R</dt>

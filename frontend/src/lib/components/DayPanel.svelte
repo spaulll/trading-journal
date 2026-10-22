@@ -6,7 +6,7 @@
 	import { bumpNotes, closeDay, selectedDay } from '$lib/stores/journal';
 	import { openTrade, openTrades, trades } from '$lib/stores/trades';
 	import { toasts } from '$lib/stores/toast';
-	import { BE_TOL, dayKeyOf, fmtDate, fmtMoney, fmtR, pnlTone, rTone, toneText } from '$lib/utils/format';
+	import { BE_TOL, dayKeyOf, fmtDate, fmtMoney, fmtR, pnlTone, rTone, toneText, usdNet } from '$lib/utils/format';
 	import { DRAWER, FADE } from '$lib/utils/transitions';
 
 
@@ -19,11 +19,18 @@
 			: $trades.filter((t) => t.status === 'CLOSED' && dayKeyOf(t.timestamp_close ?? t.timestamp_open) === day)
 	);
 
-	const net = $derived(closes.reduce((a, t) => a + (t.net_pnl ?? 0), 0));
+	/** USD view per close; a trade with no convertible P&L is unpriced. */
+	const priced = $derived(
+		closes
+			.map((t) => ({ t, net: usdNet(t) }))
+			.filter((x): x is { t: (typeof closes)[number]; net: number } => x.net !== null)
+	);
+	const net = $derived(priced.reduce((a, x) => a + x.net, 0));
 	const rTotal = $derived(closes.reduce((a, t) => a + (t.r_multiple ?? 0), 0));
-	const wins = $derived(closes.filter((t) => (t.net_pnl ?? 0) > BE_TOL).length);
-	const losses = $derived(closes.filter((t) => (t.net_pnl ?? 0) < -BE_TOL).length);
-	const be = $derived(closes.length - wins - losses);
+	const wins = $derived(priced.filter((x) => x.net > BE_TOL).length);
+	const losses = $derived(priced.filter((x) => x.net < -BE_TOL).length);
+	const be = $derived(priced.length - wins - losses);
+	const unpriced = $derived(closes.length - priced.length);
 
 	let loading = $state(false);
 	let saving = $state(false);
@@ -320,7 +327,9 @@
 					</div>
 					<div>
 						<dt class="eyebrow">Closed</dt>
-						<dd class="num mt-1 text-sm font-semibold text-fg">{closes.length}</dd>
+						<dd class="num mt-1 text-sm font-semibold text-fg" title={unpriced ? `${unpriced} trade(s) without a USD rate` : undefined}>
+							{closes.length}{unpriced ? ` · ${unpriced} n/a` : ''}
+						</dd>
 					</div>
 				</dl>
 
@@ -338,8 +347,13 @@
 										{(t.direction ?? '').toUpperCase()} {t.symbol ?? '—'}
 										<span class="text-dim">· {t.ticket}</span>
 									</span>
-									<span class="num text-[13px] font-semibold {toneText[pnlTone(t.net_pnl)]}">
-										{fmtMoney(t.net_pnl)}
+									<span
+										class="num text-[13px] font-semibold {toneText[pnlTone(usdNet(t))]}"
+										title={t.quote_currency !== 'USD' && t.net_pnl !== null
+											? `Broker: ${t.net_pnl.toLocaleString()} ${t.quote_currency}`
+											: undefined}
+									>
+										{fmtMoney(usdNet(t))}
 									</span>
 									<span class="num text-[11px] text-dim">{fmtR(t.r_multiple)}</span>
 								</button>

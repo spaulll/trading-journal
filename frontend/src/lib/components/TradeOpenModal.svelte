@@ -3,7 +3,7 @@
 	import { fade, scale } from 'svelte/transition';
 	import { dismissLifecycle, lifecycleBusy, submitBackfill, submitOpen } from '$lib/stores/trades';
 	import { accounts, loadAccounts } from '$lib/stores/accounts';
-	import { fmtMoney, mt5WallToUTC, previewIST, previewMT5 } from '$lib/utils/format';
+	import { fmtCurrency, fmtMoney, mt5WallToUTC, previewIST, previewMT5 } from '$lib/utils/format';
 	import { brokerOffset } from '$lib/stores/broker';
 	import { loadSymbols, previewSymbol, specFor, symbolMap, symbols } from '$lib/stores/symbols';
 	import type { SymbolPreviewDto } from '$lib/api';
@@ -396,7 +396,7 @@
 									<input type="number" value={exitPrice} oninput={(e) => (exitPrice = e.currentTarget.value)} step="any" class={field} />
 								</label>
 								<label class={label}>
-									Net PnL <span class="normal-case tracking-normal text-dim">(optional)</span>
+									Net PnL {spec?.quote_currency ?? 'USD'} <span class="normal-case tracking-normal text-dim">(optional)</span>
 									<input type="number" value={netPnl} oninput={(e) => (netPnl = e.currentTarget.value)} step="any" class={field} />
 								</label>
 							</div>
@@ -437,8 +437,12 @@
 						{#if distLabel !== null}
 							<span class="text-dim">{distLabel}</span>
 						{/if}
-						{#if preview.gross_pnl !== null}
-							<span class="text-dim">Reward {fmtMoney(preview.gross_pnl)}</span>
+						{#if preview.gross_pnl_usd !== null}
+							<span class="text-dim">
+								Reward {fmtMoney(preview.gross_pnl_usd)}{#if preview.quote_currency !== 'USD' && preview.gross_pnl !== null}
+									<span class="text-dim/70">({fmtCurrency(preview.gross_pnl, preview.quote_currency)})</span>
+								{/if}
+							</span>
 						{/if}
 						{#if preview.r_multiple !== null}
 							<span class="font-bold text-win">{preview.r_multiple.toFixed(2)}R</span>

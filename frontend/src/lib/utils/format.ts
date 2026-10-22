@@ -22,6 +22,28 @@ export function fmtMoney(v: number | null | undefined): string {
 	return sign + money.format(v);
 }
 
+const currencyFormatters = new Map<string, Intl.NumberFormat>();
+
+/** Format an amount in any currency code (JPY has no minor unit in Intl). */
+export function fmtCurrency(
+	v: number | null | undefined,
+	currency: string | null | undefined = 'USD'
+): string {
+	if (v === null || v === undefined) return '—';
+	const code = (currency ?? 'USD').trim().toUpperCase() || 'USD';
+	let formatter = currencyFormatters.get(code);
+	if (formatter === undefined) {
+		try {
+			formatter = new Intl.NumberFormat('en-US', { style: 'currency', currency: code });
+		} catch {
+			formatter = money;
+		}
+		currencyFormatters.set(code, formatter);
+	}
+	const sign = v > 0 ? '+' : '';
+	return sign + formatter.format(v);
+}
+
 /** Compact form for hero statistics: $21.6k / -$1.9k. */
 export function fmtMoneyShort(v: number | null | undefined): string {
 	if (v === null || v === undefined) return '—';
@@ -160,15 +182,64 @@ export function rTone(v: number | null | undefined): 'win' | 'loss' | 'be' {
 	return v > 0 ? 'win' : 'loss';
 }
 
+/** The fields needed to pick the USD view of a trade's P&L. */
+export interface UsdTradeLike {
+	net_pnl: number | null;
+	net_pnl_usd?: number | null;
+	quote_currency?: string | null;
+}
+
 /**
- * A closed trade with no net P&L is *unpriced*, not breakeven.
+ * The trade's net P&L in USD — the only number totals may sum.
  *
- * The symbol had no contract, so the dollar outcome is unknown — it might
- * have been a $2 scratch or a $200 win. The ledger says so instead of
- * showing a dash that reads like a zero.
+ * Mirrors `app.services.trade_money.usd_net`: a legacy/USD row may fall
+ * back to `net_pnl`; a non-USD row without a converted value is unknown,
+ * never zero.
  */
-export function isUnpriced(t: { status: string; net_pnl: number | null }): boolean {
-	return t.status === 'CLOSED' && t.net_pnl === null;
+export function usdNet(t: UsdTradeLike): number | null {
+	if (t.net_pnl === null) return null;
+	const quote = (t.quote_currency ?? '').trim().toUpperCase();
+	if (!quote || quote === 'USD') return t.net_pnl_usd ?? t.net_pnl;
+	return t.net_pnl_usd ?? null;
+}
+
+/** The trade's gross P&L in USD, with the same legacy rule. */
+export function usdGross(t: {
+	gross_pnl: number | null;
+	gross_pnl_usd?: number | null;
+	quote_currency?: string | null;
+}): number | null {
+	if (t.gross_pnl === null) return null;
+	const quote = (t.quote_currency ?? '').trim().toUpperCase();
+	if (!quote || quote === 'USD') return t.gross_pnl_usd ?? t.gross_pnl;
+	return t.gross_pnl_usd ?? null;
+}
+
+/** True when the quote amount exists but no FX rate converted it to USD. */
+export function isFxMissing(t: {
+	status: string;
+	net_pnl: number | null;
+	net_pnl_usd?: number | null;
+	quote_currency?: string | null;
+}): boolean {
+	return t.status === 'CLOSED' && t.net_pnl !== null && usdNet(t) === null;
+}
+
+/**
+ * A closed trade with no USD net P&L is *unpriced*, not breakeven.
+ *
+ * Either the symbol had no contract, or its quote currency had no FX
+ * rate. The dollar outcome is unknown — it might have been a $2 scratch
+ * or a $200 win. The ledger says so instead of showing a dash that reads
+ * like a zero.
+ */
+export function isUnpriced(t: {
+	status: string;
+	net_pnl: number | null;
+	net_pnl_usd?: number | null;
+	quote_currency?: string | null;
+}): boolean {
+	return t.status === 'CLOSED' && usdNet(t) === null;
 }
 
 export const toneText: Record<'win' | 'loss' | 'be', string> = {
