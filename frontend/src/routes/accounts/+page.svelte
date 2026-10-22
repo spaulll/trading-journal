@@ -4,10 +4,10 @@
 	import { fade, scale } from 'svelte/transition';
 	import PageHead from '$lib/components/PageHead.svelte';
 	import StateBlock from '$lib/components/StateBlock.svelte';
-	import { api, errMsg, type AccountDto, type AccountEventDto } from '$lib/api';
+	import { api, errMsg, type AccountDto, type AccountEventDto, type AccountRuleDto } from '$lib/api';
 	import { accounts, accountsError, accountsLoading, loadAccounts } from '$lib/stores/accounts';
 	import { toasts } from '$lib/stores/toast';
-	import { fmtDateTime } from '$lib/utils/format';
+	import { fmtDate, fmtDateTime } from '$lib/utils/format';
 	import { FADE, MODAL } from '$lib/utils/transitions';
 
 	const PHASES = ['challenge1', 'phase2', 'funded', 'personal'] as const;
@@ -29,16 +29,37 @@
 	let fTrailing = $state('balance_peak');
 	let fTarget = $state('10000');
 	let fStatus = $state('active');
+	let fMinDays = $state('0');
+	let fConsistency = $state('');
+	let fDeadline = $state('');
 
 	let confirmDelete = $state<number | null>(null);
 
+	let rulesByAccount = $state<Record<number, AccountRuleDto[]>>({});
 	let timelines = $state<Record<number, AccountEventDto[]>>({});
 	let timelineBusy = $state<Record<number, boolean>>({});
 	let timelineError = $state<Record<number, string | null>>({});
 
 	onMount(() => {
-		void loadAccounts();
+		void (async () => {
+			await loadAccounts();
+			await loadAllRules();
+		})();
 	});
+
+	async function loadRules(id: number): Promise<void> {
+		try {
+			rulesByAccount[id] = await api.accountRules(id);
+		} catch {
+			// The days counter still renders from AccountDto; a rules failure
+			// must not take the whole page down.
+			rulesByAccount[id] = [];
+		}
+	}
+
+	async function loadAllRules(): Promise<void> {
+		await Promise.all($accounts.map((account) => loadRules(account.id)));
+	}
 
 	async function loadTimeline(id: number): Promise<void> {
 		if (timelineBusy[id]) return;
@@ -67,6 +88,9 @@
 		fTrailing = 'balance_peak';
 		fTarget = '10';
 		fStatus = 'active';
+		fMinDays = '0';
+		fConsistency = '';
+		fDeadline = '';
 		formError = null;
 		modal = { editing: null };
 	}
@@ -85,6 +109,9 @@
 		fTrailing = a.trailing_ref;
 		fTarget = a.profit_target_pct === null ? '' : String(a.profit_target_pct);
 		fStatus = a.status;
+		fMinDays = String(a.min_trading_days);
+		fConsistency = a.consistency_pct === null ? '' : String(a.consistency_pct);
+		fDeadline = a.deadline ?? '';
 		formError = null;
 		modal = { editing: a };
 	}
@@ -99,6 +126,24 @@
 	};
 	const str = (v: string | number | null | undefined): string =>
 		v === null || v === undefined ? '' : String(v);
+
+	/** 6.00 → "6%", 5.25 → "5.25%", null → "—". */
+	const pctLabel = (v: number | null): string => {
+		if (v === null) return '—';
+		return `${v.toFixed(2).replace(/\.?0+$/, '')}%`;
+	};
+
+	function ruleValue(rule: AccountRuleDto): string {
+		if (rule.kind === 'min_days') return `${rule.current ?? 0} / ${rule.target} d`;
+		if (rule.kind === 'consistency') return `${pctLabel(rule.current)} ≤ ${pctLabel(rule.target)}`;
+		return `${pctLabel(rule.current)} / ${pctLabel(rule.target)}`;
+	}
+
+	function ruleTone(status: string): string {
+		if (status === 'met') return 'bg-win/12 text-win';
+		if (status === 'breached' || status === 'missed') return 'bg-loss/12 text-loss';
+		return 'bg-raised text-dim';
+	}
 
 	/** Live money previews for % inputs, in the account's declared currency. */
 	const baseCode = $derived(fBase.trim().toUpperCase() || 'USD');
@@ -136,8 +181,20 @@
 		const daily = num(fDaily) ?? 0;
 		const max = num(fMax) ?? 0;
 		const targetRaw = str(fTarget).trim() === '' ? null : num(fTarget);
-		if (!Number.isFinite(start) || start < 0 || [daily, max].some((n) => !Number.isFinite(n) || n < 0 || n > 100) || (targetRaw !== null && (!Number.isFinite(targetRaw) || targetRaw < 0 || targetRaw > 100))) {
-			formError = 'Start must be >= 0; daily, max and target must be % between 0 and 100.';
+		const minDays = num(fMinDays) ?? 0;
+		const consistencyRaw = str(fConsistency).trim() === '' ? null : num(fConsistency);
+		if (
+			!Number.isFinite(start) ||
+			start < 0 ||
+			[daily, max].some((n) => !Number.isFinite(n) || n < 0 || n > 100) ||
+			(targetRaw !== null && (!Number.isFinite(targetRaw) || targetRaw < 0 || targetRaw > 100)) ||
+			!Number.isInteger(minDays) ||
+			minDays < 0 ||
+			(consistencyRaw !== null &&
+				(!Number.isFinite(consistencyRaw) || consistencyRaw < 0 || consistencyRaw > 100))
+		) {
+			formError =
+				'Start must be >= 0; daily, max, target and consistency must be % between 0 and 100; minimum days must be a whole number >= 0.';
 			return;
 		}
 		const payload = {
@@ -153,6 +210,9 @@
 			max_mode: fMaxMode,
 			trailing_ref: fTrailing,
 			profit_target_pct: targetRaw,
+			min_trading_days: minDays,
+			consistency_pct: consistencyRaw,
+			deadline: fDeadline.trim() || null,
 			status: fStatus
 		};
 		saving = true;
@@ -160,10 +220,12 @@
 			if (modal?.editing) {
 				const updated = await api.updateAccount(modal.editing.id, payload);
 				accounts.update((l) => l.map((x) => (x.id === updated.id ? updated : x)));
+				void loadRules(updated.id);
 				toasts.push('success', `Account @${updated.alias} updated.`);
 			} else {
 				const created = await api.createAccount(payload);
 				accounts.update((l) => [...l, created].sort((a, b) => a.alias.localeCompare(b.alias)));
+				void loadRules(created.id);
 				toasts.push('success', `Account @${created.alias} created.`);
 			}
 			modal = null;
@@ -185,6 +247,8 @@
 		try {
 			await api.deleteAccount(id);
 			accounts.update((l) => l.filter((x) => x.id !== id));
+			rulesByAccount[id] = [];
+			timelines[id] = [];
 			confirmDelete = null;
 			toasts.push('success', 'Account deleted — its trades are now unassigned.');
 		} catch (err) {
@@ -231,6 +295,9 @@
 {:else}
 	<div class="grid grid-cols-1 gap-4 md:grid-cols-2">
 		{#each $accounts as a (a.id)}
+			{@const accountRules = rulesByAccount[a.id] ?? []}
+			{@const daysRule = accountRules.find((rule) => rule.kind === 'min_days')}
+			{@const otherRules = accountRules.filter((rule) => rule.kind !== 'min_days')}
 			<article class="card rise p-5" aria-label="Account @{a.alias}">
 				<div class="flex flex-wrap items-center gap-2">
 					<h2 class="num text-lg font-semibold text-fg">@{a.alias}</h2>
@@ -260,6 +327,49 @@
 					<div><dt class="eyebrow">Max loss</dt><dd class="num mt-1 text-sm text-fg tabular-nums">{a.max_loss_pct}% <span class="text-dim">({a.max_mode})</span></dd></div>
 					<div><dt class="eyebrow">Target</dt><dd class="num mt-1 text-sm text-fg tabular-nums">{a.profit_target_pct === null ? '—' : `${a.profit_target_pct}% ≈ ${a.base_currency} ${Math.round(a.start_balance * a.profit_target_pct / 100).toLocaleString()}`}</dd></div>
 				</dl>
+				{#if a.min_trading_days > 0 || otherRules.length > 0}
+					<div class="mt-3 border-t border-line pt-2.5">
+						{#if a.min_trading_days > 0}
+							{@const daysPct = Math.min(100, Math.max(0, (a.days_traded / a.min_trading_days) * 100))}
+							<div class="flex items-baseline justify-between gap-3">
+								<span class="eyebrow">Trading days</span>
+								<span class="flex items-baseline gap-2">
+									<span class="num text-sm font-semibold text-fg tabular-nums">{a.days_traded} / {a.min_trading_days}</span>
+									{#if daysRule}
+										<span class="rounded px-1.5 py-0.5 font-mono text-[9px] font-semibold tracking-[0.12em] uppercase {ruleTone(daysRule.status)}">{daysRule.status}</span>
+									{/if}
+								</span>
+							</div>
+							<div
+								class="mt-1.5 h-1.5 overflow-hidden rounded-full bg-raised"
+								role="progressbar"
+								aria-label="Trading days completed"
+								aria-valuemin="0"
+								aria-valuemax={a.min_trading_days}
+								aria-valuenow={Math.min(a.days_traded, a.min_trading_days)}
+							>
+								<div
+									class="h-full rounded-full transition-[width] duration-500 {daysRule?.status === 'met' ? 'bg-win' : 'bg-accent'}"
+									style="width: {daysPct}%"
+								></div>
+							</div>
+							{#if daysRule?.met_at}
+								<p class="mt-1 text-[10px] text-dim">Requirement met {fmtDate(daysRule.met_at)}.</p>
+							{/if}
+						{/if}
+						{#if otherRules.length > 0}
+							<div class="mt-2.5 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1.5">
+								{#each otherRules as rule (rule.kind)}
+									<span class="truncate text-[11px] text-dim">{rule.label}</span>
+									<span class="flex items-center justify-end gap-1.5">
+										<span class="num text-[11px] text-fg tabular-nums">{ruleValue(rule)}</span>
+										<span class="rounded px-1.5 py-0.5 font-mono text-[9px] font-semibold tracking-[0.12em] uppercase {ruleTone(rule.status)}">{rule.status}</span>
+									</span>
+								{/each}
+							</div>
+						{/if}
+					</div>
+				{/if}
 				<p class="num mt-3 border-t border-line pt-2.5 text-[11px] text-dim">
 					{a.open_trades} open · {a.total_trades} total{#if a.login} · login {a.login}{/if}
 				</p>
@@ -305,7 +415,7 @@
 		onclick={(e) => e.target === e.currentTarget && (modal = null)}
 		onkeydown={(e) => e.key === 'Escape' && (modal = null)}
 		tabindex={-1}
-		class="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-base/75 p-4 backdrop-blur-[3px]"
+		class="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-base/75 p-4 backdrop-blur-[3px] sm:p-6"
 		role="dialog"
 		aria-modal="true"
 		aria-label={modal.editing ? 'Edit account' : 'Add account'}
@@ -318,7 +428,7 @@
 				</button>
 			</div>
 			<form class="px-5 py-4" onsubmit={submit}>
-				<div class="grid grid-cols-2 gap-3">
+				<div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
 					<label class={label}>Firm<input type="text" bind:value={fFirm} placeholder="FTMO" class={field} /></label>
 					<label class={label}>Alias<input type="text" bind:value={fAlias} placeholder="ftmo100k-f1" autocomplete="off" class="{field} lowercase" /></label>
 					<label class={label}>Login <span class="normal-case tracking-normal text-dim">(optional)</span><input type="text" bind:value={fLogin} placeholder="88421" class={field} /></label>
@@ -352,6 +462,9 @@
 							</select>
 						</label>
 					{/if}
+					<label class={label}>Min trading days <span class="normal-case tracking-normal text-dim">(0 = none)</span><input type="number" bind:value={fMinDays} min="0" step="1" class={field} /></label>
+					<label class={label}>Consistency max % <span class="normal-case tracking-normal text-dim">(empty = none)</span><input type="number" bind:value={fConsistency} min="0" max="100" step="any" class={field} /></label>
+					<label class="{label} sm:col-span-2">Challenge deadline <span class="normal-case tracking-normal text-dim">(optional · drives the days warning)</span><input type="date" bind:value={fDeadline} class={field} /></label>
 					<label class={label}>Status
 						<select bind:value={fStatus} class={field}>
 							<option value="active">active</option>
@@ -361,7 +474,7 @@
 						</select>
 					</label>
 				</div>
-				<p class="num mt-3 text-[11px] text-dim">Limits are % of start balance and resolve in {baseCode} live (1k/5k/10k/100k all work). Day resets at UTC midnight.</p>
+				<p class="num mt-3 text-[11px] text-dim">Limits are % of start balance and resolve in {baseCode} live (1k/5k/10k/100k all work). Day resets at the configured trading-day boundary.</p>
 				{#if formError}<p class="mt-3 text-[13px] font-medium text-loss" role="alert">{formError}</p>{/if}
 				<div class="mt-5 flex justify-end gap-2 border-t border-line pt-4">
 					<button type="button" onclick={() => (modal = null)} class="btn btn-ghost h-10 px-4 text-sm">Cancel</button>
