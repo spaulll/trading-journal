@@ -134,7 +134,13 @@ def test_a_trade_lands_on_the_day_it_closed(client):
     )
     days = client.get("/api/analytics/calendar", params={"year": 2026}).json()["days"]
     assert days == [
-        {"date": "2026-09-28", "net_pnl": 100.0, "trade_count": 1, "unpriced": 0}
+        {
+            "date": "2026-09-28",
+            "net_pnl": 100.0,
+            "trade_count": 1,
+            "unpriced": 0,
+            "by_currency": {"USD": 100.0},
+        }
     ]
 
 

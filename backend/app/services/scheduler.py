@@ -21,6 +21,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from sqlmodel import Session, select
 
 from app.models import DailyNote, Trade
+from app.services.trade_money import usd_net
 
 log = logging.getLogger("scheduler")
 
@@ -140,7 +141,7 @@ def eod_summary_text(session: Session, today: date_type) -> str:
         for t in session.exec(select(Trade).where(Trade.status == "CLOSED")).all()
         if (_as_naive_utc(t.timestamp_close) or datetime.min) >= day_start
     ]
-    nets = [t.net_pnl or 0.0 for t in closes]
+    nets = [usd_net(t) or 0.0 for t in closes]
     wins = sum(1 for n in nets if n > 5.0)
     total = len(closes)
     pnl = sum(nets)
