@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { ChevronRight, Pencil, Plus, Trash2, X } from 'lucide-svelte';
+	import { ChevronRight, Pencil, Plus, Trash2, TriangleAlert, X } from 'lucide-svelte';
 	import { fade, scale } from 'svelte/transition';
 	import PageHead from '$lib/components/PageHead.svelte';
 	import StateBlock from '$lib/components/StateBlock.svelte';
@@ -355,6 +355,15 @@
 							</div>
 							{#if daysRule?.met_at}
 								<p class="mt-1 text-[10px] text-dim">Requirement met {fmtDate(daysRule.met_at)}.</p>
+							{/if}
+							{#if daysRule?.warning}
+								<p
+									class="mt-2 flex items-start gap-1.5 rounded-lg border px-2 py-1.5 text-[11px] leading-snug {daysRule.status === 'missed' ? 'border-loss/25 bg-loss/8 text-loss' : 'border-accent/25 bg-accent/8 text-accent'}"
+									role="status"
+								>
+									<TriangleAlert size={13} class="mt-px shrink-0" aria-hidden="true" />
+									<span>{daysRule.warning}</span>
+								</p>
 							{/if}
 						{/if}
 						{#if otherRules.length > 0}
