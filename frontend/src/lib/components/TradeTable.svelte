@@ -9,6 +9,7 @@
 	import { loadTrades, openTrade, requestClose, tradeCounts, trades, tradesPage, tradesPageSize, tradesTotal, upsertTrade } from '$lib/stores/trades';
 	import { toasts } from '$lib/stores/toast';
 	import { fmtCurrency, fmtDateTime, fmtMoney, fmtR, isUnpriced, pnlTone, rTone, toneBg, toneText, usdNet } from '$lib/utils/format';
+	import { hasOpenDialog } from '$lib/utils/dialogs';
 	import SegControl from '$lib/components/SegControl.svelte';
 
 	/** The server takes 500 ids a batch — a bigger move is split into batches. */
@@ -63,10 +64,9 @@
 		const typing =
 			target &&
 			(target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT');
-		if (e.key === '/' && !typing) {
-			e.preventDefault();
-			searchEl?.focus();
-		}
+		if (e.key !== '/' || typing || hasOpenDialog()) return;
+		e.preventDefault();
+		searchEl?.focus();
 	}
 
 	/** The broker-booked amount, for a tooltip beside its USD conversion. */
