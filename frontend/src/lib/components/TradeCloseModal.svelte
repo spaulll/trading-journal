@@ -8,6 +8,7 @@
 	import { brokerOffset } from '$lib/stores/broker';
 	import { loadSymbols, specFor, symbolMap } from '$lib/stores/symbols';
 	import { FADE, MODAL } from '$lib/utils/transitions';
+	import { dialogEscape } from '$lib/utils/dialogs';
 	import { onMount } from 'svelte';
 
 	const { tradeId }: { tradeId: number } = $props();
@@ -145,12 +146,11 @@
 	const label = 'flex flex-col gap-1.5 text-[11px] font-medium tracking-[0.14em] uppercase text-dim';
 </script>
 
-<svelte:window onkeydown={(e) => e.key === 'Escape' && dismissLifecycle()} />
-
+<!-- svelte-ignore a11y_click_events_have_key_events -->
 <div
 	transition:fade={FADE}
 	onclick={onBackdrop}
-	onkeydown={(e) => e.key === 'Escape' && dismissLifecycle()}
+	use:dialogEscape={() => dismissLifecycle()}
 	tabindex={-1}
 	class="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-base/75 p-4 backdrop-blur-[3px]"
 	role="dialog"

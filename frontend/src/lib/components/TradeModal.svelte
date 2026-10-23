@@ -21,6 +21,7 @@
 	import TagInput from '$lib/components/TagInput.svelte';
 	import { loadTagOptions } from '$lib/stores/tags';
 	import { DRAWER, FADE } from '$lib/utils/transitions';
+	import { dialogEscape } from '$lib/utils/dialogs';
 
 	const LABELS = ['entry', 'exit', 'setup', 'mistake'] as const;
 
@@ -254,13 +255,6 @@
 		if (e.target === e.currentTarget) void flushAndClose();
 	}
 
-	function onBackdropKey(e: KeyboardEvent): void {
-		if (e.key === 'Escape') {
-			if (zoomShot) zoomShot = null;
-			else void flushAndClose();
-		}
-	}
-
 	/** Save any pending notes/tags autosaves, then close the drawer. */
 	async function flushPending(): Promise<void> {
 		if (notesTimer) {
@@ -289,10 +283,6 @@
 
 	function onZoomBackdrop(e: MouseEvent): void {
 		if (e.target === e.currentTarget) zoomShot = null;
-	}
-
-	function onZoomBackdropKey(e: KeyboardEvent): void {
-		if (e.key === 'Escape') zoomShot = null;
 	}
 
 	async function doSaveNotes(quiet: boolean): Promise<void> {
@@ -560,13 +550,14 @@
 	] as const;
 </script>
 
-<svelte:window onkeydown={onBackdropKey} onpaste={onPaste} />
+<svelte:window onpaste={onPaste} />
 
 {#if trade}
+	<!-- svelte-ignore a11y_click_events_have_key_events -->
 	<div
 		transition:fade={FADE}
 		onclick={onBackdrop}
-		onkeydown={onBackdropKey}
+		use:dialogEscape={() => void flushAndClose()}
 		tabindex={-1}
 		class="fixed inset-0 z-50 bg-base/75 backdrop-blur-[3px]"
 		role="dialog"
@@ -953,6 +944,7 @@
 {/if}
 
 {#if zoomShot}
+	<!-- svelte-ignore a11y_click_events_have_key_events -->
 	<div
 		transition:fade={FADE}
 		class="fixed inset-0 z-[60] grid place-items-center bg-base/90 p-4 backdrop-blur-sm"
@@ -961,7 +953,7 @@
 		aria-modal="true"
 		aria-label="Screenshot zoom"
 		onclick={onZoomBackdrop}
-		onkeydown={onZoomBackdropKey}
+		use:dialogEscape={() => (zoomShot = null)}
 	>
 		<button
 			type="button"

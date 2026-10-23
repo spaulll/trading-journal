@@ -9,6 +9,7 @@
 	import { toasts } from '$lib/stores/toast';
 	import { fmtDate, fmtDateTime } from '$lib/utils/format';
 	import { FADE, MODAL } from '$lib/utils/transitions';
+	import { dialogEscape } from '$lib/utils/dialogs';
 
 	const PHASES = ['challenge1', 'phase2', 'funded', 'personal'] as const;
 
@@ -419,10 +420,11 @@
 {/if}
 
 {#if modal}
+	<!-- svelte-ignore a11y_click_events_have_key_events -->
 	<div
 		transition:fade={FADE}
 		onclick={(e) => e.target === e.currentTarget && (modal = null)}
-		onkeydown={(e) => e.key === 'Escape' && (modal = null)}
+		use:dialogEscape={() => (modal = null)}
 		tabindex={-1}
 		class="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-base/75 p-4 backdrop-blur-[3px] sm:p-6"
 		role="dialog"
