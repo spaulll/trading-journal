@@ -46,6 +46,7 @@ _TABLES = (
     "daily_note",
     "account_rule",
     "account_event",
+    "cash_entry",
     "account",
     "app_setting",
     "import_run",
