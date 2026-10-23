@@ -11,6 +11,7 @@ semantics that make the card trustworthy:
 
 from __future__ import annotations
 
+import re
 from datetime import datetime, timedelta, timezone
 
 from sqlmodel import select
@@ -321,7 +322,7 @@ def test_the_days_rule_warns_when_the_deadline_is_too_close(client):
     assert rule["warning"] is not None
     assert "At risk" in rule["warning"]
     assert "9 more trading days needed" in rule["warning"]
-    assert "weekdays left" in rule["warning"]
+    assert re.search(r"only \d+ weekdays? left before", rule["warning"])
     assert rule["days_left"] is not None and rule["days_left"] <= 2
 
 
