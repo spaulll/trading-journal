@@ -223,6 +223,44 @@ export interface PropStatusDto {
 	fx: { missing: number; fallback: number; max_fallback_days: number };
 }
 
+export interface CashEntryDto {
+	id: number;
+	firm: string;
+	kind: string;
+	/** Always positive; the kind carries the direction. */
+	amount: number;
+	currency: string;
+	occurred_on: string;
+	note: string | null;
+	account_id: number | null;
+	/** Dated conversion into FX_BASE_CURRENCY; null when no rate exists. */
+	amount_usd: number | null;
+	fx_missing: boolean;
+	created_at: string;
+	updated_at: string;
+}
+
+export interface CashFirmSummaryDto {
+	firm: string;
+	spent: number;
+	received: number;
+	net: number;
+	/** received / spent; null when no money has been spent. */
+	roi: number | null;
+	entries: number;
+	unpriced: number;
+}
+
+export interface CashSummaryDto {
+	currency: string;
+	spent: number;
+	received: number;
+	net: number;
+	roi: number | null;
+	by_firm: CashFirmSummaryDto[];
+	unpriced: number;
+}
+
 export interface LedgerCounts {
 	ALL: number;
 	OPEN: number;
@@ -760,6 +798,13 @@ export const api = {
 		req<AccountRuleDto>(`/api/accounts/${id}/rules/${kind}/check`, { method: 'POST' }),
 	accountTimeline: (id: number, limit = 50) =>
 		req<AccountEventDto[]>(`/api/accounts/${id}/timeline?limit=${limit}`),
+	listCash: (params = '') => req<CashEntryDto[]>(`/api/cash${params}`),
+	cashSummary: (params = '') => req<CashSummaryDto>(`/api/cash/summary${params}`),
+	createCash: (payload: Record<string, unknown>) =>
+		req<CashEntryDto>('/api/cash', json({ method: 'POST', body: JSON.stringify(payload) })),
+	updateCash: (id: number, patch: Record<string, unknown>) =>
+		req<CashEntryDto>(`/api/cash/${id}`, json({ method: 'PATCH', body: JSON.stringify(patch) })),
+	deleteCash: (id: number) => req<{ deleted: number }>(`/api/cash/${id}`, { method: 'DELETE' }),
 	listSymbols: (includeDisabled = false) =>
 		req<SymbolSpecDto[]>(`/api/symbols${includeDisabled ? '?include_disabled=true' : ''}`),
 	createSymbol: (payload: Record<string, unknown>) =>
