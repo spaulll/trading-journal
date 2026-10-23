@@ -9,6 +9,7 @@
 	import type { SymbolPreviewDto } from '$lib/api';
 	import { FADE, MODAL, PANEL_FADE } from '$lib/utils/transitions';
 	import SegControl from '$lib/components/SegControl.svelte';
+	import TagInput from '$lib/components/TagInput.svelte';
 	import { fluidHeight } from '$lib/utils/motion';
 	import { onMount } from 'svelte';
 
@@ -347,7 +348,13 @@
 
 			<label class="{label} mt-3">
 				Setup tags <span class="normal-case tracking-normal text-mut">#fvg #bos</span>
-				<input type="text" bind:value={tags} placeholder="#breakout" autocomplete="off" class="field font-sans text-[13px]" />
+				<TagInput
+					bind:value={tags}
+					mode="setup"
+					placeholder="#breakout"
+					ariaLabel="Setup tags"
+					inputClass="field font-sans text-[13px]"
+				/>
 			</label>
 
 			<label class="{label} mt-3">

@@ -3,6 +3,7 @@
 	import { untrack } from 'svelte';
 	import { fade, scale } from 'svelte/transition';
 	import { dismissLifecycle, ensureTrade, lifecycleBusy, submitClose, tradeCache } from '$lib/stores/trades';
+	import TagInput from '$lib/components/TagInput.svelte';
 	import { fmtCurrency, fmtMoney, fmtR, mt5WallToUTC, pnlTone, previewIST, previewMT5, rTone, toneText } from '$lib/utils/format';
 	import { brokerOffset } from '$lib/stores/broker';
 	import { loadSymbols, specFor, symbolMap } from '$lib/stores/symbols';
@@ -212,7 +213,13 @@
 				</div>
 				<label class="{label} mt-3">
 					Mistake tags <span class="normal-case tracking-normal text-mut">!early !fomo</span>
-					<input type="text" bind:value={mistakes} placeholder="!early" autocomplete="off" class="field font-sans text-[13px]" />
+					<TagInput
+						bind:value={mistakes}
+						mode="mistake"
+						placeholder="!early"
+						ariaLabel="Mistake tags"
+						inputClass="field font-sans text-[13px]"
+					/>
 				</label>
 				<label class="{label} mt-3">
 					Reflection notes

@@ -1,13 +1,14 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
-	import { GitMerge, Pencil, X } from 'lucide-svelte';
+	import { GitMerge, Pencil, Trash2, X } from 'lucide-svelte';
 	import { fade, scale } from 'svelte/transition';
 	import PageHead from '$lib/components/PageHead.svelte';
 	import SegControl from '$lib/components/SegControl.svelte';
 	import StateBlock from '$lib/components/StateBlock.svelte';
 	import { api, errMsg, type TagSummaryDto } from '$lib/api';
 	import { drillIntoTag } from '$lib/stores/ledger';
+	import { loadTagOptions } from '$lib/stores/tags';
 	import { toasts } from '$lib/stores/toast';
 	import { fmtDate, fmtMoney, pnlTone, toneText } from '$lib/utils/format';
 	import { FADE, MODAL } from '$lib/utils/transitions';
@@ -25,6 +26,7 @@
 	let fMerge = $state('');
 	let saving = $state(false);
 	let formError = $state<string | null>(null);
+	let confirmDelete = $state(false);
 
 	onMount(() => {
 		void load();
@@ -52,6 +54,7 @@
 		fCategory = tag.category === 'mistake' ? 'mistake' : 'setup';
 		fMerge = '';
 		formError = null;
+		confirmDelete = false;
 		modal = { tag };
 	}
 
@@ -71,10 +74,11 @@
 		saving = true;
 		formError = null;
 		try {
-			await api.patchTag(modal.tag.id, { name, category: fCategory });
+			const saved = await api.patchTag(modal.tag.id, { name, category: fCategory });
 			tags = await api.listTags();
+			void loadTagOptions();
 			modal = null;
-			toasts.push('success', `Tag #${name} saved.`);
+			toasts.push('success', `Tag #${saved.name} saved.`);
 		} catch (e) {
 			formError = errMsg(e);
 		} finally {
@@ -89,8 +93,31 @@
 		try {
 			const r = await api.mergeTags(modal.tag.id, Number(fMerge));
 			tags = await api.listTags();
+			void loadTagOptions();
 			modal = null;
 			toasts.push('success', `Merged #${r.merged} into #${r.into} — ${r.trades} trades moved.`);
+		} catch (e) {
+			formError = errMsg(e);
+		} finally {
+			saving = false;
+		}
+	}
+
+	async function removeUnused(): Promise<void> {
+		if (!modal) return;
+		if (!confirmDelete) {
+			confirmDelete = true;
+			return;
+		}
+		saving = true;
+		formError = null;
+		try {
+			await api.deleteTag(modal.tag.id);
+			tags = await api.listTags();
+			void loadTagOptions();
+			toasts.push('success', `Deleted unused tag #${modal.tag.name}.`);
+			modal = null;
+			confirmDelete = false;
 		} catch (e) {
 			formError = errMsg(e);
 		} finally {
@@ -282,6 +309,24 @@
 					</button>
 				</div>
 			</div>
+
+			{#if modal.tag.trade_count === 0}
+				<div class="border-t border-line px-5 py-4">
+					<p class="eyebrow">Unused tag</p>
+					<p class="mt-1 text-[12px] text-dim">
+						No trade carries this tag. Removing it keeps the taxonomy free of accidental names.
+					</p>
+					<button
+						type="button"
+						onclick={() => void removeUnused()}
+						disabled={saving}
+						class="btn btn-danger mt-2.5 h-9 gap-1.5 px-3 text-[13px] disabled:opacity-40"
+					>
+						<Trash2 size={14} strokeWidth={2} aria-hidden="true" />
+						{confirmDelete ? 'Click again to delete' : 'Delete unused tag'}
+					</button>
+				</div>
+			{/if}
 		</div>
 	</div>
 {/if}

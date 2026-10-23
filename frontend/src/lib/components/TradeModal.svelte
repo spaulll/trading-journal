@@ -18,6 +18,8 @@
 	import { fmtCurrency, fmtDateTime, fmtMoney, fmtNum, fmtR, mt5WallToUTC, parseStoredUTC, pnlTone, previewIST, previewMT5, rTone, toneText, usdNet, utcToMT5Wall } from '$lib/utils/format';
 	import { brokerOffset } from '$lib/stores/broker';
 	import { accounts, accountMap, chipAlias, loadAccounts } from '$lib/stores/accounts';
+	import TagInput from '$lib/components/TagInput.svelte';
+	import { loadTagOptions } from '$lib/stores/tags';
 	import { DRAWER, FADE } from '$lib/utils/transitions';
 
 	const LABELS = ['entry', 'exit', 'setup', 'mistake'] as const;
@@ -362,6 +364,8 @@
 		try {
 			const updated = await api.patchTrade(tradeId, { tags: tokens });
 			upsertTrade(updated);
+			// A brand-new tag should be suggestible on the next edit.
+			void loadTagOptions();
 			tagsState = 'saved';
 			tagsHint = `Saved ${autosaveStamp()}`;
 			if (!quiet) toasts.push('success', 'Tags updated.');
@@ -823,12 +827,14 @@
 				<label class="mt-4 flex flex-col gap-1.5">
 					<span class="eyebrow">Tags · <span class="normal-case text-mut">#setup !mistake · autosaves</span></span>
 					<span class="flex gap-2">
-						<input
-							type="text"
+						<TagInput
 							bind:value={tagInput}
-							oninput={scheduleTagsAutosave}
+							mode="both"
+							onValueChange={scheduleTagsAutosave}
 							placeholder="#fvg !early"
-							class="field h-9 flex-1 font-mono text-[13px]"
+							ariaLabel="Tags"
+							wrapperClass="min-w-0 flex-1"
+							inputClass="field h-9 w-full font-mono text-[13px]"
 						/>
 						<button
 							type="button"
