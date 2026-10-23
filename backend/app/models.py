@@ -9,7 +9,7 @@ from datetime import date as date_type
 from datetime import datetime, timezone
 from typing import Any, Optional
 
-from sqlalchemy import UniqueConstraint
+from sqlalchemy import CheckConstraint, UniqueConstraint
 from sqlmodel import Field, Relationship, SQLModel
 
 
@@ -229,6 +229,52 @@ class AccountEvent(SQLModel, table=True):
     kind: str = Field(index=True)  # rule_met | rule_breached | status_changed
     payload: str = Field(default="{}")
     occurred_at: datetime = Field(default_factory=_utcnow, index=True)
+
+
+# The cash ledger records money that actually moved. The amount is always
+# positive; the kind owns the direction so no caller can double-negate a fee.
+CASH_INFLOW_KINDS = frozenset({"refund", "payout"})
+CASH_OUTFLOW_KINDS = frozenset(
+    {"evaluation", "reset", "activation", "platform_fee"}
+)
+CASH_KINDS = CASH_INFLOW_KINDS | CASH_OUTFLOW_KINDS
+
+
+def cash_direction(kind: str) -> int:
+    """+1 for money in, -1 for money out. Unknown kinds are rejected."""
+    if kind in CASH_INFLOW_KINDS:
+        return 1
+    if kind in CASH_OUTFLOW_KINDS:
+        return -1
+    raise ValueError(f"unknown cash kind: {kind}")
+
+
+class CashEntry(SQLModel, table=True):
+    """One dated prop-cash movement in its own currency.
+
+    ``amount_usd`` is deliberately not stored: it is derived on every read
+    from the rate for ``occurred_on``, so correcting a rate reprices
+    history. A row with no usable rate is reported as unpriced instead of
+    being counted as zero.
+    """
+
+    __tablename__ = "cash_entry"
+    __table_args__ = (
+        CheckConstraint("amount > 0", name="ck_cash_entry_amount_positive"),
+    )
+    id: Optional[int] = Field(default=None, primary_key=True)
+    firm: str = Field(index=True)
+    kind: str = Field(index=True)  # evaluation | reset | activation | platform_fee | refund | payout
+    amount: float
+    currency: str = Field(default="USD", index=True)
+    occurred_on: date_type = Field(index=True)
+    note: Optional[str] = None
+    # Informational only: the ledger stays firm-level, not account-level.
+    account_id: Optional[int] = Field(
+        default=None, foreign_key="account.id", index=True
+    )
+    created_at: datetime = Field(default_factory=_utcnow)
+    updated_at: datetime = Field(default_factory=_utcnow)
 
 
 class AppSetting(SQLModel, table=True):
@@ -595,6 +641,63 @@ class AccountEventRead(SQLModel):
     label: str
     payload: dict[str, Any] = Field(default_factory=dict)
     occurred_at: datetime
+
+
+class CashEntryRead(SQLModel):
+    id: int
+    firm: str
+    kind: str
+    amount: float
+    currency: str
+    occurred_on: date_type
+    note: Optional[str] = None
+    account_id: Optional[int] = None
+    # Converted on occurred_on into FX_BASE_CURRENCY. None means no usable
+    # rate, which is why the row is flagged rather than treated as zero.
+    amount_usd: Optional[float] = None
+    fx_missing: bool = False
+    created_at: datetime
+    updated_at: datetime
+
+
+class CashEntryCreate(SQLModel):
+    firm: str
+    kind: str
+    amount: float
+    currency: str = "USD"
+    occurred_on: date_type
+    note: Optional[str] = None
+    account_id: Optional[int] = None
+
+
+class CashEntryUpdate(SQLModel):
+    firm: Optional[str] = None
+    kind: Optional[str] = None
+    amount: Optional[float] = None
+    currency: Optional[str] = None
+    occurred_on: Optional[date_type] = None
+    note: Optional[str] = None
+    account_id: Optional[int] = None
+
+
+class CashFirmSummary(SQLModel):
+    firm: str
+    spent: float
+    received: float
+    net: float
+    roi: Optional[float] = None
+    entries: int = 0
+    unpriced: int = 0
+
+
+class CashSummary(SQLModel):
+    currency: str
+    spent: float
+    received: float
+    net: float
+    roi: Optional[float] = None
+    by_firm: list[CashFirmSummary] = Field(default_factory=list)
+    unpriced: int = 0
 
 
 class AccountCreate(SQLModel):
