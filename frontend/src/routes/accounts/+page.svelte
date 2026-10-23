@@ -9,7 +9,7 @@
 	import { toasts } from '$lib/stores/toast';
 	import { fmtDate, fmtDateTime } from '$lib/utils/format';
 	import { FADE, MODAL } from '$lib/utils/transitions';
-	import { dialogEscape } from '$lib/utils/dialogs';
+	import { dialogLayer } from '$lib/utils/dialogs';
 
 	const PHASES = ['challenge1', 'phase2', 'funded', 'personal'] as const;
 
@@ -424,7 +424,7 @@
 	<div
 		transition:fade={FADE}
 		onclick={(e) => e.target === e.currentTarget && (modal = null)}
-		use:dialogEscape={() => (modal = null)}
+		use:dialogLayer={() => (modal = null)}
 		tabindex={-1}
 		class="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-base/75 p-4 backdrop-blur-[3px] sm:p-6"
 		role="dialog"

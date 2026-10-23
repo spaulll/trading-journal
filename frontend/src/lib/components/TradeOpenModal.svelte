@@ -8,7 +8,7 @@
 	import { loadSymbols, previewSymbol, specFor, symbolMap, symbols } from '$lib/stores/symbols';
 	import type { SymbolPreviewDto } from '$lib/api';
 	import { FADE, MODAL, PANEL_FADE } from '$lib/utils/transitions';
-	import { dialogEscape } from '$lib/utils/dialogs';
+	import { dialogLayer } from '$lib/utils/dialogs';
 	import SegControl from '$lib/components/SegControl.svelte';
 	import TagInput from '$lib/components/TagInput.svelte';
 	import { fluidHeight } from '$lib/utils/motion';
@@ -262,7 +262,7 @@
 <div
 	transition:fade={FADE}
 	onclick={onBackdrop}
-	use:dialogEscape={() => dismissLifecycle()}
+	use:dialogLayer={() => dismissLifecycle()}
 	tabindex={-1}
 	class="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-base/75 p-4 backdrop-blur-[3px]"
 	role="dialog"
