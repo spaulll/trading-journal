@@ -8,7 +8,7 @@
 	import { brokerOffset } from '$lib/stores/broker';
 	import { loadSymbols, specFor, symbolMap } from '$lib/stores/symbols';
 	import { FADE, MODAL } from '$lib/utils/transitions';
-	import { dialogEscape } from '$lib/utils/dialogs';
+	import { dialogLayer } from '$lib/utils/dialogs';
 	import { onMount } from 'svelte';
 
 	const { tradeId }: { tradeId: number } = $props();
@@ -150,7 +150,7 @@
 <div
 	transition:fade={FADE}
 	onclick={onBackdrop}
-	use:dialogEscape={() => dismissLifecycle()}
+	use:dialogLayer={() => dismissLifecycle()}
 	tabindex={-1}
 	class="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-base/75 p-4 backdrop-blur-[3px]"
 	role="dialog"

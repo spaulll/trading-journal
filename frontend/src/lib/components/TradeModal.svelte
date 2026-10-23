@@ -21,7 +21,7 @@
 	import TagInput from '$lib/components/TagInput.svelte';
 	import { loadTagOptions } from '$lib/stores/tags';
 	import { DRAWER, FADE } from '$lib/utils/transitions';
-	import { dialogEscape } from '$lib/utils/dialogs';
+	import { dialogLayer } from '$lib/utils/dialogs';
 
 	const LABELS = ['entry', 'exit', 'setup', 'mistake'] as const;
 
@@ -557,7 +557,7 @@
 	<div
 		transition:fade={FADE}
 		onclick={onBackdrop}
-		use:dialogEscape={() => void flushAndClose()}
+		use:dialogLayer={() => void flushAndClose()}
 		tabindex={-1}
 		class="fixed inset-0 z-50 bg-base/75 backdrop-blur-[3px]"
 		role="dialog"
@@ -953,7 +953,7 @@
 		aria-modal="true"
 		aria-label="Screenshot zoom"
 		onclick={onZoomBackdrop}
-		use:dialogEscape={() => (zoomShot = null)}
+		use:dialogLayer={() => (zoomShot = null)}
 	>
 		<button
 			type="button"

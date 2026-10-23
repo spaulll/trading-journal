@@ -8,7 +8,7 @@
 	import { toasts } from '$lib/stores/toast';
 	import { BE_TOL, fmtDate, fmtMoney, fmtR, pnlTone, rTone, toneText, usdNet } from '$lib/utils/format';
 	import { DRAWER, FADE } from '$lib/utils/transitions';
-	import { dialogEscape } from '$lib/utils/dialogs';
+	import { dialogLayer } from '$lib/utils/dialogs';
 
 
 	const day = $derived($selectedDay);
@@ -316,7 +316,7 @@
 	<div
 		transition:fade={FADE}
 		onclick={onBackdrop}
-		use:dialogEscape={() => void flushAndClose()}
+		use:dialogLayer={() => void flushAndClose()}
 		tabindex={-1}
 		class="fixed inset-0 z-50 bg-base/75 backdrop-blur-[3px]"
 		role="dialog"
