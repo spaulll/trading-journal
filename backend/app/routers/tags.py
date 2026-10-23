@@ -15,12 +15,13 @@ the tag, what they made, and how often they won.
 from datetime import datetime
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlmodel import Session, SQLModel, select
 
 from app.database import get_session
 from app.models import Tag, TagRead, TradeTagLink
 from app.services.analytics_rules import BE_TOLERANCE
+from app.services.tag_names import normalize_tag_name
 from app.services.trade_money import usd_net
 
 router = APIRouter(prefix="/api/tags", tags=["tags"])
@@ -87,9 +88,12 @@ def patch_tag(tag_id: int, patch: TagPatch, session: Session = Depends(get_sessi
     data = patch.model_dump(exclude_unset=True)
 
     if "name" in data and data["name"] is not None:
-        name = str(data["name"]).strip().lower()
-        if not name:
-            raise HTTPException(status_code=422, detail="name must not be empty")
+        name = normalize_tag_name(data["name"])
+        if name is None:
+            raise HTTPException(
+                status_code=422,
+                detail="Tag names may contain letters, digits, underscores, hyphens and slashes.",
+            )
         clash = session.exec(select(Tag).where(Tag.name == name)).first()
         if clash is not None and clash.id != tag.id:
             raise HTTPException(status_code=409, detail=f"Tag already exists: {name}")
@@ -105,6 +109,30 @@ def patch_tag(tag_id: int, patch: TagPatch, session: Session = Depends(get_sessi
     session.commit()
     session.refresh(tag)
     return TagRead.model_validate(tag.model_dump())
+
+
+@router.delete("/{tag_id}", status_code=204)
+def delete_tag(tag_id: int, session: Session = Depends(get_session)):
+    """Remove an unused tag from the taxonomy.
+
+    A tag that is still attached to a trade must be merged or detached from
+    that trade first. Deleting it here would silently rewrite a trade's
+    history, which is exactly what the merge endpoint exists to avoid.
+    """
+    tag = session.get(Tag, tag_id)
+    if tag is None:
+        raise HTTPException(status_code=404, detail="Tag not found")
+    links = session.exec(
+        select(TradeTagLink).where(TradeTagLink.tag_id == tag.id)
+    ).all()
+    if links:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Tag is used by {len(links)} trade(s); merge it instead.",
+        )
+    session.delete(tag)
+    session.commit()
+    return Response(status_code=204)
 
 
 @router.post("/merge")
