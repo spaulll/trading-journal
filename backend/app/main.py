@@ -14,7 +14,7 @@ from fastapi import FastAPI  # noqa: E402
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
 
 from app.database import create_db_and_tables  # noqa: E402
-from app.routers import analytics, accounts, daily_notes, fx_rates, insights, screenshots, settings, symbols, tags, telegram, trades  # noqa: E402
+from app.routers import analytics, accounts, cash, daily_notes, fx_rates, insights, screenshots, settings, symbols, tags, telegram, trades  # noqa: E402
 from app.services import scheduler, telegram_bot  # noqa: E402
 
 log = logging.getLogger("journal")
@@ -69,6 +69,7 @@ app.add_middleware(
 
 app.include_router(trades.router)
 app.include_router(accounts.router)
+app.include_router(cash.router)
 app.include_router(symbols.router)
 app.include_router(fx_rates.router)
 app.include_router(tags.router)
