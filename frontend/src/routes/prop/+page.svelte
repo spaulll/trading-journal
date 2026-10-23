@@ -4,7 +4,7 @@
 	import { fade, scale } from 'svelte/transition';
 	import PageHead from '$lib/components/PageHead.svelte';
 	import StateBlock from '$lib/components/StateBlock.svelte';
-	import { api, errMsg, type CashEntryDto } from '$lib/api';
+	import { api, errMsg, type CashEntryDto, type CashSummaryDto } from '$lib/api';
 	import { toasts } from '$lib/stores/toast';
 	import { fmtCurrency, fmtDate } from '$lib/utils/format';
 	import { FADE, MODAL } from '$lib/utils/transitions';
@@ -23,6 +23,7 @@
 	);
 
 	let entries = $state<CashEntryDto[]>([]);
+	let summary = $state<CashSummaryDto | null>(null);
 	let loading = $state(true);
 	let error = $state<string | null>(null);
 	let modal = $state<null | { editing: CashEntryDto | null }>(null);
@@ -43,10 +44,11 @@
 	const firmNames = $derived(
 		[...new Set(entries.map((entry) => entry.firm))].sort((a, b) => a.localeCompare(b))
 	);
+	const firmCount = $derived(summary?.by_firm.length ?? firmNames.length);
 	const pageMeta = $derived(
 		entries.length === 0
 			? 'No cash movements yet'
-			: `${entries.length} movement${entries.length === 1 ? '' : 's'} · ${firmNames.length} firm${firmNames.length === 1 ? '' : 's'}`
+			: `${entries.length} movement${entries.length === 1 ? '' : 's'} · ${firmCount} firm${firmCount === 1 ? '' : 's'}`
 	);
 
 	function kindMeta(kind: string): { label: string; inflow: boolean } {
@@ -83,20 +85,36 @@
 		return `${kindMeta(kind).inflow ? '+' : '−'}${body}`;
 	}
 
-	function convertedLabel(entry: CashEntryDto): string | null {
+	function money(amount: number, currency: string): string {
+		return fmtCurrency(amount, currency).replace(/^\+/, '');
+	}
+
+	function roiLabel(roi: number | null): string {
+		return roi === null ? '—' : `${roi.toFixed(2)}×`;
+	}
+
+	function netTone(net: number): string {
+		if (net > 0) return 'text-win';
+		if (net < 0) return 'text-loss';
+		return 'text-mut';
+	}
+
+	function convertedLabel(entry: CashEntryDto, currency: string): string | null {
 		if (entry.amount_usd === null) return null;
-		return signedMoney(entry.amount_usd, 'USD', entry.kind);
+		return signedMoney(entry.amount_usd, currency, entry.kind);
 	}
 
 	function deleteLabel(entry: CashEntryDto): string {
 		return `${kindMeta(entry.kind).label} on ${fmtDate(entry.occurred_on)} for ${entry.firm}`;
 	}
 
-	async function loadEntries(): Promise<void> {
+	async function loadLedger(): Promise<void> {
 		loading = true;
 		error = null;
 		try {
-			entries = sortEntries(await api.listCash());
+			const [rows, totals] = await Promise.all([api.listCash(), api.cashSummary()]);
+			entries = sortEntries(rows);
+			summary = totals;
 		} catch (err) {
 			error = errMsg(err);
 		} finally {
@@ -104,8 +122,16 @@
 		}
 	}
 
+	async function refreshSummary(): Promise<void> {
+		try {
+			summary = await api.cashSummary();
+		} catch (err) {
+			toasts.push('error', `Totals failed to refresh — ${errMsg(err)}`);
+		}
+	}
+
 	onMount(() => {
-		void loadEntries();
+		void loadLedger();
 	});
 
 	function openCreate(): void {
@@ -179,6 +205,7 @@
 				entries = sortEntries([...entries, created]);
 				toasts.push('success', `Added ${kindMeta(created.kind).label.toLowerCase()} for ${created.firm}.`);
 			}
+			await refreshSummary();
 			modal = null;
 		} catch (err) {
 			formError = errMsg(err);
@@ -199,6 +226,7 @@
 		try {
 			await api.deleteCash(entry.id);
 			entries = entries.filter((row) => row.id !== entry.id);
+			await refreshSummary();
 			deleteArmed = null;
 			toasts.push('success', `Deleted ${kindMeta(entry.kind).label.toLowerCase()} for ${entry.firm}.`);
 		} catch (err) {
@@ -230,7 +258,7 @@
 		title="Couldn't load the cash ledger"
 		body="{error} — start the API and retry."
 		actionLabel="Retry"
-		onAction={() => void loadEntries()}
+		onAction={() => void loadLedger()}
 	/>
 {:else if entries.length === 0}
 	<StateBlock
@@ -240,6 +268,82 @@
 		onAction={openCreate}
 	/>
 {:else}
+	{#if summary}
+		<section class="mb-4" aria-label="Prop cash totals">
+			<div class="grid grid-cols-2 gap-2.5 xl:grid-cols-4">
+				<div class="card p-4">
+					<p class="eyebrow">Spent</p>
+					<p class="num mt-1.5 whitespace-nowrap text-[clamp(17px,4.6vw,22px)] font-semibold text-fg">
+						{money(summary.spent, summary.currency)}
+					</p>
+					<p class="mt-1 text-[10.5px] text-dim">Fees, resets &amp; activation</p>
+				</div>
+				<div class="card p-4">
+					<p class="eyebrow">Received</p>
+					<p class="num mt-1.5 whitespace-nowrap text-[clamp(17px,4.6vw,22px)] font-semibold text-fg">
+						{money(summary.received, summary.currency)}
+					</p>
+					<p class="mt-1 text-[10.5px] text-dim">Payouts + refunds</p>
+				</div>
+				<div class="card p-4">
+					<p class="eyebrow">Net</p>
+					<p class="num mt-1.5 whitespace-nowrap text-[clamp(17px,4.6vw,22px)] font-semibold {netTone(summary.net)}">
+						{fmtCurrency(summary.net, summary.currency)}
+					</p>
+					<p class="mt-1 text-[10.5px] text-dim">Received minus spent</p>
+				</div>
+				<div class="card p-4">
+					<p class="eyebrow">ROI</p>
+					<p class="num mt-1.5 whitespace-nowrap text-[clamp(17px,4.6vw,22px)] font-semibold text-fg">
+						{roiLabel(summary.roi)}
+					</p>
+					<p class="mt-1 text-[10.5px] text-dim">Received / spent</p>
+				</div>
+			</div>
+			{#if summary.unpriced > 0}
+				<p class="mt-2 flex items-start gap-1.5 px-1 text-[11px] text-accent">
+					<TriangleAlert size={13} class="mt-px shrink-0" aria-hidden="true" />
+					<span>
+						{summary.unpriced} unpriced movement{summary.unpriced === 1 ? '' : 's'} excluded from these totals —
+						add an FX rate for the missing date.
+					</span>
+				</p>
+			{/if}
+		</section>
+
+		<section class="mb-4" aria-labelledby="firm-net-title">
+			<div class="mb-2 flex items-center justify-between gap-3 px-1">
+				<h2 id="firm-net-title" class="eyebrow">Net by firm</h2>
+				<span class="num text-[10px] tracking-[0.1em] text-dim uppercase">{summary.currency}</span>
+			</div>
+			<div class="card flex flex-col divide-y divide-line overflow-hidden xl:flex-row xl:divide-x xl:divide-y-0">
+				{#each summary.by_firm as firm (firm.firm)}
+					<div class="min-w-0 px-4 py-2.5 xl:flex-1">
+						<div class="flex items-center justify-between gap-3 xl:block">
+							<div class="min-w-0">
+								<p class="truncate text-[12.5px] font-semibold text-fg" title={firm.firm}>{firm.firm}</p>
+								<p class="num mt-0.5 text-[10px] text-dim">
+									{firm.entries} entr{firm.entries === 1 ? 'y' : 'ies'}
+									{#if firm.unpriced > 0}
+										<span class="text-accent">· {firm.unpriced} unpriced</span>
+									{/if}
+								</p>
+							</div>
+							<div class="shrink-0 text-right xl:mt-2 xl:text-left">
+								<p class="num whitespace-nowrap text-[15px] font-semibold {netTone(firm.net)}">
+									{fmtCurrency(firm.net, summary.currency)}
+								</p>
+								<p class="mt-0.5 text-[10px] text-dim">
+									ROI <span class="num text-mut">{roiLabel(firm.roi)}</span>
+								</p>
+							</div>
+						</div>
+					</div>
+				{/each}
+			</div>
+		</section>
+	{/if}
+
 	{#if deleteArmed}
 		<div class="card mb-4 border-loss/35 bg-loss/6 p-3 sm:p-4" role="alert">
 			<div class="flex flex-wrap items-center gap-x-3 gap-y-2">
@@ -289,7 +393,7 @@
 						<th class="px-3 py-2.5 text-left font-mono text-[10px] font-medium tracking-[0.14em] text-dim uppercase">Firm</th>
 						<th class="px-3 py-2.5 text-left font-mono text-[10px] font-medium tracking-[0.14em] text-dim uppercase">Kind</th>
 						<th class="px-3 py-2.5 text-right font-mono text-[10px] font-medium tracking-[0.14em] text-dim uppercase">Amount</th>
-						<th class="px-3 py-2.5 text-right font-mono text-[10px] font-medium tracking-[0.14em] text-dim uppercase">USD</th>
+						<th class="px-3 py-2.5 text-right font-mono text-[10px] font-medium tracking-[0.14em] text-dim uppercase">{summary?.currency ?? 'USD'}</th>
 						<th class="px-3 py-2.5 text-left font-mono text-[10px] font-medium tracking-[0.14em] text-dim uppercase">Note</th>
 						<th class="px-4 py-2.5 text-right font-mono text-[10px] font-medium tracking-[0.14em] text-dim uppercase">Actions</th>
 					</tr>
@@ -317,7 +421,7 @@
 										Unpriced
 									</span>
 								{:else}
-									<span class="num text-[12px] text-mut">{convertedLabel(entry)}</span>
+									<span class="num text-[12px] text-mut">{convertedLabel(entry, summary?.currency ?? 'USD')}</span>
 								{/if}
 							</td>
 							<td class="px-3 py-3">
@@ -372,7 +476,7 @@
 								Unpriced
 							</span>
 						{:else}
-							<span class="num text-[11px] text-dim">{convertedLabel(entry)} USD</span>
+							<span class="num text-[11px] text-dim">{convertedLabel(entry, summary?.currency ?? 'USD')} {summary?.currency ?? 'USD'}</span>
 						{/if}
 					</div>
 					{#if entry.note}
