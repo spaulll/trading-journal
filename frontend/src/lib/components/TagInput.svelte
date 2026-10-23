@@ -25,7 +25,8 @@
 		ariaLabel = 'Tags',
 		inputClass = 'field font-mono text-[13px]',
 		wrapperClass = '',
-		onValueChange
+		onValueChange,
+		onBlur
 	}: {
 		value?: string;
 		mode?: Mode;
@@ -34,6 +35,7 @@
 		inputClass?: string;
 		wrapperClass?: string;
 		onValueChange?: () => void;
+		onBlur?: () => void;
 	} = $props();
 
 	let inputEl: HTMLInputElement | null = $state(null);
@@ -146,6 +148,7 @@
 	}
 
 	function handleBlur(): void {
+		onBlur?.();
 		// A click on an option fires mousedown before blur; the small delay
 		// lets that click land before the menu is removed from the DOM.
 		window.setTimeout(() => {

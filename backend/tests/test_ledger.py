@@ -87,9 +87,21 @@ def test_the_free_text_query_matches_a_ticket(client):
 
 def test_the_tag_filter_matches_a_substring_of_the_tag(client):
     client.post("/api/trades/backfill", json=_record(ticket="TAGGED-1", tags=["#fvg"]))
-    client.post("/api/trades/backfill", json=_record(ticket="PLAIN-1", tags=["#breakout"]))
+    client.post("/api/trades/backfill", json=_record(ticket="LONGER-1", tags=["#fvg_scalp"]))
 
     body = client.get("/api/trades", params={"tag": "fvg"}).json()
+    # The tag box is a search box: a partial name finds both tags.
+    assert {row["ticket"] for row in body["items"]} == {"TAGGED-1", "LONGER-1"}
+    assert body["total"] == 2
+
+
+def test_the_tag_filter_can_require_the_whole_tag(client):
+    client.post("/api/trades/backfill", json=_record(ticket="TAGGED-1", tags=["#fvg"]))
+    client.post("/api/trades/backfill", json=_record(ticket="LONGER-1", tags=["#fvg_scalp"]))
+
+    body = client.get("/api/trades", params={"tag": "fvg", "tag_exact": "true"}).json()
+    # A tag drill-down shows the trades behind that tag, not the trades
+    # behind every tag whose name happens to contain it.
     assert [row["ticket"] for row in body["items"]] == ["TAGGED-1"]
     assert body["total"] == 1
 

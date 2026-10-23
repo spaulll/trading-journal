@@ -60,18 +60,16 @@
 	});
 
 	onDestroy(() => {
-		// The drawer is going away. Save whatever the debounce was still
-		// holding instead of dropping it — navigating within the debounce
-		// window used to lose the note entirely.
+		// The drawer is going away. Save whatever the notes debounce was
+		// still holding instead of dropping it — navigating within the
+		// debounce window used to lose the note entirely.
+		//
+		// Tags are deliberately not saved here: an unmount in the middle of
+		// typing would persist a half-typed token as a permanent tag.
 		if (notesTimer) {
 			clearTimeout(notesTimer);
 			notesTimer = null;
 			if (dirty) void saveNotes(true);
-		}
-		if (tagsTimer) {
-			clearTimeout(tagsTimer);
-			tagsTimer = null;
-			if (tagsDirty) void saveTags(true);
 		}
 	});
 
@@ -123,13 +121,12 @@
 	let tagsActive = 0;
 	let savingEdits = $state(false);
 	let lastTradeId: number | null = $state(null);
-	// Autosave status for notes + tags (no toast spam — inline indicator only).
+	// Save status for notes + tags (no toast spam — inline indicator only).
 	let notesState = $state<'idle' | 'saving' | 'saved' | 'error'>('idle');
 	let notesHint = $state('');
 	let tagsState = $state<'idle' | 'saving' | 'saved' | 'error'>('idle');
 	let tagsHint = $state('');
 	let notesTimer: ReturnType<typeof setTimeout> | null = $state(null);
-	let tagsTimer: ReturnType<typeof setTimeout> | null = $state(null);
 	const AUTOSAVE_MS = 900;
 
 	function autosaveStamp(): string {
@@ -187,9 +184,7 @@
 	$effect(() => {
 		if (trade && trade.id !== lastTradeId) {
 			if (notesTimer) clearTimeout(notesTimer);
-			if (tagsTimer) clearTimeout(tagsTimer);
 			notesTimer = null;
-			tagsTimer = null;
 			lastTradeId = trade.id;
 			thesis = trade.thesis ?? '';
 			notes = trade.review_notes ?? '';
@@ -271,10 +266,6 @@
 		if (notesTimer) {
 			clearTimeout(notesTimer);
 			notesTimer = null;
-		}
-		if (tagsTimer) {
-			clearTimeout(tagsTimer);
-			tagsTimer = null;
 		}
 		const jobs: Promise<unknown>[] = [];
 		// Await the requests already in flight as well — closing the drawer
@@ -384,14 +375,6 @@
 		const run = (tagsInFlight ?? Promise.resolve()).then(() => doSaveTags(quiet));
 		tagsInFlight = run.catch(() => {});
 		return run;
-	}
-
-	function scheduleTagsAutosave(): void {
-		if (tagsTimer) clearTimeout(tagsTimer);
-		tagsTimer = setTimeout(() => {
-			tagsTimer = null;
-			void saveTags(true);
-		}, AUTOSAVE_MS);
 	}
 
 	async function saveEdits(): Promise<void> {
@@ -825,12 +808,12 @@
 				</div>
 
 				<label class="mt-4 flex flex-col gap-1.5">
-					<span class="eyebrow">Tags · <span class="normal-case text-mut">#setup !mistake · autosaves</span></span>
+					<span class="eyebrow">Tags · <span class="normal-case text-mut">#setup !mistake · saves on blur</span></span>
 					<span class="flex gap-2">
 						<TagInput
 							bind:value={tagInput}
 							mode="both"
-							onValueChange={scheduleTagsAutosave}
+							onBlur={() => void saveTags(true)}
 							placeholder="#fvg !early"
 							ariaLabel="Tags"
 							wrapperClass="min-w-0 flex-1"
