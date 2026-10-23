@@ -90,43 +90,59 @@
 	}
 </script>
 
-<section aria-label="MT5 statement import" class="card rise mb-4 p-5">
-	<div class="flex flex-wrap items-center gap-2">
+<section aria-label="MT5 statement import" class="card rise p-4">
+	<div class="flex flex-wrap items-center gap-x-2 gap-y-1">
 		<FileUp size={16} strokeWidth={2} aria-hidden="true" class="text-accent" />
 		<h2 class="text-[15px] font-semibold text-fg">Broker import</h2>
-		<span class="num text-[12px] text-dim">MT5 statement · HTML report or CSV export</span>
+		<span class="num text-[11px] text-dim">MT5 statement · HTML or CSV</span>
 	</div>
 
-	<div class="mt-3 flex flex-col gap-2 sm:flex-row sm:items-end">
-		<label class="flex min-w-0 flex-1 flex-col gap-1">
+	<div class="mt-3 grid grid-cols-1 gap-2">
+		<label class="flex min-w-0 cursor-pointer flex-col gap-1">
 			<span class="font-mono text-[10px] tracking-[0.14em] text-dim uppercase">Statement</span>
-			<input
-				bind:this={input}
-				type="file"
-				accept=".htm,.html,.csv,.txt"
-				onchange={pick}
-				aria-label="MT5 statement file"
-				class="field h-9 w-full px-2 text-[12px] file:mr-2 file:rounded-md file:border-0 file:bg-raised file:px-2 file:py-1 file:font-mono file:text-[11px] file:text-fg"
-			/>
+			<span
+				class="field relative flex h-9 min-w-0 items-center gap-2 px-2 transition focus-within:border-accent/65 focus-within:ring-2 focus-within:ring-accent/16"
+			>
+				<input
+					bind:this={input}
+					type="file"
+					accept=".htm,.html,.csv,.txt"
+					onchange={pick}
+					aria-label="MT5 statement file"
+					class="absolute inset-0 z-10 cursor-pointer opacity-0"
+				/>
+				<span class="btn btn-ghost h-7 shrink-0 gap-1.5 px-2 text-[11px]">
+					<FileUp size={12} strokeWidth={2.2} aria-hidden="true" />
+					Choose file
+				</span>
+				<span
+					class="min-w-0 truncate font-mono text-[11px] {file ? 'text-fg' : 'text-dim'}"
+					title={file?.name ?? 'HTML report or CSV export'}
+				>
+					{file?.name ?? 'HTML or CSV'}
+				</span>
+			</span>
 		</label>
-		<label class="flex w-full flex-col gap-1 sm:w-52">
-			<span class="font-mono text-[10px] tracking-[0.14em] text-dim uppercase">Account</span>
-			<select bind:value={accountId} class="field h-9 px-2 text-[12px]" aria-label="Import account">
-				<option value="">From the statement</option>
-				{#each $accounts as a (a.id)}
-					<option value={String(a.id)}>@{a.alias}</option>
-				{/each}
-			</select>
-		</label>
-		<button
-			type="button"
-			onclick={() => void run()}
-			disabled={!file || busy}
-			class="btn btn-primary h-9 shrink-0 px-4 text-[13px] disabled:opacity-50"
-		>
-			<Upload size={14} strokeWidth={2.2} aria-hidden="true" />
-			{busy ? 'Importing…' : 'Import'}
-		</button>
+		<div class="grid grid-cols-[minmax(0,1fr)_auto] items-end gap-2">
+			<label class="flex min-w-0 flex-col gap-1">
+				<span class="font-mono text-[10px] tracking-[0.14em] text-dim uppercase">Account</span>
+				<select bind:value={accountId} class="field h-9 px-2 text-[12px]" aria-label="Import account">
+					<option value="">From the statement</option>
+					{#each $accounts as a (a.id)}
+						<option value={String(a.id)}>@{a.alias}</option>
+					{/each}
+				</select>
+			</label>
+			<button
+				type="button"
+				onclick={() => void run()}
+				disabled={!file || busy}
+				class="btn btn-primary h-9 shrink-0 px-4 text-[13px] disabled:opacity-50"
+			>
+				<Upload size={14} strokeWidth={2.2} aria-hidden="true" />
+				{busy ? 'Importing…' : 'Import'}
+			</button>
+		</div>
 	</div>
 
 	{#if busy}
