@@ -741,6 +741,7 @@ export const api = {
 	listTags: () => req<TagSummaryDto[]>('/api/tags'),
 	patchTag: (id: number, patch: { name?: string; category?: string }) =>
 		req<TagDto>(`/api/tags/${id}`, json({ method: 'PATCH', body: JSON.stringify(patch) })),
+	deleteTag: (id: number) => req<void>(`/api/tags/${id}`, { method: 'DELETE' }),
 	mergeTags: (source_id: number, target_id: number) =>
 		req<{ merged: string; into: string; trades: number; tag: TagDto }>(
 			'/api/tags/merge',
