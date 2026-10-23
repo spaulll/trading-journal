@@ -8,6 +8,7 @@
 	import { toasts } from '$lib/stores/toast';
 	import { BE_TOL, fmtDate, fmtMoney, fmtR, pnlTone, rTone, toneText, usdNet } from '$lib/utils/format';
 	import { DRAWER, FADE } from '$lib/utils/transitions';
+	import { dialogEscape } from '$lib/utils/dialogs';
 
 
 	const day = $derived($selectedDay);
@@ -187,10 +188,6 @@
 		if (e.target === e.currentTarget) void flushAndClose();
 	}
 
-	function onKey(e: KeyboardEvent): void {
-		if (e.key === 'Escape') void flushAndClose();
-	}
-
 	/** Flush a pending day-note autosave, then close the panel. */
 	async function flushAndClose(): Promise<void> {
 		if (noteTimer) {
@@ -314,13 +311,12 @@
 	}
 </script>
 
-<svelte:window onkeydown={onKey} />
-
 {#if day}
+	<!-- svelte-ignore a11y_click_events_have_key_events -->
 	<div
 		transition:fade={FADE}
 		onclick={onBackdrop}
-		onkeydown={onKey}
+		use:dialogEscape={() => void flushAndClose()}
 		tabindex={-1}
 		class="fixed inset-0 z-50 bg-base/75 backdrop-blur-[3px]"
 		role="dialog"
