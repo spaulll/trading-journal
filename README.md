@@ -13,7 +13,7 @@ Log trades in one line of chat, attach chart screenshots automatically, and revi
 ![Immich](https://img.shields.io/badge/Immich-4250AF?style=flat-square&logo=immich&logoColor=white)
 ![Telegram](https://img.shields.io/badge/Telegram_Bot-26A5E4?style=flat-square&logo=telegram&logoColor=white)
 
-[Highlights](#-highlights) · [Features](#-features) · [Quickstart](#-quickstart) · [Configuration](#%EF%B8%8F-configuration) · [Telegram syntax](#-telegram-syntax) · [Data rules](#-data-rules)
+[Highlights](#-highlights) · [Features](#-features) · [Quickstart](#-quickstart) · [Configuration](#%EF%B8%8F-configuration) · [Telegram syntax](#-telegram-syntax) · [Data rules](#-data-rules) · [API](#-api)
 
 </div>
 
@@ -86,6 +86,12 @@ See [Telegram syntax](#-telegram-syntax).
 - Nightly EOD recap prompt; replying to it saves your journal review
 - Broker-clock calibration so `MT5` timestamps resolve to UTC
 
+### Accessibility
+- Keyboard-complete dialogs: Tab stays inside, Escape closes only the topmost layer, and focus returns to the trigger
+- `/` focuses ledger search; Space or Enter opens ledger rows and trade cards
+- Focusable resize handles respond to Left/Right arrows (Shift for a larger step) and Home, and expose their value through ARIA
+- Named search fields and polite, atomic autosave announcements
+
 ---
 
 ## ⚡ Quickstart
@@ -151,24 +157,37 @@ Browsers fetch the API directly, so to use the app from other devices on your ne
 
 ### Backend (`backend/.env`)
 
+Copy `backend/.env.example` and fill in secrets.
+
 | Key | Purpose |
 |---|---|
-| `DATABASE_URL` | Database location, e.g. `sqlite:///<path>/journal.db` |
-| `TG_BOT_TOKEN` | Telegram bot token |
+| `APP_ENV` | Deployment label (`development` / `production`); informational |
+| `DATABASE_URL` | SQLite URL, e.g. `sqlite:////opt/trading-journal/backend/journal.db` |
+| `PORT` | API port |
+| `CORS_ORIGINS` | Comma-separated extra browser origins for LAN access |
+| `TG_BOT_TOKEN` | Telegram bot token; the bot is disabled when empty |
 | `TG_ALLOWED_USER_ID` | Allowlisted Telegram user (**fail-closed** without it) |
+| `TG_BOT_CSV_PATH` | Legacy CSV path for the one-shot history importer only |
 | `IMMICH_BASE_URL` | Your Immich server URL |
 | `IMMICH_API_KEY` | Immich API key (**server-side only**) |
-| `PORT` | API port |
-| `MAX_DAILY_LOSS` / `MAX_DAILY_TRADES` | Guardrail caps |
+| `MAX_DAILY_LOSS` / `MAX_DAILY_TRADES` | Guardrail caps checked when a trade opens |
 | `STALE_TRADE_HOURS` | Hours before a stale-trade nudge |
 | `EOD_PROMPT_HOUR` / `EOD_PROMPT_MINUTE` / `EOD_TZ` | EOD prompt timing (tradeless days are skipped) |
-| `CORS_ORIGINS` | Extra browser origins for LAN access |
+| `WEEKLY_REVIEW_DOW` / `WEEKLY_REVIEW_HOUR` / `WEEKLY_REVIEW_MINUTE` | Weekly review schedule in `EOD_TZ`; `mon` = Monday |
+| `MIN_SAMPLE_SIZE` | Closed trades a setup/tag needs before it is ranked |
+| `FX_BASE_CURRENCY` | Currency for account balances and analytics totals |
+| `FX_RATE_SOURCE` | Label stored on manually entered FX rates |
+| `LLM_BASE_URL` / `LLM_API_KEY` / `LLM_MODEL` | OpenAI-compatible endpoint for weekend-review summaries (**API key server-side only**) |
+| `LLM_MAX_TOKENS` / `LLM_REASONING_EFFORT` | Output budget and reasoning effort for reasoning-capable models |
+| `LLM_TIMEOUT_S` / `LLM_RETRIES` | Per-request timeout and retries for rate limits or empty/truncated answers |
 
-### Frontend (`frontend/.env`)
+### Frontend (`frontend/.env` and runtime)
 
 | Key | Purpose |
 |---|---|
 | `PUBLIC_API_BASE` | Browser-reachable backend URL |
+| `PORT` | adapter-node listen port (default `3000`) |
+| `ORIGIN` | Public page origin used by SvelteKit for form/CSRF checks |
 
 ---
 
@@ -198,6 +217,29 @@ past buy gold, 0.1, 4000, 3990, exit: 4015, pnl: 150, date: 2026-09-20 14:30
 - **R-multiple** recomputes on close, edit, and backfill, against the risk actually taken — a trailed stop changes the R.
 - **Closes without gross** fall back to a price-based estimate for registered symbols, otherwise stay `null`.
 - **Pagination:** the trades list is paginated (`page` / `page_size`, max 5000); the frontend fetches all pages for full-set stats.
+
+---
+
+## 🔌 API
+
+FastAPI publishes the live schema at `/docs` (Swagger UI) and `/openapi.json`; every application route is under `/api`. This table is a route map — use `/docs` for request bodies, query parameters, and response schemas.
+
+| Area | Routes |
+|---|---|
+| Health | `GET /api/health` |
+| Trades | `GET /api/trades`; `POST /api/trades/open`; `POST /api/trades/backfill` (batch, up to 500 records); `POST /api/trades/bulk-account`; `GET /api/trades/export`; `GET /api/trades/ids`; `POST /api/trades/import/mt5`; `GET /api/trades/imports`; `POST /api/trades/repair/unpriced`; `GET/PATCH/DELETE /api/trades/{trade_id}`; `POST /api/trades/{trade_id}/close`; `POST /api/trades/{trade_id}/tsl`; `POST /api/trades/{trade_id}/screenshots` |
+| Accounts | `GET/POST /api/accounts`; `GET/PATCH/DELETE /api/accounts/{account_id}`; `GET /api/accounts/{account_id}/prop-status`; `GET /api/accounts/{account_id}/rules`; `POST /api/accounts/{account_id}/rules/{kind}/check`; `GET /api/accounts/{account_id}/timeline` |
+| Symbols | `GET/POST /api/symbols`; `GET /api/symbols/preview`; `PATCH /api/symbols/{spec_id}` |
+| FX | `GET/POST /api/fx-rates`; `GET /api/fx-rates/effective`; `GET /api/fx-rates/pivot` |
+| Tags | `GET /api/tags`; `POST /api/tags/merge`; `PATCH/DELETE /api/tags/{tag_id}` |
+| Screenshots | `GET /api/screenshots/{asset_id}/thumbnail`; `GET /api/screenshots/{asset_id}/full`; `PATCH /api/screenshots/{screenshot_id}` |
+| Analytics | All `GET` under `/api/analytics/`: `summary`, `equity-curve`, `drawdown`, `r-distribution`, `tag-performance`, `calendar`, `monthly-calendar`, `kpi-dashboard`, `activity-and-streaks`, `long-short-stats`, `radar-profiles`, `symbol-performance`, `setup-confidence`, `setup-matrix`, `risk-of-ruin` |
+| Settings | `GET /api/settings/broker-offset`; `GET/PUT /api/settings/trading-day` |
+| Daily notes | `GET /api/daily-notes`; `GET/PUT/DELETE /api/daily-notes/{day}`; `GET /api/daily-notes/{day}/adherence` |
+| Insights | `GET /api/insights/reports`; `DELETE /api/insights/reports/{report_id}`; `POST /api/insights/weekend-review` |
+| Telegram | `GET /api/telegram/commands` |
+
+The bot is the live ingestion path; `POST /api/trades/sync-bot` was removed in v2. Historical data goes through `python -m app.services.migrate_csv` (one-shot) or `POST /api/trades/backfill`.
 
 ---
 
