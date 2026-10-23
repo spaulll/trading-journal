@@ -15,6 +15,11 @@ const FOCUSABLE_SELECTOR = [
 const layers: DialogLayer[] = [];
 let listening = false;
 
+/** True while any dialog layer is open; global shortcuts should stand down. */
+export function hasOpenDialog(): boolean {
+	return layers.length > 0;
+}
+
 function focusableElements(element: HTMLElement): HTMLElement[] {
 	return Array.from(element.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)).filter(
 		(candidate) =>
