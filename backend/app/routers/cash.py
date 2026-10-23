@@ -25,6 +25,9 @@ from app.models import (
     CashEntryCreate,
     CashEntryRead,
     CashEntryUpdate,
+    CashFirmSummary,
+    CashSummary,
+    cash_direction,
 )
 from app.services.fx import convert_amount, normalize_currency, reporting_currency
 
@@ -100,14 +103,10 @@ def to_cash_read(entry: CashEntry, session: Session) -> CashEntryRead:
     return CashEntryRead(**data)
 
 
-@router.get("", response_model=list[CashEntryRead])
-def list_cash(
-    firm: Optional[str] = Query(default=None),
-    kind: Optional[str] = Query(default=None),
-    year: Optional[int] = Query(default=None, ge=1900, le=2200),
-    session: Session = Depends(get_session),
+def _filtered_cash(
+    firm: Optional[str], kind: Optional[str], year: Optional[int]
 ):
-    """Newest movement first, optionally narrowed to a firm/kind/year."""
+    """The shared filter used by the table and the totals."""
     stmt = select(CashEntry)
     firm_filter = (firm or "").strip()
     if firm_filter:
@@ -120,9 +119,98 @@ def list_cash(
             CashEntry.occurred_on >= date(year, 1, 1),
             CashEntry.occurred_on < date(year + 1, 1, 1),
         )
-    stmt = stmt.order_by(CashEntry.occurred_on.desc(), CashEntry.id.desc())
+    return stmt
+
+
+@router.get("", response_model=list[CashEntryRead])
+def list_cash(
+    firm: Optional[str] = Query(default=None),
+    kind: Optional[str] = Query(default=None),
+    year: Optional[int] = Query(default=None, ge=1900, le=2200),
+    session: Session = Depends(get_session),
+):
+    """Newest movement first, optionally narrowed to a firm/kind/year."""
+    stmt = _filtered_cash(firm, kind, year).order_by(
+        CashEntry.occurred_on.desc(), CashEntry.id.desc()
+    )
     entries = session.exec(stmt).all()
     return [to_cash_read(entry, session) for entry in entries]
+
+
+@router.get("/summary", response_model=CashSummary)
+def cash_summary(
+    firm: Optional[str] = Query(default=None),
+    kind: Optional[str] = Query(default=None),
+    year: Optional[int] = Query(default=None, ge=1900, le=2200),
+    session: Session = Depends(get_session),
+):
+    """Spent/received/net/ROI in the reporting currency, with per-firm nets.
+
+    Unpriced rows remain visible in the table and in ``unpriced``/``entries``;
+    they are never added to a money total as zero.
+    """
+    entries = session.exec(_filtered_cash(firm, kind, year)).all()
+    target = reporting_currency()
+    spent = 0.0
+    received = 0.0
+    unpriced = 0
+    buckets: dict[str, dict[str, float | int]] = {}
+
+    for entry in entries:
+        bucket = buckets.setdefault(
+            entry.firm,
+            {"spent": 0.0, "received": 0.0, "entries": 0, "unpriced": 0},
+        )
+        bucket["entries"] = int(bucket["entries"]) + 1
+        conversion = convert_amount(
+            session,
+            entry.amount,
+            entry.currency,
+            target,
+            entry.occurred_on,
+        )
+        if conversion.missing or conversion.amount is None:
+            bucket["unpriced"] = int(bucket["unpriced"]) + 1
+            unpriced += 1
+            continue
+        amount = float(conversion.amount)
+        if cash_direction(entry.kind) > 0:
+            received += amount
+            bucket["received"] = float(bucket["received"]) + amount
+        else:
+            spent += amount
+            bucket["spent"] = float(bucket["spent"]) + amount
+
+    def roi(received_total: float, spent_total: float) -> Optional[float]:
+        if spent_total <= 0:
+            return None
+        return round(received_total / spent_total, 2)
+
+    by_firm = [
+        CashFirmSummary(
+            firm=firm_name,
+            spent=round(float(bucket["spent"]), 2),
+            received=round(float(bucket["received"]), 2),
+            net=round(float(bucket["received"]) - float(bucket["spent"]), 2),
+            roi=roi(float(bucket["received"]), float(bucket["spent"])),
+            entries=int(bucket["entries"]),
+            unpriced=int(bucket["unpriced"]),
+        )
+        for firm_name, bucket in buckets.items()
+    ]
+    by_firm.sort(key=lambda row: (-row.net, row.firm.lower()))
+
+    spent = round(spent, 2)
+    received = round(received, 2)
+    return CashSummary(
+        currency=target,
+        spent=spent,
+        received=received,
+        net=round(received - spent, 2),
+        roi=roi(received, spent),
+        by_firm=by_firm,
+        unpriced=unpriced,
+    )
 
 
 @router.post("", response_model=CashEntryRead, status_code=201)
