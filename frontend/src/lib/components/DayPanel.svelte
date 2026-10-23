@@ -78,6 +78,7 @@
 	const NOTE_AUTOSAVE_MS = 900;
 
 	let resizing = $state(false);
+	let gripFocused = $state(false);
 	// Custom drawer width in px (null = default `max-w-md`, which is also the minimum).
 	let drawerW = $state<number | null>(null);
 
@@ -121,15 +122,37 @@
 		drawerW = w <= min + 4 ? null : w;
 	}
 
-	function onGripUp(): void {
-		if (!resizing) return;
-		resizing = false;
+	function saveDrawerWidth(): void {
 		try {
 			if (drawerW === null) localStorage.removeItem(DRAWER_WIDTH_KEY);
 			else localStorage.setItem(DRAWER_WIDTH_KEY, String(drawerW));
 		} catch {
 			// ignore
 		}
+	}
+
+	function onGripUp(): void {
+		if (!resizing) return;
+		resizing = false;
+		saveDrawerWidth();
+	}
+
+	function onGripKey(e: KeyboardEvent): void {
+		if (e.key === 'Home') {
+			e.preventDefault();
+			resetDrawerWidth();
+			return;
+		}
+		if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+		e.preventDefault();
+		const vw = window.innerWidth;
+		const min = Math.min(DRAWER_MIN_W, vw);
+		const max = Math.min(DRAWER_MAX_W, vw);
+		const step = e.shiftKey ? 64 : 16;
+		const current = Math.min(drawerW ?? min, max);
+		const next = Math.min(Math.max(current + (e.key === 'ArrowLeft' ? step : -step), min), max);
+		drawerW = next <= min + 4 ? null : next;
+		saveDrawerWidth();
 	}
 
 	function noteStamp(): string {
@@ -324,6 +347,7 @@
 		aria-label="Day detail"
 	>
 		<div
+			id="day-detail-drawer"
 			transition:fly={DRAWER}
 			style:width={drawerW === null ? undefined : `${drawerW}px`}
 			style:max-width={drawerW === null ? undefined : '100dvw'}
@@ -331,12 +355,23 @@
 				? 'select-none'
 				: ''}"
 		>
-			<!-- Resize grip (desktop only) — double-click resets to default -->
+			<!-- Resize grip (desktop only) — keyboard arrows resize, double-click resets. -->
+			<!-- A focusable separator with aria-valuenow is an interactive splitter. -->
+			<!-- svelte-ignore a11y_no_noninteractive_tabindex, a11y_no_noninteractive_element_interactions -->
 			<div
 				role="separator"
 				aria-orientation="vertical"
-				aria-label="Resize panel"
-				title="Drag to resize · double-click to reset"
+				aria-label="Resize day detail panel"
+				aria-controls="day-detail-drawer"
+				aria-valuemin={DRAWER_MIN_W}
+				aria-valuemax={DRAWER_MAX_W}
+				aria-valuenow={drawerW ?? DRAWER_MIN_W}
+				aria-valuetext={`${drawerW ?? DRAWER_MIN_W} pixels wide`}
+				tabindex={0}
+				title="Drag or use arrow keys to resize · Home or double-click resets"
+				onfocus={() => (gripFocused = true)}
+				onblur={() => (gripFocused = false)}
+				onkeydown={onGripKey}
 				onpointerdown={onGripDown}
 				onpointermove={onGripMove}
 				onpointerup={onGripUp}
@@ -345,7 +380,7 @@
 				class="absolute inset-y-0 -left-1.5 z-10 hidden w-3 cursor-ew-resize touch-none sm:block"
 			>
 				<span
-					class="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 transition-opacity duration-150 {resizing
+					class="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 transition-opacity duration-150 {resizing || gripFocused
 						? 'bg-accent opacity-100'
 						: 'bg-accent opacity-0 group-hover:opacity-60'}"
 					aria-hidden="true"
