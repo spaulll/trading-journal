@@ -31,6 +31,13 @@ def _tag_id(client, name: str) -> int:
     raise AssertionError(f"no tag named {name}")
 
 
+def _trade_id(client, ticket: str) -> int:
+    for row in client.get("/api/trades").json()["items"]:
+        if row["ticket"] == ticket:
+            return int(row["id"])
+    raise AssertionError(f"no trade with ticket {ticket}")
+
+
 def test_the_tag_list_carries_the_counts_and_the_performance(client):
     client.post("/api/trades/backfill", json=_record(ticket="TAGGED-1", tags=["#fvg"]))
     client.post("/api/trades/backfill", json=_record(ticket="TAGGED-2", tags=["#fvg"]))
@@ -126,3 +133,52 @@ def test_a_merge_of_a_missing_tag_is_not_found(client):
 
     response = client.post("/api/tags/merge", json={"source_id": fvg, "target_id": 999999})
     assert response.status_code == 404
+
+
+def test_malformed_tokens_never_become_tags(client):
+    """Pasted prices, times and a lone `!` are not a taxonomy."""
+    client.post(
+        "/api/trades/backfill",
+        json=_record(
+            ticket="JUNK-1",
+            tags=["#456.63", "#:04", "#!", "!", "456.63", ":04"],
+        ),
+    )
+
+    assert client.get("/api/tags").json() == []
+
+
+def test_a_rename_rejects_a_malformed_name(client):
+    client.post("/api/trades/backfill", json=_record(ticket="TAGGED-1", tags=["#fvg"]))
+    fvg = _tag_id(client, "fvg")
+
+    for bad_name in ("456.63", ":04", "!", "#!"):
+        response = client.patch(f"/api/tags/{fvg}", json={"name": bad_name})
+        assert response.status_code == 422, bad_name
+
+
+def test_a_used_tag_cannot_be_deleted(client):
+    client.post("/api/trades/backfill", json=_record(ticket="TAGGED-1", tags=["#fvg"]))
+    fvg = _tag_id(client, "fvg")
+
+    response = client.delete(f"/api/tags/{fvg}")
+    assert response.status_code == 409
+    assert "merge" in response.json()["detail"]
+    assert "fvg" in [tag["name"] for tag in client.get("/api/tags").json()]
+
+
+def test_an_unused_tag_can_be_deleted(client):
+    client.post(
+        "/api/trades/backfill",
+        json=_record(ticket="TAGGED-1", tags=["#fvg", "#temporary"]),
+    )
+    trade_id = _trade_id(client, "TAGGED-1")
+    temporary = _tag_id(client, "temporary")
+
+    # Replacing the trade's tags leaves the old tag row behind — exactly the
+    # orphan the cleanup action exists for.
+    client.patch(f"/api/trades/{trade_id}", json={"tags": ["#fvg"]})
+    response = client.delete(f"/api/tags/{temporary}")
+
+    assert response.status_code == 204
+    assert "temporary" not in [tag["name"] for tag in client.get("/api/tags").json()]

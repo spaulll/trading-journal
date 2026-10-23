@@ -21,8 +21,7 @@ import pandas as pd
 from sqlmodel import Session, select
 
 from app.services.symbol_registry import compute_r_multiple
-
-TAG_RE = re.compile(r"[#!][\w\-/]+")
+from app.services.tag_names import normalize_tag_name
 
 
 def get_csv_path() -> str:
@@ -33,16 +32,27 @@ def parse_tags(raw: object) -> list[tuple[str, str]]:
     """Split a tags cell into (name, category) pairs.
 
     `#fvg` -> ("fvg", "setup"), `!early` -> ("early", "mistake").
-    Bare words without a prefix default to setup.
+    Bare words without a prefix default to setup, which keeps legacy CSV
+    imports working. Every token goes through the canonical name rules, so a
+    pasted value/time fragment or a lone `!` is ignored instead of becoming a
+    permanent tag.
     """
     if raw is None or (isinstance(raw, float) and math.isnan(raw)):
         return []
-    text = str(raw)
-    found = [(m[1:].lower(), "setup" if m[0] == "#" else "mistake") for m in TAG_RE.findall(text)]
-    if found:
-        return found
-    bare = [w.strip().lower() for w in text.replace(",", " ").split() if w.strip()]
-    return [(w, "setup") for w in bare]
+    pairs: list[tuple[str, str]] = []
+    seen: set[tuple[str, str]] = set()
+    for token in re.split(r"[\s,]+", str(raw).strip()):
+        if not token:
+            continue
+        prefix = token[0] if token[0] in "#!" else "#"
+        name = normalize_tag_name(token)
+        if name is None:
+            continue
+        pair = (name, "setup" if prefix == "#" else "mistake")
+        if pair not in seen:
+            seen.add(pair)
+            pairs.append(pair)
+    return pairs
 
 
 def normalize_tag_list(tokens: Optional[list[str]]) -> list[tuple[str, str]]:
