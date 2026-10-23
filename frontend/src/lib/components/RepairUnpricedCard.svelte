@@ -57,19 +57,19 @@
 	}
 </script>
 
-<section aria-label="Ledger repair" class="card rise mb-4 p-5">
-	<div class="flex flex-wrap items-center gap-2">
+<section aria-label="Ledger repair" class="card rise flex h-full flex-col p-4">
+	<div class="flex flex-wrap items-center gap-x-2 gap-y-1">
 		<Wrench size={16} strokeWidth={2} aria-hidden="true" class="text-accent" />
 		<h2 class="text-[15px] font-semibold text-fg">Ledger repair</h2>
-		<span class="num text-[12px] text-dim">Missing gross P&amp;L · priced from the symbol registry</span>
+		<span class="num text-[11px] text-dim">Missing gross P&amp;L · symbol registry</span>
 	</div>
 
-	<p class="mt-1.5 text-[12px] leading-relaxed text-mut">
-		Closed trades with no gross are priced from their contract. Rows with no exit price are skipped, a net
-		you entered is kept exactly, and the check is a dry run until you apply it.
+	<p class="mt-1.5 text-[12px] leading-snug text-mut">
+		Reprices closed trades missing gross from the symbol registry. Dry run until you apply.
 	</p>
+	<p class="num mt-1 text-[10px] text-dim">No exit price → skipped · entered net → kept</p>
 
-	<div class="mt-3 flex flex-wrap items-center gap-2">
+	<div class="mt-3 flex flex-wrap items-center gap-2 xl:mt-auto">
 		<button type="button" onclick={() => void check()} disabled={busy} class="btn h-9 px-4 text-[13px] disabled:opacity-50">
 			{checking ? 'Checking…' : result ? 'Check again' : 'Check unpriced trades'}
 		</button>

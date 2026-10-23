@@ -287,8 +287,10 @@
 	{/if}
 </section>
 
-<Mt5ImportCard />
-<RepairUnpricedCard onrepaired={() => void refresh()} />
+<div class="mb-4 grid grid-cols-1 gap-4 xl:grid-cols-2">
+	<Mt5ImportCard />
+	<RepairUnpricedCard onrepaired={() => void refresh()} />
+</div>
 
 {#if loading}
 	<div class="flex flex-col gap-4">
