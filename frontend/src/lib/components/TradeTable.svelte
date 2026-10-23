@@ -25,8 +25,8 @@
 	// The filters live in the shared store: the server does the matching, so
 	// the browser only ever holds the rows it is showing. The text inputs
 	// keep their own value so a keystroke does not fire a request per letter.
-	let queryInput = $state('');
-	let tagInput = $state('');
+	let queryInput = $state(get(ledgerFilters).query);
+	let tagInput = $state(get(ledgerFilters).tag);
 
 	onMount(() => {
 		void loadAccounts();
@@ -47,7 +47,13 @@
 		const timer = setTimeout(() => {
 			const current = get(ledgerFilters);
 			if (current.query === query && current.tag === tag) return;
-			setLedgerFilters({ query, tag });
+			// Editing the tag box turns a drill-down's exact match back into
+			// a search; a query-only edit leaves the selected tag exact.
+			setLedgerFilters({
+				query,
+				tag,
+				...(current.tag !== tag ? { tagExact: false } : {})
+			});
 		}, 250);
 		return () => clearTimeout(timer);
 	});

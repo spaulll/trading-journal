@@ -41,6 +41,9 @@ class TradeFilters:
     # Free text: a substring of the symbol or the ticket.
     query: Optional[str] = None
     tag: Optional[str] = None
+    # A drill-down wants the tag itself; the free-text tag box keeps its
+    # substring search.
+    tag_exact: bool = False
     # Open-day bounds.
     date_from: Optional[datetime] = None
     date_to: Optional[datetime] = None
@@ -83,7 +86,15 @@ def apply_trade_filters(statement, filters: TradeFilters):  # noqa: ANN001 — S
                 or_(Trade.symbol.ilike(f"%{text}%"), Trade.ticket.ilike(f"%{text}%"))
             )
     if wanted_tag:
-        statement = statement.where(Tag.name.ilike(f"%{wanted_tag}%"))
+        if filters.tag_exact:
+            # A drill-down means the trades that carry this tag, not every
+            # tag that merely contains its name: `#ema` must not pull in
+            # `#ema_reclaim` and make the row count disagree with the tag page.
+            statement = statement.where(func.lower(Tag.name) == wanted_tag)
+        else:
+            # The ledger's tag box is a search box: a partial name finds the
+            # tags that contain it.
+            statement = statement.where(Tag.name.ilike(f"%{wanted_tag}%"))
     if filters.date_from:
         statement = statement.where(Trade.timestamp_open >= filters.date_from)
     if filters.date_to:

@@ -1,5 +1,5 @@
 import { derived, writable } from 'svelte/store';
-import { ledgerAccountScope } from './accounts';
+import { ledgerAccountScope, setLedgerAccountScope } from './accounts';
 
 /** The ledger's filter state — one definition, shared by the table, the summary and the export. */
 export type LedgerStatus = 'ALL' | 'OPEN' | 'CLOSED';
@@ -11,6 +11,8 @@ export interface LedgerFilters {
 	query: string;
 	/** A tag name, with or without the #/! prefix. */
 	tag: string;
+	/** A drill-down asks for this exact tag; the tag box searches by substring. */
+	tagExact: boolean;
 	/** Open-day bounds, YYYY-MM-DD. */
 	dateFrom: string;
 	dateTo: string;
@@ -21,6 +23,7 @@ const INITIAL: LedgerFilters = {
 	status: 'ALL',
 	query: '',
 	tag: '',
+	tagExact: false,
 	dateFrom: '',
 	dateTo: '',
 	sort: 'newest'
@@ -53,7 +56,10 @@ export function buildLedgerQuery(
 	const query = filters.query.trim();
 	if (query) qs.set('q', query);
 	const tag = filters.tag.trim();
-	if (tag) qs.set('tag', tag);
+	if (tag) {
+		qs.set('tag', tag);
+		if (filters.tagExact) qs.set('tag_exact', 'true');
+	}
 	if (account === 'unassigned') qs.set('unassigned', 'true');
 	else if (account) qs.set('account_id', account);
 	if (filters.dateFrom) qs.set('date_from', `${filters.dateFrom}T00:00:00`);
@@ -105,12 +111,16 @@ export function resetLedgerPage(): void {
 /**
  * Open the ledger on one tag.
  *
- * The drill-down from a tag performance bar lands here: the ledger's tag
- * filter takes the name, the page goes back to the top, and the rows on
- * screen are the trades behind the bar.
+ * A drill-down asks for every trade that carries the tag, so it starts from
+ * the unfiltered ledger: a leftover status, search, date range or account
+ * scope would otherwise hide trades behind the tag and contradict the count
+ * the taxonomy page just showed.
  */
 export function drillIntoTag(name: string): void {
-	setLedgerFilters({ tag: name });
+	const tag = name.trim().replace(/^[#!]+/, '');
+	ledgerFilters.set({ ...INITIAL, tag, tagExact: true });
+	ledgerPage.update(($p) => ({ ...$p, page: 1 }));
+	setLedgerAccountScope('');
 }
 
 /** Back to the unfiltered ledger. */
