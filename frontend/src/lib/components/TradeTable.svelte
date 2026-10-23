@@ -222,6 +222,7 @@
 				type="search"
 				bind:this={searchEl}
 				bind:value={queryInput}
+				aria-label="Search trades by symbol or trade ID"
 				placeholder="Symbol or ID…  ( / )"
 				class="field h-9 pl-8 text-[13px]"
 			/>
@@ -231,7 +232,13 @@
 			<span
 				class="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 font-mono text-xs text-dim"
 				aria-hidden="true">#</span>
-			<input type="search" bind:value={tagInput} placeholder="Tag…" class="field h-9 pl-7 font-mono text-[13px]" />
+			<input
+				type="search"
+				bind:value={tagInput}
+				aria-label="Filter trades by tag"
+				placeholder="Tag…"
+				class="field h-9 pl-7 font-mono text-[13px]"
+			/>
 		</label>
 
 		<label
