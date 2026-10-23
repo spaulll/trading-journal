@@ -17,6 +17,13 @@
 		{ key: 'stop', label: 'Stop', get: (t: TradeDto) => t.current_sl ?? t.initial_sl },
 		{ key: 'target', label: 'Target', get: (t: TradeDto) => t.tp }
 	] as const;
+
+	function activateCard(event: KeyboardEvent, id: number): void {
+		if (event.target !== event.currentTarget || event.repeat) return;
+		if (event.key !== 'Enter' && event.key !== ' ') return;
+		event.preventDefault();
+		openTrade(id);
+	}
 </script>
 
 <section aria-label="Open positions" class="rise" style="animation-delay: 60ms">
@@ -42,7 +49,7 @@
 					role="button"
 					tabindex={0}
 					onclick={() => openTrade(t.id)}
-					onkeydown={(e) => e.key === 'Enter' && openTrade(t.id)}
+					onkeydown={(e) => activateCard(e, t.id)}
 					class="card card-hover group relative overflow-hidden p-4 text-left focus-visible:outline-none"
 					style="animation: rise 0.6s cubic-bezier(0.22, 1, 0.36, 1) {Math.min(i, 8) * 70}ms backwards;"
 				>

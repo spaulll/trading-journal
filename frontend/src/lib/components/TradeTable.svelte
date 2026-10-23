@@ -183,6 +183,14 @@
 		else selected = new Set(filtered.map((t) => t.id));
 	}
 
+	function activateRow(event: KeyboardEvent, id: number): void {
+		if (event.target !== event.currentTarget || event.repeat) return;
+		if (event.key !== 'Enter' && event.key !== ' ') return;
+		event.preventDefault();
+		if (selectMode) toggleOne(id);
+		else openTrade(id);
+	}
+
 	function clearSelection(): void {
 		selected = new Set();
 	}
@@ -409,7 +417,7 @@
 							role="row"
 							tabindex={0}
 							onclick={() => (selectMode ? toggleOne(t.id) : openTrade(t.id))}
-							onkeydown={(e) => e.key === 'Enter' && (selectMode ? toggleOne(t.id) : openTrade(t.id))}
+							onkeydown={(e) => activateRow(e, t.id)}
 							class="tgrid trow anim-fade cursor-pointer row-line transition-colors duration-200 hover:bg-raised/50 focus-visible:outline-none {selectMode && selected.has(t.id) ? 'bg-accent/10' : ''}"
 							style="animation-delay: {Math.min(i, 29) * 20}ms"
 						>
@@ -536,7 +544,7 @@
 					role="button"
 					tabindex={0}
 					onclick={() => (selectMode ? toggleOne(t.id) : openTrade(t.id))}
-					onkeydown={(e) => e.key === 'Enter' && (selectMode ? toggleOne(t.id) : openTrade(t.id))}
+					onkeydown={(e) => activateRow(e, t.id)}
 					class="card card-hover rise relative overflow-hidden p-3.5 text-left focus-visible:outline-none active:scale-[0.99] {selectMode && selected.has(t.id) ? 'border-accent/60' : ''}"
 					style="animation-delay: {Math.min(i, 14) * 40}ms"
 				>
