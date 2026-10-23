@@ -820,8 +820,13 @@
 					</label>
 				</div>
 				<div class="mt-2 flex items-center justify-between gap-2">
-					<span class="num text-[11px] {notesState === 'error' ? 'text-loss' : 'text-dim'}" aria-live="polite">
-						{#if savingNotes || notesState === 'saving'}Saving…{:else if notesState === 'saved'}{notesHint || 'Saved'}{:else if notesState === 'error'}Autosave failed — {notesHint}{:else if dirty}Unsaved changes…{/if}
+					<span
+						class="num text-[11px] {notesState === 'error' ? 'text-loss' : 'text-dim'}"
+						role="status"
+						aria-live="polite"
+						aria-atomic="true"
+					>
+						{#if savingNotes || notesState === 'saving'}Saving notes…{:else if notesState === 'saved'}{notesHint || 'Saved'}{:else if notesState === 'error'}Autosave failed — {notesHint}{:else if dirty}Unsaved changes…{/if}
 					</span>
 					<button
 						type="button"
@@ -854,11 +859,16 @@
 							{savingTags ? 'Saving…' : 'Apply'}
 						</button>
 					</span>
-					{#if savingTags || tagsState !== 'idle'}
-						<span class="num text-[11px] {tagsState === 'error' ? 'text-loss' : 'text-dim'}" aria-live="polite">
-							{#if savingTags || tagsState === 'saving'}Saving tags…{:else if tagsState === 'saved'}{tagsHint || 'Saved'}{:else if tagsState === 'error'}Autosave failed — {tagsHint}{/if}
-						</span>
-					{/if}
+					<span
+						class="num text-[11px] {tagsState === 'error'
+							? 'text-loss'
+							: 'text-dim'} {savingTags || tagsState !== 'idle' ? '' : 'sr-only'}"
+						role="status"
+						aria-live="polite"
+						aria-atomic="true"
+					>
+						{#if savingTags || tagsState === 'saving'}Saving tags…{:else if tagsState === 'saved'}{tagsHint || 'Saved'}{:else if tagsState === 'error'}Autosave failed — {tagsHint}{/if}
+					</span>
 				</label>
 
 				<!-- Upload zone -->

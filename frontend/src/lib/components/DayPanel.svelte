@@ -547,14 +547,24 @@
 									{confirmDelete ? 'Confirm delete?' : 'Delete note'}
 								</button>
 							{:else}
-								<span class="num text-[11px] {noteState === 'error' ? 'text-loss' : 'text-dim'}" aria-live="polite">
-									{#if saving || noteState === 'saving'}Saving…{:else if noteState === 'saved'}{noteHint || 'Saved'}{:else if noteState === 'error'}Autosave failed — {noteHint}{:else if dirty}Unsaved changes…{/if}
+								<span
+									class="num text-[11px] {noteState === 'error' ? 'text-loss' : 'text-dim'}"
+									role="status"
+									aria-live="polite"
+									aria-atomic="true"
+								>
+									{#if saving || noteState === 'saving'}Saving day note…{:else if noteState === 'saved'}{noteHint || 'Saved'}{:else if noteState === 'error'}Autosave failed — {noteHint}{:else if dirty}Unsaved changes…{/if}
 								</span>
 							{/if}
 							<span class="flex shrink-0 items-center gap-2">
 								{#if note}
-									<span class="num text-[11px] {noteState === 'error' ? 'text-loss' : 'text-dim'}" aria-live="polite">
-										{#if saving || noteState === 'saving'}Saving…{:else if noteState === 'saved'}{noteHint || 'Saved'}{:else if noteState === 'error'}Autosave failed — {noteHint}{:else if dirty}Unsaved changes…{/if}
+									<span
+										class="num text-[11px] {noteState === 'error' ? 'text-loss' : 'text-dim'}"
+										role="status"
+										aria-live="polite"
+										aria-atomic="true"
+									>
+										{#if saving || noteState === 'saving'}Saving day note…{:else if noteState === 'saved'}{noteHint || 'Saved'}{:else if noteState === 'error'}Autosave failed — {noteHint}{:else if dirty}Unsaved changes…{/if}
 									</span>
 								{/if}
 								<button
