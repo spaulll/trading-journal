@@ -18,11 +18,23 @@ module.exports = {
 				mono: ['Geist Mono', 'ui-monospace', 'SFMono-Regular', 'Menlo', 'monospace'],
 				display: ['Instrument Serif', 'Iowan Old Style', 'Georgia', 'serif']
 			},
+			fontSize: {
+				'2xs': ['var(--text-2xs)', { lineHeight: '1.35' }],
+				xs: ['var(--text-xs)', { lineHeight: '1.4' }],
+				sm: ['var(--text-sm)', { lineHeight: '1.45' }],
+				base: ['var(--text-base)', { lineHeight: '1.55' }],
+				lg: ['var(--text-lg)', { lineHeight: '1.5' }],
+				xl: ['var(--text-xl)', { lineHeight: '1.45' }],
+				'2xl': ['var(--text-2xl)', { lineHeight: '1.35' }],
+				'3xl': ['var(--text-3xl)', { lineHeight: '1.25' }],
+				display: ['var(--text-display)', { lineHeight: '1.1' }],
+			},
 			colors: {
 				/* Surfaces */
 				base: 'rgb(var(--c-bg) / <alpha-value>)',
 				panel: 'rgb(var(--c-panel) / <alpha-value>)',
 				raised: 'rgb(var(--c-raised) / <alpha-value>)',
+				overlay: 'rgb(var(--c-overlay) / <alpha-value>)',
 				/* Hairlines (fixed per-theme alpha) */
 				line: 'rgb(var(--c-line))',
 				edge: 'rgb(var(--c-edge))',
