@@ -11,6 +11,7 @@
 	import { loadBrokerOffset } from '$lib/stores/broker';
 	import { sidebarCollapsed } from '$lib/stores/ui';
 	import { TAB } from '$lib/utils/transitions';
+import { MOTION } from '$lib/utils/motion-timing';
 	import '../app.css';
 
 	let { children } = $props();
