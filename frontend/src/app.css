@@ -159,7 +159,7 @@ html {
 @layer components {
 	/* ---------- Surfaces ---------- */
 	.card {
-		@apply rounded-2xl border border-line bg-panel shadow-card;
+		@apply rounded-card border border-line bg-panel shadow-card-soft shadow-inset-highlight;
 	}
 	.card-hover {
 		@apply transition-all duration-300 ease-spring;
@@ -192,7 +192,7 @@ html {
 		align-items: center;
 		justify-content: center;
 		gap: 0.5rem;
-		border-radius: 0.75rem;
+		border-radius: 0.625rem;
 		font-weight: 550;
 		letter-spacing: -0.01em;
 		white-space: nowrap;
@@ -269,7 +269,7 @@ html {
 	.btn-icon {
 		display: inline-grid;
 		place-items: center;
-		border-radius: 0.75rem;
+		border-radius: 0.625rem;
 		border: 1px solid rgb(var(--c-line));
 		color: rgb(var(--c-mut));
 		background: rgb(var(--c-raised) / 0.7);
@@ -292,7 +292,7 @@ html {
 		align-items: center;
 		justify-content: center;
 		gap: 0.4rem;
-		border-radius: 0.65rem;
+		border-radius: 0.625rem;
 		font-weight: 500;
 		color: rgb(var(--c-mut));
 		transition:
@@ -322,7 +322,7 @@ html {
 
 	/* ---------- Form controls ---------- */
 	.field {
-		@apply h-10 w-full rounded-xl border border-line bg-raised/70 px-3 text-sm text-fg outline-none transition;
+		@apply h-10 w-full rounded-control border border-line bg-raised/70 px-3 text-sm text-fg outline-none transition;
 		font-variant-numeric: tabular-nums;
 		box-shadow: inset 0 1px 2px rgb(0 0 0 / 0.12);
 	}

@@ -69,10 +69,14 @@ module.exports = {
 				pop: '0 4px 12px rgb(0 0 0 / 0.35), 0 40px 80px -40px rgb(0 0 0 / 0.95)',
 				brass: '0 1px 0 rgb(255 255 255 / 0.22) inset, 0 8px 22px -12px rgb(201 161 73 / 0.75)',
 				hair: 'inset 0 1px 0 rgb(255 255 255 / 0.05)',
-				glow: '0 0 0 1px rgb(201 161 73 / 0.25), 0 12px 40px -18px rgb(201 161 73 / 0.55)'
-			},
+				glow: '0 0 0 1px rgb(201 161 73 / 0.25), 0 12px 40px -18px rgb(201 161 73 / 0.55)',
+				card-soft: '0 1px 2px rgb(0 0 0 / 0.15), 0 2px 6px -4px rgb(0 0 0 / 0.30)',
+				inset-highlight: 'inset 0 1px 0 rgb(255 255 255 / 0.06)'
 			borderRadius: {
-				'4xl': '2rem'
+				'4xl': '2rem',
+				'card': '0.875rem',
+				'control': '0.625rem',
+				'pill': '9999px'
 			},
 			transitionTimingFunction: {
 				spring: 'cubic-bezier(0.22, 1, 0.36, 1)',
