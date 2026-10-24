@@ -100,3 +100,4 @@
 </script>
 
 <div bind:this={wrap} class="h-[260px] w-full"></div>
+<!-- chart enter: fade 400ms; no animated paths (PLAN §2.2) -->
