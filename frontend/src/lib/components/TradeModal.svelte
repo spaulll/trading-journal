@@ -1015,3 +1015,4 @@
 		/>
 	</div>
 {/if}
+<!-- drawer motion: MOTION.dialog.ms = 260ms (PLAN §2.2) -->
