@@ -180,6 +180,7 @@ html {
 		font-family: 'Instrument Serif', 'Iowan Old Style', Georgia, serif;
 		font-weight: 400;
 		letter-spacing: -0.01em;
+		word-spacing: 0.04em;
 	}
 	.num {
 		@apply font-mono tabular-nums;

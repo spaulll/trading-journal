@@ -18,7 +18,7 @@
 		{#if eyebrow}
 			<p class="eyebrow mb-2.5 text-accent">{eyebrow}</p>
 		{/if}
-		<h1 class="display text-[2rem] leading-[1.05] text-fg sm:text-[2.5rem]">{title}</h1>
+		<h1 class="display text-3xl text-fg">{title}</h1>
 		{#if meta}
 			<p class="num mt-2 text-[12.5px] text-mut">{meta}</p>
 		{/if}

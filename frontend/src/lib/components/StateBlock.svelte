@@ -29,7 +29,7 @@
 	>
 		<Icon size={21} strokeWidth={1.7} />
 	</span>
-	<p class="display text-xl text-fg text-balance">{title}</p>
+	<p class="text-xl font-sans text-fg text-balance">{title}</p>
 	<p class="max-w-sm text-sm leading-relaxed text-mut">{body}</p>
 	{#if actionLabel && onAction}
 		<button type="button" onclick={onAction} class="btn btn-primary mt-2 h-10 px-5 text-sm">
