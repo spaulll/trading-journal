@@ -150,3 +150,4 @@
 		{/if}
 	</div>
 </aside>
+/* stagger cap: max 8 items, delay <= STAGGER_DELAY * 8 = 256ms (PLAN §2.2) */
