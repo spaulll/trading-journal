@@ -4,21 +4,28 @@
 	import { checkConnection, connected } from '$lib/stores/connection';
 	import { refreshTrades, syncing } from '$lib/stores/trades';
 	import { theme, toggleTheme } from '$lib/stores/theme';
+
+	const statusLabel = $derived(
+		$connected === null ? 'checking' : $connected ? 'live' : 'offline'
+	);
 </script>
 
 <!-- Tablet / phone chrome. Desktop navigation lives in the Sidebar rail. -->
 <header
-	class="sticky top-0 z-40 border-b border-line bg-base/85 backdrop-blur-xl lg:hidden"
+	class="sticky top-0 z-40 h-14 border-b border-line bg-base/90 backdrop-blur-xl lg:hidden"
 >
-	<div class="flex h-14 w-full items-center gap-3 px-4">
-		<a href="/" class="flex min-w-0 items-center gap-2.5">
+	<div class="flex h-full w-full items-center gap-3 px-4">
+		<a href="/" class="flex min-w-0 items-center gap-2.5" aria-label="Trading Journal home">
 			<Logo size={30} />
-			<span class="display truncate text-[17px] leading-none text-fg">Trading Journal</span>
+			<span class="display truncate text-lg leading-none text-fg">Trading Journal</span>
 		</a>
 
-		<div class="ml-auto flex items-center gap-2">
+		<div class="ml-auto flex shrink-0 items-center gap-1.5">
 			<span
-				class="inline-flex h-8 items-center gap-1.5 rounded-full border border-line bg-raised/70 px-2.5"
+				class="inline-flex h-8 items-center gap-1.5 rounded-full border border-line bg-raised/60 px-2.5"
+				role="status"
+				aria-live="polite"
+				aria-label={`API ${statusLabel}`}
 				title={$connected === null
 					? 'Checking API'
 					: $connected
@@ -33,21 +40,25 @@
 							: 'bg-loss'}"
 					aria-hidden="true"
 				></span>
-				<span class="eyebrow">{$connected === null ? 'check' : $connected ? 'live' : 'off'}</span>
+				<span class="font-mono text-xs tracking-[0.12em] uppercase">{statusLabel}</span>
 			</span>
 
 			<button
 				type="button"
 				onclick={toggleTheme}
-				aria-label="Toggle theme"
+				aria-label={$theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
 				title="Toggle light / dark"
-				class="btn-icon h-9 w-9"
+				class="btn-icon h-10 w-10"
 			>
-				{#if $theme === 'dark'}
-					<Sun size={16} strokeWidth={1.8} aria-hidden="true" />
-				{:else}
-					<Moon size={16} strokeWidth={1.8} aria-hidden="true" />
-				{/if}
+				{#key $theme}
+					<span class="anim-pop inline-flex" style="animation-duration: 0.3s">
+						{#if $theme === 'dark'}
+							<Sun size={16} strokeWidth={1.8} aria-hidden="true" />
+						{:else}
+							<Moon size={16} strokeWidth={1.8} aria-hidden="true" />
+						{/if}
+					</span>
+				{/key}
 			</button>
 
 			<button
@@ -59,7 +70,7 @@
 				disabled={$syncing}
 				aria-label="Refresh trades"
 				title="Reload trades and re-check the API"
-				class="btn btn-primary h-9 w-9"
+				class="btn-icon h-10 w-10"
 			>
 				<RefreshCw
 					size={15}
