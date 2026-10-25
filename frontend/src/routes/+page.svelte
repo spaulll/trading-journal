@@ -99,7 +99,69 @@
 </svelte:head>
 
 {#if $tradesLoading && $trades.length === 0}
-	<PageHead eyebrow="workspace" title="Trades" meta="loading ledger…" />
+	<PageHead eyebrow="workspace" title="Trades" meta="loading ledger…">
+		<div class="skeleton h-10 w-28 rounded-control" aria-hidden="true"></div>
+	</PageHead>
+
+	<section
+		class="mb-7 grid gap-3 md:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]"
+		aria-hidden="true"
+	>
+		<div class="card relative overflow-hidden p-4 sm:p-5 md:p-6">
+			<div class="flex items-start justify-between gap-3">
+				<div class="skeleton h-3 w-24 rounded"></div>
+				<div class="skeleton h-5 w-12 rounded-full"></div>
+			</div>
+			<div class="skeleton mt-3 h-10 w-44 rounded"></div>
+			<div class="skeleton mt-3 h-3 w-28 rounded"></div>
+			<div class="skeleton mt-5 h-1.5 w-full rounded-full"></div>
+			<div class="skeleton mt-3 h-3 w-32 rounded"></div>
+		</div>
+		<div class="card overflow-hidden">
+			<div class="grid grid-cols-3 divide-x divide-line md:grid-cols-1 md:divide-x-0 md:divide-y">
+				{#each Array(3) as _, i (i)}
+					<div class="px-3 py-3.5 sm:px-4 md:px-5 md:py-2.5">
+						<div class="skeleton h-2.5 w-16 rounded"></div>
+						<div class="skeleton mt-2 h-5 w-20 rounded"></div>
+						<div class="skeleton mt-1 h-2.5 w-12 rounded"></div>
+					</div>
+				{/each}
+			</div>
+		</div>
+	</section>
+
+	<section aria-label="Open positions" aria-hidden="true">
+		<header class="mb-3 flex items-baseline justify-between gap-3">
+			<div class="flex items-center gap-2.5">
+				<span class="h-1.5 w-1.5 rounded-full bg-win dot-live" aria-hidden="true"></span>
+				<h2 class="eyebrow">Live positions</h2>
+			</div>
+			<div class="skeleton h-3 w-12 rounded"></div>
+		</header>
+		<div class="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+			{#each Array(3) as _, i (i)}
+				<div class="card min-h-40 p-4">
+					<div class="flex items-center justify-between gap-2">
+						<div class="skeleton h-4 w-20 rounded"></div>
+						<div class="skeleton h-4 w-10 rounded"></div>
+					</div>
+					<div class="mt-3.5 grid grid-cols-3 gap-2">
+						{#each Array(3) as _, c (c)}
+							<div>
+								<div class="skeleton h-2.5 w-10 rounded"></div>
+								<div class="skeleton mt-1.5 h-3 w-14 rounded"></div>
+							</div>
+						{/each}
+					</div>
+					<div class="mt-3.5 flex items-center justify-between gap-2 border-t border-line pt-3">
+						<div class="skeleton h-2.5 w-24 rounded"></div>
+						<div class="skeleton h-3 w-14 rounded"></div>
+					</div>
+				</div>
+			{/each}
+		</div>
+	</section>
+
 	<TableSkeleton rows={6} />
 {:else if $tradesError && $trades.length === 0}
 	<PageHead eyebrow="workspace" title="Trades" />

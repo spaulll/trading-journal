@@ -7,6 +7,7 @@
 	import TagPerformanceBar from '$lib/components/charts/TagPerformanceBar.svelte';
 	import UnderwaterChart from '$lib/components/charts/UnderwaterChart.svelte';
 	import AnalyticsSection from '$lib/components/dashboard/AnalyticsSection.svelte';
+	import AnalyticsSkeleton from '$lib/components/dashboard/AnalyticsSkeleton.svelte';
 	import DrawdownBreakdown from '$lib/components/dashboard/DrawdownBreakdown.svelte';
 	import KpiStrip from '$lib/components/dashboard/KpiStrip.svelte';
 	import LongShortOverview from '$lib/components/dashboard/LongShortOverview.svelte';
@@ -305,18 +306,31 @@
 {/snippet}
 
 {#if loading}
-	<div class="flex flex-col gap-4" aria-hidden="true">
-		<div class="skeleton h-24 w-full"></div>
-		<div class="grid grid-cols-2 gap-4 lg:grid-cols-4">
-			{#each Array(4) as _, i}
-				<div class="skeleton h-28" style="animation-delay: {i * 80}ms"></div>
-			{/each}
-		</div>
-		<div class="skeleton h-72 w-full"></div>
-		<div class="grid grid-cols-1 gap-4 md:grid-cols-2">
-			{#each Array(2) as _}
-				<div class="skeleton h-72 w-full"></div>
-			{/each}
+	<div class="flex flex-col gap-6">
+		<PageHead
+			eyebrow="Performance"
+			title="Analytics"
+			meta="loading closed trades · expectancy, risk &amp; distribution"
+		>
+			<div class="skeleton h-9 w-56 rounded-control" aria-hidden="true"></div>
+		</PageHead>
+
+		{#if $selectedAccountId !== null}
+			<div class="card px-5 py-4" aria-hidden="true">
+				<div class="grid grid-cols-2 gap-px sm:grid-cols-5">
+					{#each Array(5) as _, i (i)}
+						<div>
+							<div class="skeleton h-2.5 w-16 rounded"></div>
+							<div class="skeleton mt-2 h-5 w-20 rounded"></div>
+							<div class="skeleton mt-1 h-2.5 w-12 rounded"></div>
+						</div>
+					{/each}
+				</div>
+			</div>
+		{/if}
+
+		<div aria-hidden="true">
+			<AnalyticsSkeleton />
 		</div>
 	</div>
 {:else if error || !summary}
