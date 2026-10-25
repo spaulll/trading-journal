@@ -18,6 +18,7 @@
 			<a
 				href={link.href}
 				aria-current={isActive ? 'page' : undefined}
+				aria-label={link.label}
 				title={link.label}
 				class="group relative flex min-w-0 flex-col items-center justify-center gap-0.5 overflow-hidden rounded-control py-1.5 text-xs leading-none transition-[background-color,color,box-shadow,transform] duration-200 ease-spring sm:flex-row sm:gap-1 sm:px-1 sm:py-2.5 sm:text-xs {isActive
 					? 'bg-raised text-fg shadow-inset-highlight ring-1 ring-line ring-inset active:bg-raised'
@@ -37,7 +38,10 @@
 						: 'group-hover:-translate-y-0.5'}"
 					aria-hidden="true"
 				/>
-				<span class="whitespace-nowrap font-medium tracking-[-0.01em]">{link.label}</span>
+				<span class="whitespace-nowrap font-medium tracking-[-0.01em]">
+					<span class="sm:hidden">{link.mobileLabel}</span>
+					<span class="hidden sm:inline">{link.label}</span>
+				</span>
 			</a>
 		{/each}
 	</div>
