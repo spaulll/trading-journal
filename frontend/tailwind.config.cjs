@@ -37,6 +37,7 @@ module.exports = {
 				overlay: 'rgb(var(--c-overlay) / <alpha-value>)',
 				/* Hairlines (fixed per-theme alpha) */
 				line: 'rgb(var(--c-line))',
+				'line-soft': 'rgb(var(--c-line-soft))',
 				edge: 'rgb(var(--c-edge))',
 				/* Type */
 				fg: 'rgb(var(--c-fg) / <alpha-value>)',

@@ -3,8 +3,14 @@
 	import { Chart, registerables } from 'chart.js';
 	import type { CalendarDay, MonthlyCalendarDto } from '$lib/api';
 	import CalendarHeatmap from '$lib/components/dashboard/CalendarHeatmap.svelte';
+	import {
+		applyChartDefaults,
+		chartAnimation,
+		chartTooltip,
+		CHART_MONO
+	} from '$lib/components/charts/chartTheme';
 	import { BE_TOL, fmtMoney } from '$lib/utils/format';
-	import { openDay } from '$lib/stores/journal';
+	import { openDay, selectedDay } from '$lib/stores/journal';
 	import { palette } from '$lib/utils/palette';
 	import { theme } from '$lib/stores/theme';
 	import SegControl from '$lib/components/SegControl.svelte';
@@ -91,22 +97,21 @@
 		return `${pct > 0 ? '+' : ''}${pct.toFixed(1)}%`;
 	}
 
-	function cellClass(outcome: string, isToday: boolean): string {
+	function cellClass(outcome: string): string {
 		const base =
-			'min-h-16 min-w-0 overflow-hidden rounded-xl border p-1.5 text-left transition-all duration-200 ease-spring hover:-translate-y-0.5 sm:min-h-20 sm:p-2';
-		const ring = isToday ? ' ring-1 ring-accent shadow-glow' : '';
+			'relative min-h-16 min-w-0 cursor-pointer overflow-hidden rounded-xl border p-1 text-left transition-[transform,background-color,border-color,box-shadow] duration-200 ease-spring hover:-translate-y-0.5 hover:border-edge hover:shadow-card sm:min-h-20 sm:p-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent';
 		switch (outcome) {
 			case 'win':
-				return `${base} border-win/25 bg-win/10${ring}`;
+				return `${base} border-win/25 border-l-2 border-l-win bg-win/10`;
 			case 'loss':
-				return `${base} border-loss/25 bg-loss/10${ring}`;
+				return `${base} border-loss/25 border-l-2 border-l-loss bg-loss/10`;
 			case 'be':
-				return `${base} border-flat/25 bg-flat/10${ring}`;
+				return `${base} border-flat/25 border-l-2 border-l-flat bg-flat/10`;
 			case 'unpriced':
 				// Trades, but none of them priced — the day's result is unknown.
-				return `${base} border-dashed border-dim/40 bg-raised/60${ring}`;
+				return `${base} border-dashed border-dim/40 border-l-2 border-l-dim bg-raised/60`;
 			default:
-				return `${base} border-line bg-raised${ring}`;
+				return `${base} border-line bg-raised`;
 		}
 	}
 
@@ -159,9 +164,7 @@
 	function renderDonut(): void {
 		if (!donut) return;
 		const p = palette();
-		Chart.defaults.color = p.axis;
-		Chart.defaults.borderColor = p.grid;
-		Chart.defaults.font.family = 'Geist, ui-sans-serif, sans-serif';
+		applyChartDefaults(p);
 		chart?.destroy();
 		chart = new Chart(donut, {
 			type: 'doughnut',
@@ -186,7 +189,7 @@
 				responsive: true,
 				maintainAspectRatio: false,
 				cutout: '70%',
-				animation: { duration: 850, easing: 'easeOutQuart', animateRotate: true },
+				animation: chartAnimation(),
 				plugins: {
 					legend: {
 						position: 'bottom',
@@ -196,19 +199,10 @@
 							pointStyle: 'circle',
 							boxWidth: 8,
 							padding: 12,
-							font: { family: 'Geist', size: 11 }
+							font: { family: CHART_MONO, size: 11 }
 						}
 					},
-					tooltip: {
-						backgroundColor: p.panel,
-						titleColor: p.axis,
-						bodyColor: p.fg,
-						borderColor: p.grid,
-						borderWidth: 1,
-						padding: 10,
-						cornerRadius: 10,
-						displayColors: false
-					}
+					tooltip: chartTooltip(p)
 				}
 			}
 		});
@@ -246,9 +240,7 @@
 	function renderYearPie(): void {
 		if (!yearPie) return;
 		const p = palette();
-		Chart.defaults.color = p.axis;
-		Chart.defaults.borderColor = p.grid;
-		Chart.defaults.font.family = 'Geist, ui-sans-serif, sans-serif';
+		applyChartDefaults(p);
 		yearPieChart?.destroy();
 		yearPieChart = new Chart(yearPie, {
 			type: 'pie',
@@ -272,7 +264,7 @@
 			options: {
 				responsive: true,
 				maintainAspectRatio: false,
-				animation: { duration: 850, easing: 'easeOutQuart', animateRotate: true },
+				animation: chartAnimation(),
 				plugins: {
 					legend: {
 						position: 'bottom',
@@ -282,19 +274,10 @@
 							pointStyle: 'circle',
 							boxWidth: 8,
 							padding: 12,
-							font: { family: 'Geist', size: 11 }
+							font: { family: CHART_MONO, size: 11 }
 						}
 					},
-					tooltip: {
-						backgroundColor: p.panel,
-						titleColor: p.axis,
-						bodyColor: p.fg,
-						borderColor: p.grid,
-						borderWidth: 1,
-						padding: 10,
-						cornerRadius: 10,
-						displayColors: false
-					}
+					tooltip: chartTooltip(p)
 				}
 			}
 		});
@@ -360,7 +343,7 @@
 		<div use:fluidHeight>
 		<div in:fly={TAB}>
 	{#if tab === 'year'}
-		<CalendarHeatmap days={yearDays} year={data.year} />
+		<CalendarHeatmap days={yearDays} year={data.year} today={todayKey} />
 		<div class="mt-5 grid grid-cols-1 gap-5 md:grid-cols-[240px_minmax(0,1fr)] md:items-center">
 			<figure class="mx-auto w-full max-w-60" aria-label="Yearly outcome by day">
 				<div class="h-44"><canvas bind:this={yearPie}></canvas></div>
@@ -424,16 +407,22 @@
 							{#if c.blank}
 								<div></div>
 							{:else}
-								{@const info = data.days[c.key] ?? { net_pnl: 0, trade_count: 0, outcome: 'inactive' }}
+								{@const info = data.days[c.key] ?? { net_pnl: 0, trade_count: 0, unpriced: 0, outcome: 'inactive' }}
+								{@const isToday = c.key === todayKey}
+								{@const isSelected = $selectedDay === c.key}
 								<button
 									type="button"
 									onclick={() => openDay(c.key)}
-									aria-label="{c.key}: {fmtMoney(info.net_pnl)}, {info.trade_count} trades — open day"
+									aria-current={isToday ? 'date' : undefined}
+									aria-label="{c.key}: {fmtMoney(info.net_pnl)}, {info.trade_count} trades{(info.unpriced ?? 0) > 0 ? `, ${info.unpriced} unpriced` : ''} — open day"
 									title="{c.key}: {fmtMoney(info.net_pnl)} · {info.trade_count} trades"
-									class="anim-tile {cellClass(info.outcome, c.key === todayKey)} cursor-pointer focus-visible:outline-2 focus-visible:outline-accent"
+									class="anim-tile {cellClass(info.outcome)} {isToday ? 'ring-2 ring-accent shadow-glow' : ''} {isSelected ? 'outline outline-2 outline-offset-1 outline-fg z-10' : ''}"
 									style="animation-delay: {Math.min(ci * 8, 320)}ms"
 								>
-									<p class="num text-[10px] leading-none {c.key === todayKey ? 'font-bold text-accent' : 'text-mut'}">
+									{#if isToday}
+										<span class="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-accent" aria-hidden="true"></span>
+									{/if}
+									<p class="num text-[10px] leading-none {isToday ? 'font-bold text-accent' : 'text-mut'}">
 										{c.day}
 									</p>
 									{#if info.trade_count > 0}
