@@ -29,9 +29,9 @@
 	}
 </script>
 
-<section class="card rise p-5" aria-label="Setup expectancy confidence">
+<section class="min-w-0" aria-label="Setup expectancy confidence">
 	<div class="flex flex-wrap items-baseline justify-between gap-2">
-		<h2 class="eyebrow">Setup expectancy · confidence</h2>
+		<h3 class="eyebrow">Setup expectancy · confidence</h3>
 		<span class="num text-[11px] text-dim">
 			min sample {data.min_sample} · {Math.round(data.ci_level * 100)}% interval
 		</span>

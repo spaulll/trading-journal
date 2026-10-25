@@ -178,7 +178,10 @@
 	</div>
 
 	{#each cells as cell, ci (cell.label)}
-		<div class="card rise p-5" style="animation-delay: {(ci + 1) * 80}ms">
+		<div
+			class="card rise p-5 {cell.label === 'Profit factor' ? 'sm:col-span-2 xl:col-span-1' : ''}"
+			style="animation-delay: {(ci + 1) * 80}ms"
+		>
 			<p class="eyebrow">{cell.label}</p>
 			<p
 				class="display mt-2 text-[2.1rem] leading-none tabular-nums {cell.tone}"

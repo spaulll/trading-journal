@@ -6,6 +6,7 @@
 	import RDistributionChart from '$lib/components/charts/RDistributionChart.svelte';
 	import TagPerformanceBar from '$lib/components/charts/TagPerformanceBar.svelte';
 	import UnderwaterChart from '$lib/components/charts/UnderwaterChart.svelte';
+	import AnalyticsSection from '$lib/components/dashboard/AnalyticsSection.svelte';
 	import DrawdownBreakdown from '$lib/components/dashboard/DrawdownBreakdown.svelte';
 	import KpiStrip from '$lib/components/dashboard/KpiStrip.svelte';
 	import LongShortOverview from '$lib/components/dashboard/LongShortOverview.svelte';
@@ -348,7 +349,7 @@
 		/>
 	</div>
 {:else}
-	<div class="flex flex-col gap-4" transition:fade={{ duration: 150 }}>
+	<div class="flex flex-col gap-6" transition:fade={{ duration: 150 }}>
 		<PageHead
 			eyebrow="Performance"
 			title="Analytics"
@@ -365,44 +366,41 @@
 			<KpiStrip {kpi} />
 		{/if}
 
-		{#if symbolPerf}
-			<SymbolPerformanceTable data={symbolPerf} />
+		{#if symbolPerf && matrix && confidence}
+			<AnalyticsSection title="Edge" meta="by symbol · by setup · confidence" delay={40}>
+				<SymbolPerformanceTable data={symbolPerf} />
+				<div class="mt-5 border-t border-line pt-5"><SetupMatrix data={matrix} /></div>
+				<div class="mt-5 border-t border-line pt-5"><SetupConfidencePanel data={confidence} /></div>
+			</AnalyticsSection>
 		{/if}
 
-		{#if matrix}
-			<SetupMatrix data={matrix} />
+		{#if drawdownAccount && drawdownSetup && ruin}
+			<AnalyticsSection title="Risk" meta="drawdown · ruin" delay={80}>
+				<DrawdownBreakdown account={drawdownAccount} setup={drawdownSetup} />
+				<div class="mt-5 border-t border-line pt-5"><RiskOfRuinPanel data={ruin} /></div>
+			</AnalyticsSection>
 		{/if}
 
-		{#if confidence}
-			<SetupConfidencePanel data={confidence} />
-		{/if}
-
-		{#if drawdownAccount && drawdownSetup}
-			<DrawdownBreakdown account={drawdownAccount} setup={drawdownSetup} />
-		{/if}
-
-		{#if ruin}
-			<RiskOfRuinPanel data={ruin} />
-		{/if}
-
-		<section class="rise grid grid-cols-1 gap-4 xl:grid-cols-12" style="animation-delay: 40ms">
-			<div class="card p-5 xl:col-span-8">
-				<h2 class="eyebrow mb-3">Equity curve</h2>
-				{#if points.length > 0}
-					<EquityChart {points} />
-				{:else}
-					<p class="py-10 text-center text-sm text-mut">Not enough data.</p>
-				{/if}
+		<AnalyticsSection title="Curve" meta="equity · underwater" delay={120}>
+			<div class="grid grid-cols-1 gap-5 xl:grid-cols-12 xl:gap-0">
+				<div class="min-w-0 xl:col-span-8 xl:pr-5">
+					<h3 class="eyebrow mb-3">Equity curve</h3>
+					{#if points.length > 0}
+						<EquityChart {points} />
+					{:else}
+						<p class="py-10 text-center text-sm text-mut">Not enough data.</p>
+					{/if}
+				</div>
+				<div class="min-w-0 border-t border-line pt-5 xl:col-span-4 xl:border-t-0 xl:border-l xl:pl-5 xl:pt-0">
+					<h3 class="eyebrow mb-3">Drawdown</h3>
+					{#if points.length > 0}
+						<UnderwaterChart {points} />
+					{:else}
+						<p class="py-10 text-center text-sm text-mut">Not enough data.</p>
+					{/if}
+				</div>
 			</div>
-			<div class="card p-5 xl:col-span-4">
-				<h2 class="eyebrow mb-3">Drawdown</h2>
-				{#if points.length > 0}
-					<UnderwaterChart {points} />
-				{:else}
-					<p class="py-10 text-center text-sm text-mut">Not enough data.</p>
-				{/if}
-			</div>
-		</section>
+		</AnalyticsSection>
 
 		{#if monthData}
 			<MonthlyCalendar
@@ -416,19 +414,18 @@
 			/>
 		{/if}
 
-		<!-- Composition plane: outcome donut · tag performance · R distribution -->
-		<section class="rise grid grid-cols-1 items-stretch gap-4 lg:grid-cols-3" style="animation-delay: 160ms">
-			<div class="card flex flex-col p-5">
-				<h2 class="eyebrow mb-3">Win / loss / breakeven</h2>
-				<div class="flex-1"><OutcomeDonut {summary} /></div>
-			</div>
-			<div class="card flex flex-col p-5">
-				<h2 class="eyebrow mb-3">Tag performance</h2>
-				<div class="flex-1"><TagPerformanceBar {tags} /></div>
-			</div>
-			<div class="card flex flex-col p-5">
-				<h2 class="eyebrow mb-3">R multiple distribution</h2>
-				<div class="flex-1">
+		<AnalyticsSection title="Composition" meta="outcome · tags · R" delay={200}>
+			<div class="grid grid-cols-1 gap-5 lg:grid-cols-3 lg:gap-0">
+				<div class="min-w-0 lg:pr-5">
+					<h3 class="eyebrow mb-3">Win / loss / breakeven</h3>
+					<OutcomeDonut {summary} />
+				</div>
+				<div class="min-w-0 border-t border-line pt-5 lg:border-t-0 lg:border-l lg:px-5 lg:pt-0">
+					<h3 class="eyebrow mb-3">Tag performance</h3>
+					<TagPerformanceBar {tags} />
+				</div>
+				<div class="min-w-0 border-t border-line pt-5 lg:border-t-0 lg:border-l lg:pl-5 lg:pt-0">
+					<h3 class="eyebrow mb-3">R multiple distribution</h3>
 					{#if rBuckets.length > 0}
 						<RDistributionChart buckets={rBuckets} />
 					{:else}
@@ -436,23 +433,24 @@
 					{/if}
 				</div>
 			</div>
-		</section>
+		</AnalyticsSection>
 
-		<!-- Long / short runs alone on its own plane, full bleed. -->
-		{#if longShort && activity}
-			<LongShortOverview {longShort} {activity} />
+		{#if longShort && activity && kpi}
+			<AnalyticsSection title="Direction &amp; sessions" meta="long/short · killzones" delay={240}>
+				<LongShortOverview {longShort} {activity} />
+				<div class="mt-5 border-t border-line pt-5"><SessionGrid {kpi} /></div>
+			</AnalyticsSection>
 		{/if}
 
-		{#if kpi}
-			<SessionGrid {kpi} />
-		{/if}
-
-		{#if radarData}
-			<RadarAnalytics radar={radarData} />
-		{/if}
-
-		{#if activity}
-			<StatPanels {activity} />
+		{#if radarData && activity}
+			<AnalyticsSection title="Behavior" meta="weekday · session · streaks" delay={280}>
+				<div class="grid grid-cols-1 gap-5 xl:grid-cols-2 xl:gap-0">
+					<div class="min-w-0 xl:pr-5"><RadarAnalytics radar={radarData} /></div>
+					<div class="min-w-0 border-t border-line pt-5 xl:border-t-0 xl:border-l xl:pl-5 xl:pt-0">
+						<StatPanels {activity} />
+					</div>
+				</div>
+			</AnalyticsSection>
 		{/if}
 	</div>
 {/if}

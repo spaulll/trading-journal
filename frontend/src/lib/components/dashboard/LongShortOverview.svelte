@@ -2,6 +2,12 @@
 	import { onDestroy, onMount } from 'svelte';
 	import { Chart, registerables } from 'chart.js';
 	import type { ActivityStreaks, DirectionStats } from '$lib/api';
+	import {
+		applyChartDefaults,
+		chartAnimation,
+		chartTooltip,
+		CHART_MONO
+	} from '$lib/components/charts/chartTheme';
 	import { fmtMoney } from '$lib/utils/format';
 	import { palette } from '$lib/utils/palette';
 	import { theme } from '$lib/stores/theme';
@@ -109,9 +115,7 @@
 	function render(): void {
 		if (!canvas) return;
 		const p = palette();
-		Chart.defaults.color = p.axis;
-		Chart.defaults.borderColor = p.grid;
-		Chart.defaults.font.family = 'Geist, ui-sans-serif, sans-serif';
+		applyChartDefaults(p);
 		chart?.destroy();
 		chart = new Chart(canvas, {
 			type: 'doughnut',
@@ -131,7 +135,7 @@
 				responsive: true,
 				maintainAspectRatio: false,
 				cutout: '70%',
-				animation: { duration: 850, easing: 'easeOutQuart', animateRotate: true },
+				animation: chartAnimation(),
 				plugins: {
 					legend: {
 						position: 'bottom',
@@ -141,19 +145,10 @@
 							pointStyle: 'circle',
 							boxWidth: 8,
 							padding: 12,
-							font: { family: 'Geist', size: 11 }
+							font: { family: CHART_MONO, size: 11 }
 						}
 					},
-					tooltip: {
-						backgroundColor: p.panel,
-						titleColor: p.axis,
-						bodyColor: p.fg,
-						borderColor: p.grid,
-						borderWidth: 1,
-						padding: 10,
-						cornerRadius: 10,
-						displayColors: false
-					}
+					tooltip: chartTooltip(p)
 				}
 			}
 		});
@@ -185,9 +180,9 @@
 		'flex items-baseline justify-between gap-3 border-b border-line py-1.5 last:border-0';
 </script>
 
-<section class="card rise p-5" style="animation-delay: 80ms" aria-label="Long short analysis">
+<section class="min-w-0" aria-label="Long short analysis">
 	<div class="mb-5 flex flex-wrap items-center gap-3">
-		<h2 class="eyebrow">Long / short analysis</h2>
+		<h3 class="eyebrow">Long / short analysis</h3>
 		<p class="num text-[11.5px] text-dim">{sel.trades} trades · {sel.win_rate.toFixed(1)}% win rate</p>
 		<div class="ml-auto">
 			<SegControl
@@ -209,7 +204,7 @@
 		</div>
 		{#key side}
 			<div class="min-w-0 lg:col-span-4 xl:col-span-4" in:fade={PANEL_FADE}>
-				<h3 class="eyebrow mb-1 text-win">Win statistics</h3>
+				<h4 class="eyebrow mb-1 text-win">Win statistics</h4>
 				<dl>
 					{#each winRows as r}
 						<div class={row}>
@@ -222,7 +217,7 @@
 		{/key}
 		{#key side}
 			<div class="min-w-0 lg:col-span-4 xl:col-span-5" in:fade={PANEL_FADE}>
-				<h3 class="eyebrow mb-1 text-loss">Loss statistics</h3>
+				<h4 class="eyebrow mb-1 text-loss">Loss statistics</h4>
 				<dl>
 					{#each lossRows as r}
 						<div class={row}>
@@ -235,11 +230,14 @@
 		{/key}
 	</div>
 
-	<h3 class="eyebrow mt-6 mb-2">Performance overview</h3>
+	<h4 class="eyebrow mt-6 mb-2">Performance overview</h4>
 	{#key side}
-		<div class="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-6" in:fade={PANEL_FADE}>
-			{#each overview as o, oi}
-				<div class="rise rounded-xl border border-line bg-raised/50 p-3" style="animation-delay: {oi * 50}ms">
+		<div
+			class="grid grid-cols-2 gap-px overflow-hidden rounded-control border border-line bg-line sm:grid-cols-3 xl:grid-cols-6"
+			in:fade={PANEL_FADE}
+		>
+			{#each overview as o (o.label)}
+				<div class="min-w-0 bg-raised/30 px-3 py-2.5">
 					<p class="text-[11px] text-dim">{o.label}</p>
 					{#if 'raw' in o && o.raw !== undefined && o.format}
 						<p class="num mt-0.5 text-sm leading-tight font-bold wrap-break-word {o.tone}" use:countup={{ value: o.raw, format: o.format }}>{o.value}</p>

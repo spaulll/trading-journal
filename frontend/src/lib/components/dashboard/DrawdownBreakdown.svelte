@@ -21,9 +21,13 @@
 	}
 </script>
 
-<section class="grid grid-cols-1 gap-3 lg:grid-cols-2" aria-label="Drawdown by group">
-	{#each cards as card (card.title)}
-		<div class="card rise p-5">
+<section class="grid grid-cols-1 gap-5 lg:grid-cols-2 lg:gap-0" aria-label="Drawdown by group">
+	{#each cards as card, i (card.title)}
+		<div
+			class="min-w-0 {i === 0
+				? 'lg:pr-5'
+				: 'border-t border-line pt-5 lg:border-t-0 lg:border-l lg:pl-5 lg:pt-0'}"
+		>
 			<div class="flex flex-wrap items-baseline justify-between gap-2">
 				<h3 class="eyebrow">Drawdown · {card.title.toLowerCase()}</h3>
 				<span class="num text-[11px] text-dim">

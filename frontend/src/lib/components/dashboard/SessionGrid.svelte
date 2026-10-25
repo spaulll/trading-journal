@@ -14,58 +14,59 @@
 	] as const;
 </script>
 
-<section class="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4" aria-label="Session performance">
-	{#each META as m, i (m.key)}
-		{@const s = kpi.sessions[m.key] ?? { net_pnl: 0, trade_count: 0, win_rate: 0, return_pct: 0 }}
-		{@const up = s.net_pnl > 5}
-		{@const flat = Math.abs(s.net_pnl) <= 5}
-		<div
-			class="card card-hover relative overflow-hidden p-5"
-			style="animation: rise 0.6s cubic-bezier(0.22, 1, 0.36, 1) {i * 60}ms backwards;"
-		>
-			<span
-				class="pointer-events-none absolute inset-x-0 top-0 h-24 bg-gradient-to-b from-accent/14 to-transparent"
-				aria-hidden="true"
-			></span>
+<section class="min-w-0" aria-label="Session performance">
+	<div class="flex flex-wrap items-baseline justify-between gap-2">
+		<h3 class="eyebrow">Sessions</h3>
+		<span class="num text-[11px] text-dim">net return by killzone</span>
+	</div>
 
-			<div class="relative flex items-baseline justify-between gap-2">
-				<h3 class="eyebrow">{m.label}</h3>
-				<span class="num text-[10.5px] text-dim">{m.hours}</span>
-			</div>
+	<div
+		class="mt-3 grid grid-cols-1 gap-px overflow-hidden rounded-control border border-line bg-line sm:grid-cols-2 xl:grid-cols-4"
+	>
+		{#each META as m (m.key)}
+			{@const s = kpi.sessions[m.key] ?? { net_pnl: 0, trade_count: 0, win_rate: 0, return_pct: 0 }}
+			{@const up = s.net_pnl > 5}
+			{@const flat = Math.abs(s.net_pnl) <= 5}
+			<div class="relative min-w-0 bg-panel p-4 transition-colors hover:bg-raised/30">
+				<div class="flex items-baseline justify-between gap-2">
+					<h4 class="eyebrow">{m.label}</h4>
+					<span class="num text-[10.5px] text-dim">{m.hours}</span>
+				</div>
 
-			<p
-				class="relative mt-2 flex items-center gap-1 text-[1.65rem] leading-none tabular-nums {flat
-					? 'text-flat'
-					: up
-						? 'text-win'
-						: 'text-loss'}"
-			>
-				<span class="display" use:countup={{ value: Math.abs(s.return_pct), format: (v) => `${v.toFixed(2)}%` }}>
-					{Math.abs(s.return_pct).toFixed(2)}%
-				</span>
-				{#if !flat}
-					{#if up}
-						<ArrowUpRight size={17} strokeWidth={2.2} aria-hidden="true" />
-					{:else}
-						<ArrowDownRight size={17} strokeWidth={2.2} aria-hidden="true" />
-					{/if}
-				{:else}
-					<Minus size={17} strokeWidth={2.2} aria-hidden="true" />
-				{/if}
-				<span class="eyebrow ml-0.5 self-end pb-0.5">{up ? 'profit' : flat ? 'flat' : 'loss'}</span>
-			</p>
-
-			<div class="relative mt-3 border-t border-line pt-3 font-mono tabular-nums">
 				<p
-					class="text-[13px] font-semibold {flat ? 'text-flat' : up ? 'text-win' : 'text-loss'}"
-					use:countup={{ value: s.net_pnl, format: (v) => fmtMoney(v) }}
+					class="relative mt-2 flex items-center gap-1 text-[1.65rem] leading-none tabular-nums {flat
+						? 'text-flat'
+						: up
+							? 'text-win'
+							: 'text-loss'}"
 				>
-					{fmtMoney(s.net_pnl)}
+					<span class="display" use:countup={{ value: Math.abs(s.return_pct), format: (v) => `${v.toFixed(2)}%` }}>
+						{Math.abs(s.return_pct).toFixed(2)}%
+					</span>
+					{#if !flat}
+						{#if up}
+							<ArrowUpRight size={17} strokeWidth={2.2} aria-hidden="true" />
+						{:else}
+							<ArrowDownRight size={17} strokeWidth={2.2} aria-hidden="true" />
+						{/if}
+					{:else}
+						<Minus size={17} strokeWidth={2.2} aria-hidden="true" />
+					{/if}
+					<span class="eyebrow ml-0.5 self-end pb-0.5">{up ? 'profit' : flat ? 'flat' : 'loss'}</span>
 				</p>
-				<p class="mt-0.5 text-[11px] whitespace-nowrap text-mut">
-					{s.trade_count} trades · {s.win_rate.toFixed(0)}% WR
-				</p>
+
+				<div class="relative mt-3 border-t border-line pt-3 font-mono tabular-nums">
+					<p
+						class="text-[13px] font-semibold {flat ? 'text-flat' : up ? 'text-win' : 'text-loss'}"
+						use:countup={{ value: s.net_pnl, format: (v) => fmtMoney(v) }}
+					>
+						{fmtMoney(s.net_pnl)}
+					</p>
+					<p class="mt-0.5 text-[11px] whitespace-nowrap text-mut">
+						{s.trade_count} trades · {s.win_rate.toFixed(0)}% WR
+					</p>
+				</div>
 			</div>
-		</div>
-	{/each}
+		{/each}
+	</div>
 </section>

@@ -2,6 +2,12 @@
 	import { onDestroy, onMount } from 'svelte';
 	import { Chart, registerables } from 'chart.js';
 	import type { RadarProfiles } from '$lib/api';
+	import {
+		applyChartDefaults,
+		chartAnimation,
+		chartTooltip,
+		CHART_MONO
+	} from '$lib/components/charts/chartTheme';
 	import { fmtMoney } from '$lib/utils/format';
 	import { palette } from '$lib/utils/palette';
 	import { theme } from '$lib/stores/theme';
@@ -32,7 +38,7 @@
 		return {
 			responsive: true,
 			maintainAspectRatio: false,
-			animation: { duration: 900, easing: 'easeOutQuart' },
+			animation: chartAnimation(),
 			scales: {
 				r: {
 					min: 0,
@@ -42,31 +48,20 @@
 					angleLines: { color: p.grid },
 					pointLabels: {
 						color: p.axis,
-						font: { family: 'Geist Mono', size: 11 }
+						font: { family: CHART_MONO, size: 11 }
 					}
 				}
 			},
 			plugins: {
 				legend: { display: false },
-				tooltip: {
-					backgroundColor: p.panel,
-					titleColor: p.axis,
-					bodyColor: p.fg,
-					borderColor: p.grid,
-					borderWidth: 1,
-					padding: 10,
-					cornerRadius: 10,
-					displayColors: false
-				}
+				tooltip: chartTooltip(p)
 			}
 		};
 	}
 
 	function render(): void {
 		const p = palette();
-		Chart.defaults.color = p.axis;
-		Chart.defaults.borderColor = p.grid;
-		Chart.defaults.font.family = 'Geist, ui-sans-serif, sans-serif';
+		applyChartDefaults(p);
 
 		if (dayCanvas) {
 			dayChart?.destroy();
@@ -140,11 +135,11 @@
 	});
 </script>
 
-<section class="rise grid grid-cols-1 gap-3 md:grid-cols-2" style="animation-delay: 120ms" aria-label="Radar profiles">
-	<div class="card p-5">
+<section class="grid grid-cols-1 gap-5 md:grid-cols-2 md:gap-0" aria-label="Radar profiles">
+	<div class="min-w-0 md:pr-5">
 		<div class="flex items-baseline justify-between gap-3">
-			<h3 class="eyebrow">Weekday distribution</h3>
-			<span class="eyebrow text-accent">win rate %</span>
+			<h3 class="eyebrow">Weekday</h3>
+			<span class="eyebrow whitespace-nowrap text-accent">win rate %</span>
 		</div>
 		{#if bestDay}
 			<p class="num mt-1.5 flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-[11.5px] text-dim">
@@ -161,10 +156,10 @@
 		<div class="mt-2 h-64 min-w-0"><canvas bind:this={dayCanvas}></canvas></div>
 	</div>
 
-	<div class="card p-5">
+	<div class="min-w-0 border-t border-line pt-5 md:border-t-0 md:border-l md:pl-5 md:pt-0">
 		<div class="flex items-baseline justify-between gap-3">
-			<h3 class="eyebrow">Session killzones</h3>
-			<span class="eyebrow text-accent">net P&amp;L</span>
+			<h3 class="eyebrow">Sessions</h3>
+			<span class="eyebrow whitespace-nowrap text-accent">net P&amp;L</span>
 		</div>
 		{#if bestSession}
 			<p class="num mt-1.5 text-[11.5px] text-dim">

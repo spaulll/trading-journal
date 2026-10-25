@@ -27,9 +27,9 @@
 	}
 </script>
 
-<section class="card rise p-5" aria-label="Risk of ruin per setup">
+<section class="min-w-0" aria-label="Risk of ruin per setup">
 	<div class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-		<h2 class="eyebrow">Risk of ruin</h2>
+		<h3 class="eyebrow">Risk of ruin</h3>
 		<div class="num flex flex-wrap items-baseline gap-x-4 gap-y-1 text-[11px] text-dim">
 			<span>
 				capital

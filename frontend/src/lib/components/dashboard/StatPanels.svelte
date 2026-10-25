@@ -39,8 +39,8 @@
 		'flex items-baseline justify-between gap-3 border-b border-line py-2 last:border-0';
 </script>
 
-<section class="grid grid-cols-1 gap-3 md:grid-cols-2" aria-label="Streaks and activity">
-	<div class="card rise p-5">
+<section class="grid grid-cols-1 gap-5 md:grid-cols-2 md:gap-0" aria-label="Streaks and activity">
+	<div class="min-w-0 md:pr-5">
 		<h3 class="eyebrow mb-2">Streaks &amp; patterns</h3>
 		<dl>
 			{#each streakRows as r, i}
@@ -51,7 +51,7 @@
 			{/each}
 		</dl>
 	</div>
-	<div class="card rise p-5" style="animation-delay: 90ms">
+	<div class="min-w-0 border-t border-line pt-5 md:border-t-0 md:border-l md:pl-5 md:pt-0">
 		<h3 class="eyebrow mb-2">Trading activity</h3>
 		<dl>
 			{#each activityRows as r, i}

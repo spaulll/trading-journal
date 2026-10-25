@@ -9,9 +9,9 @@
 	const td = 'px-3 py-2 text-right font-mono text-[12px] tabular-nums';
 </script>
 
-<section class="card rise p-5" aria-label="Per-symbol performance">
+<section class="min-w-0" aria-label="Per-symbol performance">
 	<div class="flex flex-wrap items-baseline justify-between gap-2">
-		<h2 class="eyebrow">Symbol performance</h2>
+		<h3 class="eyebrow">Symbol performance</h3>
 		<span class="num text-[11px] text-dim">
 			{data.symbols.length} symbols · {data.totals.trade_count} closed
 			{#if data.totals.unpriced > 0}· {data.totals.unpriced} unpriced{/if}

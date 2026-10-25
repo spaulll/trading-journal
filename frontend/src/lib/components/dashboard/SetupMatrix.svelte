@@ -9,9 +9,9 @@
 	}
 </script>
 
-<section class="card rise p-5" aria-label="Setup by symbol matrix">
+<section class="min-w-0" aria-label="Setup by symbol matrix">
 	<div class="flex flex-wrap items-baseline justify-between gap-2">
-		<h2 class="eyebrow">Setup × symbol</h2>
+		<h3 class="eyebrow">Setup × symbol</h3>
 		<span class="num text-[11px] text-dim">
 			{data.rows.length} setups · {data.symbols.length} symbols
 		</span>
