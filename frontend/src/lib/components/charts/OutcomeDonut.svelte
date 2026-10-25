@@ -2,6 +2,12 @@
 	import { onDestroy, onMount } from 'svelte';
 	import { Chart, registerables } from 'chart.js';
 	import type { SummaryDto } from '$lib/api';
+	import {
+		applyChartDefaults,
+		chartAnimation,
+		chartTooltip,
+		CHART_MONO
+	} from '$lib/components/charts/chartTheme';
 	import { palette } from '$lib/utils/palette';
 	import { theme } from '$lib/stores/theme';
 
@@ -19,9 +25,7 @@
 	function render(): void {
 		if (!canvas) return;
 		const p = palette();
-		Chart.defaults.color = p.axis;
-		Chart.defaults.borderColor = p.grid;
-		Chart.defaults.font.family = 'Geist, ui-sans-serif, sans-serif';
+		applyChartDefaults(p);
 		chart?.destroy();
 		chart = new Chart(canvas, {
 			type: 'doughnut',
@@ -41,13 +45,13 @@
 				responsive: true,
 				maintainAspectRatio: false,
 				cutout: '70%',
-				animation: { duration: 800, easing: 'easeOutQuart', animateRotate: true },
+				animation: chartAnimation(),
 				plugins: {
 					legend: {
 						position: 'bottom',
 						labels: {
 							color: p.axis,
-							font: { family: 'Geist', size: 11 },
+							font: { family: CHART_MONO, size: 11 },
 							usePointStyle: true,
 							pointStyle: 'circle',
 							boxWidth: 8,
@@ -55,14 +59,11 @@
 						}
 					},
 					tooltip: {
-						backgroundColor: p.panel,
-						titleColor: p.axis,
-						bodyColor: p.fg,
-						borderColor: p.grid,
-						borderWidth: 1,
-						padding: 10,
-						cornerRadius: 10,
-						displayColors: false
+						...chartTooltip(p),
+						callbacks: {
+							labelTextColor: (item) =>
+								[p.win, p.loss, p.flat][item.dataIndex] ?? p.fg
+						}
 					}
 				}
 			}

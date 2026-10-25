@@ -2,6 +2,13 @@
 	import { onDestroy, onMount } from 'svelte';
 	import { Chart, registerables } from 'chart.js';
 	import type { RBucket } from '$lib/api';
+	import {
+		applyChartDefaults,
+		chartAnimation,
+		chartGrid,
+		chartTick,
+		chartTooltip
+	} from '$lib/components/charts/chartTheme';
 	import { palette } from '$lib/utils/palette';
 	import { theme } from '$lib/stores/theme';
 
@@ -23,9 +30,7 @@
 	function render(): void {
 		if (!canvas) return;
 		const p = palette();
-		Chart.defaults.color = p.axis;
-		Chart.defaults.borderColor = p.grid;
-		Chart.defaults.font.family = 'Geist, ui-sans-serif, sans-serif';
+		applyChartDefaults(p);
 		chart?.destroy();
 		chart = new Chart(canvas, {
 			type: 'bar',
@@ -43,29 +48,26 @@
 			options: {
 				responsive: true,
 				maintainAspectRatio: false,
-				animation: { duration: 800, easing: 'easeOutQuart' },
+				animation: chartAnimation(),
 				plugins: {
 					legend: { display: false },
 					tooltip: {
-						backgroundColor: p.panel,
-						titleColor: p.axis,
-						bodyColor: p.fg,
-						borderColor: p.grid,
-						borderWidth: 1,
-						padding: 10,
-						cornerRadius: 10,
-						displayColors: false
+						...chartTooltip(p),
+						callbacks: {
+							label: (item) => `${item.raw} trade${Number(item.raw) === 1 ? '' : 's'}`,
+							labelTextColor: (item) => colors(p)[item.dataIndex] ?? p.fg
+						}
 					}
 				},
 				scales: {
 					x: {
-						grid: { display: false, color: p.grid },
-						ticks: { color: p.axis, font: { family: 'Geist Mono', size: 11 } }
+						grid: { display: false },
+						ticks: chartTick(p)
 					},
 					y: {
 						beginAtZero: true,
-						grid: { color: p.grid },
-						ticks: { precision: 0, color: p.axis, font: { family: 'Geist Mono', size: 11 } }
+						grid: chartGrid(p),
+						ticks: { ...chartTick(p), precision: 0 }
 					}
 				}
 			}
@@ -82,7 +84,7 @@
 
 	$effect(() => {
 		$theme;
-		buckets.map((b) => b.count).join(',');
+		buckets;
 		if (canvas) render();
 	});
 

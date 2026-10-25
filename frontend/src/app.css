@@ -607,6 +607,17 @@ html {
 	}
 }
 
+/* uPlot's own `.u-hz .u-cursor-x` rules share this specificity but load later;
+   the extra root class makes the hairline palette win deterministically. */
+.uplot.u-hz .u-cursor-x,
+.uplot.u-vt .u-cursor-y {
+	border-right-color: rgb(var(--c-edge));
+}
+.uplot.u-hz .u-cursor-y,
+.uplot.u-vt .u-cursor-x {
+	border-bottom-color: rgb(var(--c-edge));
+}
+
 /* ============================================================
    Ambient canvas — one soft light source, slow brass drift, fine grain
    ============================================================ */

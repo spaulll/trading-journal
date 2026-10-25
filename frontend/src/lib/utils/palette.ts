@@ -28,6 +28,8 @@ export interface Palette {
 	axis: string;
 	grid: string;
 	panel: string;
+	overlay: string;
+	edge: string;
 	fg: string;
 }
 
@@ -44,6 +46,8 @@ export function palette(): Palette {
 		axis: cssVar('--c-dim'),
 		grid: cssVar('--c-line'),
 		panel: cssVar('--c-panel'),
+		overlay: cssVar('--c-overlay'),
+		edge: cssVar('--c-edge'),
 		fg: cssVar('--c-fg')
 	};
 }

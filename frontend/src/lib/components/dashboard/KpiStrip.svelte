@@ -2,6 +2,7 @@
 	import { onDestroy, onMount } from 'svelte';
 	import { Chart, registerables } from 'chart.js';
 	import type { KpiDashboard } from '$lib/api';
+	import { applyChartDefaults, chartAnimation } from '$lib/components/charts/chartTheme';
 	import { fmtMoney, fmtR, pnlTone, rTone, toneText } from '$lib/utils/format';
 	import { countup } from '$lib/utils/motion';
 	import { palette } from '$lib/utils/palette';
@@ -44,9 +45,7 @@
 	function renderGauge(): void {
 		if (!gauge) return;
 		const p = palette();
-		Chart.defaults.color = p.axis;
-		Chart.defaults.borderColor = p.grid;
-		Chart.defaults.font.family = 'Geist, ui-sans-serif, sans-serif';
+		applyChartDefaults(p);
 		chart?.destroy();
 		const pf = kpi.profit_factor ?? 0;
 		const filled = Math.min(GAUGE_MAX, Math.max(0, pf));
@@ -67,7 +66,7 @@
 				rotation: -90,
 				circumference: 180,
 				cutout: '82%',
-				animation: { duration: 900, easing: 'easeOutQuart' },
+				animation: chartAnimation(),
 				plugins: { legend: { display: false }, tooltip: { enabled: false } }
 			}
 		});

@@ -9,6 +9,13 @@ const axisDayFmt = new Intl.DateTimeFormat('en-GB', {
 	month: '2-digit'
 });
 
+const axisTimeFmt = new Intl.DateTimeFormat('en-GB', {
+	timeZone: DISPLAY_TZ,
+	hour: '2-digit',
+	minute: '2-digit',
+	hour12: false
+});
+
 const money = new Intl.NumberFormat('en-US', {
 	style: 'currency',
 	currency: 'USD',
@@ -52,6 +59,13 @@ export function fmtMoneyShort(v: number | null | undefined): string {
 		abs >= 1000 ? `${(abs / 1000).toFixed(abs >= 10000 ? 1 : 2)}k` : abs.toFixed(0);
 	const sign = v > 0 ? '+' : v < 0 ? '-' : '';
 	return `${sign}$${body}`;
+}
+
+/** Axis money: $400 / -$1.2k — no plus sign, no cents. */
+export function fmtAxisMoney(v: number): string {
+	const abs = Math.abs(v);
+	const body = abs >= 1000 ? `${(abs / 1000).toFixed(1)}k` : String(Math.round(abs));
+	return `${v < 0 ? '-' : ''}$${body}`;
 }
 
 export function fmtR(v: number | null | undefined): string {
@@ -123,6 +137,11 @@ export function storedMs(v: string): number | null {
 /** uPlot x-axis tick (epoch ms) → DD/MM in IST. */
 export function fmtAxisDay(ms: number): string {
 	return axisDayFmt.format(new Date(ms));
+}
+
+/** Intraday uPlot x-axis tick (epoch ms) → HH:mm in IST. */
+export function fmtAxisTime(ms: number): string {
+	return axisTimeFmt.format(new Date(ms));
 }
 
 /** Live `datetime-local` (UTC) → IST label for input previews; '' when invalid. */

@@ -1,3 +1,11 @@
+/** True when the OS asks for reduced motion; safe during SSR. */
+export function prefersReducedMotion(): boolean {
+	return (
+		typeof window !== 'undefined' &&
+		!!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+	);
+}
+
 /**
  * Fluid-height action: keeps the host box glued to its content height and
  * glides (`height` transition) whenever that height changes — tab switches,
@@ -18,10 +26,7 @@ export function fluidHeight(
 	node: HTMLElement,
 	params: FluidHeightParams = {}
 ): { destroy: () => void } {
-	const reduced =
-		typeof window !== 'undefined' &&
-		!!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-	if (reduced) return { destroy() {} };
+	if (prefersReducedMotion()) return { destroy() {} };
 
 	const duration = params.duration ?? 380;
 	const EASE = 'cubic-bezier(0.22, 1, 0.36, 1)';
@@ -109,9 +114,7 @@ export function countup(
 	let current = 0;
 	let startedAt = 0;
 
-	const reduced =
-		typeof window !== 'undefined' &&
-		!!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+	const reduced = prefersReducedMotion();
 
 	const paint = (v: number): void => {
 		node.textContent = params.format(v);

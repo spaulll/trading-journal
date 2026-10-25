@@ -3,8 +3,15 @@
 	import { goto } from '$app/navigation';
 	import { Chart, registerables } from 'chart.js';
 	import type { TagPerf } from '$lib/api';
+	import {
+		applyChartDefaults,
+		chartAnimation,
+		chartGrid,
+		chartTick,
+		chartTooltip
+	} from '$lib/components/charts/chartTheme';
 	import { palette } from '$lib/utils/palette';
-	import { BE_TOL } from '$lib/utils/format';
+	import { BE_TOL, fmtAxisMoney, fmtMoney } from '$lib/utils/format';
 	import { drillIntoTag } from '$lib/stores/ledger';
 	import { theme } from '$lib/stores/theme';
 
@@ -17,6 +24,11 @@
 	let canvas: HTMLCanvasElement | null = null;
 	let chart: Chart | null = null;
 
+	/** Long tags get an ellipsis on the axis; the tooltip keeps the full name. */
+	function shortTag(v: string): string {
+		return v.length > 15 ? `${v.slice(0, 14)}…` : v;
+	}
+
 	/** Clicking a bar opens the ledger on that tag — the trades behind it. */
 	function drill(index: number): void {
 		const tag = top[index];
@@ -28,9 +40,7 @@
 	function render(list: TagPerf[]): void {
 		if (!canvas) return;
 		const p = palette();
-		Chart.defaults.color = p.axis;
-		Chart.defaults.borderColor = p.grid;
-		Chart.defaults.font.family = 'Geist, ui-sans-serif, sans-serif';
+		applyChartDefaults(p);
 		chart?.destroy();
 		chart = new Chart(canvas, {
 			type: 'bar',
@@ -51,7 +61,7 @@
 				responsive: true,
 				maintainAspectRatio: false,
 				indexAxis: 'y',
-				animation: { duration: 800, easing: 'easeOutQuart' },
+				animation: chartAnimation(),
 				onClick: (_event, elements) => {
 					if (elements.length > 0) drill(elements[0].index);
 				},
@@ -62,27 +72,35 @@
 				plugins: {
 					legend: { display: false },
 					tooltip: {
-						backgroundColor: p.panel,
-						titleColor: p.axis,
-						bodyColor: p.fg,
-						borderColor: p.grid,
-						borderWidth: 1,
-						padding: 10,
-						cornerRadius: 10,
-						displayColors: false,
+						...chartTooltip(p),
 						callbacks: {
-							afterLabel: () => 'click to see the trades'
+							label: (item) => fmtMoney(Number(item.raw)),
+							labelTextColor: (item) => {
+								const t = list[item.dataIndex];
+								return !t
+									? p.fg
+									: t.net_pnl > BE_TOL
+										? p.win
+										: t.net_pnl < -BE_TOL
+											? p.loss
+											: p.flat;
+							}
 						}
 					}
 				},
 				scales: {
 					x: {
-						grid: { color: p.grid },
-						ticks: { callback: (v) => `$${v}`, color: p.axis, font: { family: 'Geist Mono', size: 11 } }
+						grid: chartGrid(p),
+						ticks: { ...chartTick(p), callback: (v) => fmtAxisMoney(Number(v)) }
 					},
 					y: {
-						grid: { display: false, color: p.grid },
-						ticks: { color: p.axis, font: { family: 'Geist Mono', size: 11 } }
+						grid: { display: false },
+						ticks: {
+							...chartTick(p),
+							callback(value) {
+								return shortTag(this.getLabelForValue(Number(value)));
+							}
+						}
 					}
 				}
 			}

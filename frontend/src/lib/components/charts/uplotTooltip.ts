@@ -22,7 +22,7 @@ export function tooltipPlugin(format: (idx: number) => TipContent | null): uPlot
 				u.root.style.position = 'relative';
 				tip = document.createElement('div');
 				tip.className =
-					'pointer-events-none absolute z-10 hidden rounded-xl border border-line bg-panel/95 px-2.5 py-1.5 shadow-pop backdrop-blur-sm';
+					'pointer-events-none absolute z-10 hidden rounded-control border border-edge bg-overlay p-2';
 				tip.style.transform = 'translate(-50%, -115%)';
 				tip.style.whiteSpace = 'nowrap';
 				u.root.appendChild(tip);
@@ -40,14 +40,17 @@ export function tooltipPlugin(format: (idx: number) => TipContent | null): uPlot
 					return;
 				}
 				tip.innerHTML =
-					`<div class="font-mono text-[10px] tracking-wide text-dim">${content.title}</div>` +
-					`<div class="font-mono text-sm font-bold tabular-nums ${TONE_TEXT[content.tone]}">${content.value}</div>`;
+					`<div class="font-mono text-2xs font-medium tracking-wide text-dim">${content.title}</div>` +
+					`<div class="font-mono text-xs font-semibold tabular-nums ${TONE_TEXT[content.tone]}">${content.value}</div>`;
 				const x = (u.bbox.left ?? 0) + (u.cursor.left ?? 0);
 				const y = (u.bbox.top ?? 0) + (u.cursor.top ?? 0);
 				tip.style.display = 'block';
 				const tw = tip.offsetWidth;
+				const th = tip.offsetHeight;
 				tip.style.left = `${Math.min(Math.max(x, tw / 2 + 4), Math.max(tw / 2 + 4, u.width - tw / 2 - 4))}px`;
-				tip.style.top = `${Math.max(y, 52)}px`;
+				// The transform lifts the box by 115% of its height; anchor below
+				// that so the tooltip never pokes above the plot on a top tick.
+				tip.style.top = `${Math.max(y, th * 1.15 + 4)}px`;
 			},
 			destroy: () => {
 				tip?.remove();

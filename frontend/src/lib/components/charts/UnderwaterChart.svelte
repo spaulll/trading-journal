@@ -3,20 +3,18 @@
 	import uPlot from 'uplot';
 	import 'uplot/dist/uPlot.min.css';
 	import type { EquityPoint } from '$lib/api';
-	import { fmtAxisDay, fmtDate, fmtMoney, pnlTone, storedMs } from '$lib/utils/format';
+	import { fmtDate, fmtDateTime, fmtMoney, pnlTone, storedMs } from '$lib/utils/format';
+	import {
+		alpha,
+		moneyAxisValues,
+		timeAxisValues,
+		uplotAxes
+	} from '$lib/components/charts/chartTheme';
 	import { tooltipPlugin } from '$lib/components/charts/uplotTooltip';
 	import { palette } from '$lib/utils/palette';
 	import { theme } from '$lib/stores/theme';
 
 	const { points }: { points: EquityPoint[] } = $props();
-
-	const AXIS_FONT = '11px "Geist Mono", ui-monospace, monospace';
-
-	/** Rebuild `rgb(r g b)` (with or without alpha) at an explicit alpha. */
-	function alpha(color: string, a: number): string {
-		const inner = color.startsWith('rgb(') ? color.slice(4, -1) : color;
-		return `rgb(${inner.split('/')[0].trim()} / ${a})`;
-	}
 
 	let wrap: HTMLDivElement | null = null;
 	let plot: uPlot | null = null;
@@ -28,6 +26,8 @@
 		const xs = points.map((p) => (storedMs(p.timestamp) ?? 0) / 1000);
 		const ys = points.map((p) => p.drawdown);
 		const w = wrap.clientWidth || 600;
+		const span = xs.length > 1 ? xs[xs.length - 1] - xs[0] : 0;
+		const intraday = xs.length > 0 && span < 24 * 60 * 60;
 		plot = new uPlot(
 			{
 				width: w,
@@ -38,22 +38,14 @@
 					tooltipPlugin((idx) => {
 						const p = points[idx];
 						if (!p) return null;
-						return { title: fmtDate(p.timestamp), value: fmtMoney(p.drawdown), tone: pnlTone(p.drawdown) };
+						return {
+							title: intraday ? fmtDateTime(p.timestamp) : fmtDate(p.timestamp),
+							value: fmtMoney(p.drawdown),
+							tone: pnlTone(p.drawdown)
+						};
 					})
 				],
-				axes: [
-					{
-						font: AXIS_FONT,
-						stroke: pal.axis,
-						grid: { stroke: pal.grid, width: 1 },
-						values: (_u, vals) => vals.map((v) => fmtAxisDay(v * 1000))
-					},
-					{
-						font: AXIS_FONT,
-						stroke: pal.axis,
-						grid: { stroke: pal.grid, width: 1 }
-					}
-				],
+				axes: uplotAxes(pal, timeAxisValues(intraday), moneyAxisValues()),
 				series: [
 					{},
 					{
@@ -90,7 +82,7 @@
 
 	$effect(() => {
 		$theme;
-		points.length;
+		points;
 		if (wrap) build();
 	});
 </script>
