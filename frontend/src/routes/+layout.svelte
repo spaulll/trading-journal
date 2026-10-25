@@ -39,6 +39,7 @@ import { MOTION } from '$lib/utils/motion-timing';
 		<OfflineBanner />
 		<main
 			id="main-content"
+			tabindex="-1"
 			class="mx-auto w-full max-w-[1560px] scroll-mt-20 px-4 pt-6 pb-28 outline-none sm:px-6 lg:px-8 lg:pt-8 lg:pb-16"
 		>
 			{#key page.url.pathname}

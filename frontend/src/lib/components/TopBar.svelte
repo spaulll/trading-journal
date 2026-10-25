@@ -15,7 +15,11 @@
 	class="sticky top-0 z-40 h-14 border-b border-line bg-base/90 backdrop-blur-xl lg:hidden"
 >
 	<div class="flex h-full w-full items-center gap-3 px-4">
-		<a href="/" class="flex min-w-0 items-center gap-2.5" aria-label="Trading Journal home">
+		<a
+			href="/"
+			class="flex min-w-0 items-center gap-2.5 transition-opacity duration-200 hover:opacity-90 active:opacity-80"
+			aria-label="Trading Journal home"
+		>
 			<Logo size={30} />
 			<span class="display truncate text-lg leading-none text-fg">Trading Journal</span>
 		</a>
@@ -48,10 +52,13 @@
 				onclick={toggleTheme}
 				aria-label={$theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
 				title="Toggle light / dark"
-				class="btn-icon h-10 w-10"
+				class="btn-icon group h-10 w-10"
 			>
 				{#key $theme}
-					<span class="anim-pop inline-flex" style="animation-duration: 0.3s">
+					<span
+						class="anim-pop inline-flex transition-transform duration-200 group-hover:scale-105"
+						style="animation-duration: 0.3s"
+					>
 						{#if $theme === 'dark'}
 							<Sun size={16} strokeWidth={1.8} aria-hidden="true" />
 						{:else}
@@ -70,13 +77,15 @@
 				disabled={$syncing}
 				aria-label="Refresh trades"
 				title="Reload trades and re-check the API"
-				class="btn-icon h-10 w-10"
+				class="btn-icon group h-10 w-10"
 			>
 				<RefreshCw
 					size={15}
 					strokeWidth={2}
 					aria-hidden="true"
-					class={$syncing ? 'animate-spin' : ''}
+					class="transition-transform duration-200 {$syncing
+						? 'animate-spin'
+						: 'group-hover:scale-105'}"
 				/>
 			</button>
 		</div>

@@ -271,12 +271,14 @@
 </svelte:head>
 
 {#snippet accountSwitcher()}
-	<label class="flex h-10 items-center gap-2 rounded-xl border border-line bg-raised/70 px-3 text-sm text-dim">
-		<span class="font-mono text-[10px] tracking-[0.16em] uppercase">Account</span>
+	<label
+		class="flex h-10 items-center gap-2 rounded-control border border-line bg-raised/70 px-3 text-sm text-dim transition-[border-color,box-shadow,background-color] duration-200 focus-within:border-accent/60 focus-within:bg-raised focus-within:ring-2 focus-within:ring-accent/20"
+	>
+		<span class="font-mono text-xs tracking-[0.16em] uppercase">Account</span>
 		<select
 			value={$selectedAccountId === null ? '' : String($selectedAccountId)}
 			onchange={onAccountChange}
-			class="h-full max-w-44 appearance-none border-0 bg-transparent text-[13px] text-fg outline-none [color-scheme:inherit] [&>option]:bg-panel [&>option]:text-fg"
+			class="h-full max-w-44 appearance-none border-0 bg-transparent text-sm text-fg outline-none focus:ring-0 [color-scheme:inherit] [&>option]:bg-panel [&>option]:text-fg"
 			aria-label="Analytics account"
 		>
 			<option value="">All accounts</option>

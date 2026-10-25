@@ -21,13 +21,15 @@
 	class="fixed inset-y-0 left-0 z-40 hidden flex-col border-r border-line bg-panel/90 backdrop-blur-xl transition-[width] duration-300 ease-spring lg:flex {$sidebarCollapsed
 		? 'w-[68px]'
 		: 'w-60'}"
+	id="sidebar"
 	aria-label="Workspace"
 >
 	<div class="flex items-center gap-2 px-4 pt-5 pb-5 {$sidebarCollapsed ? 'justify-center px-0' : ''}">
 		<a
 			href="/"
-			class="flex min-w-0 items-center gap-3"
+			class="flex min-w-0 items-center gap-3 transition-opacity duration-200 hover:opacity-90 active:opacity-80"
 			title="Trading Journal"
+			aria-label="Trading Journal home"
 		>
 			<Logo size={36} />
 			{#if !$sidebarCollapsed}
@@ -42,9 +44,10 @@
 				type="button"
 				onclick={toggleSidebar}
 				aria-expanded="true"
+				aria-controls="sidebar"
 				aria-label="Collapse sidebar"
 				title="Collapse sidebar"
-				class="ml-auto grid h-7 w-7 shrink-0 place-items-center rounded-control border border-line bg-raised/60 text-dim transition-colors hover:border-edge hover:text-fg"
+				class="ml-auto grid h-7 w-7 shrink-0 place-items-center rounded-control border border-line bg-raised/60 text-dim transition-[background-color,border-color,color,transform] duration-200 ease-spring hover:border-edge hover:bg-raised hover:text-fg active:scale-95"
 			>
 				<PanelLeftClose size={14} strokeWidth={2} aria-hidden="true" />
 			</button>
@@ -61,12 +64,13 @@
 			<a
 				href={link.href}
 				aria-current={isActive ? 'page' : undefined}
+				aria-label={link.label}
 				title={link.label}
 				class="rise group relative flex items-center gap-3 rounded-control border px-3 py-2.5 text-sm transition-[background-color,border-color,color,box-shadow] duration-200 ease-spring {$sidebarCollapsed
 					? 'justify-center'
 					: ''} {isActive
-					? 'border-line bg-raised text-fg shadow-inset-highlight'
-					: 'border-transparent text-mut hover:bg-raised/50 hover:text-fg'}"
+					? 'border-line bg-raised text-fg shadow-inset-highlight active:bg-raised'
+					: 'border-transparent text-mut hover:bg-raised/50 hover:text-fg active:bg-raised/70'}"
 				style="animation-delay: {stagger(i)}ms;"
 			>
 				<span
@@ -124,7 +128,7 @@
 					disabled={$syncing}
 					aria-label="Refresh trades"
 					title="Reload trades from the API"
-					class="btn btn-ghost h-8 w-full justify-center gap-1.5 {$sidebarCollapsed
+					class="btn btn-ghost group h-8 w-full justify-center gap-1.5 {$sidebarCollapsed
 						? 'px-0'
 						: 'px-2'} text-xs"
 				>
@@ -132,7 +136,9 @@
 						size={14}
 						strokeWidth={2}
 						aria-hidden="true"
-						class={$syncing ? 'animate-spin' : ''}
+						class="transition-transform duration-200 {$syncing
+							? 'animate-spin'
+							: 'group-hover:scale-105'}"
 					/>
 					{#if !$sidebarCollapsed}
 						<span>{$syncing ? 'Refreshing' : 'Refresh'}</span>
@@ -144,12 +150,15 @@
 					onclick={toggleTheme}
 					aria-label={$theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
 					title="Toggle light / dark"
-					class="btn btn-ghost h-8 w-full justify-center gap-1.5 {$sidebarCollapsed
+					class="btn btn-ghost group h-8 w-full justify-center gap-1.5 {$sidebarCollapsed
 						? 'px-0'
 						: 'px-2'} text-xs"
 				>
 					{#key $theme}
-						<span class="anim-pop inline-flex" style="animation-duration: 0.3s">
+						<span
+							class="anim-pop inline-flex transition-transform duration-200 group-hover:scale-105"
+							style="animation-duration: 0.3s"
+						>
 							{#if $theme === 'dark'}
 								<Sun size={14} strokeWidth={1.8} aria-hidden="true" />
 							{:else}
@@ -167,11 +176,17 @@
 						type="button"
 						onclick={toggleSidebar}
 						aria-expanded="false"
+						aria-controls="sidebar"
 						aria-label="Expand sidebar"
 						title="Expand sidebar"
-						class="btn btn-ghost h-8 w-full justify-center px-0 text-xs"
+						class="btn btn-ghost group h-8 w-full justify-center px-0 text-xs"
 					>
-						<PanelLeftOpen size={14} strokeWidth={2} aria-hidden="true" />
+						<PanelLeftOpen
+							size={14}
+							strokeWidth={2}
+							aria-hidden="true"
+							class="transition-transform duration-200 group-hover:scale-105"
+						/>
 					</button>
 				{/if}
 			</div>

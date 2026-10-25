@@ -20,8 +20,8 @@
 				aria-current={isActive ? 'page' : undefined}
 				title={link.label}
 				class="group relative flex min-w-0 flex-col items-center justify-center gap-0.5 overflow-hidden rounded-control py-1.5 text-xs leading-none transition-[background-color,color,box-shadow,transform] duration-200 ease-spring sm:flex-row sm:gap-1 sm:px-1 sm:py-2.5 sm:text-xs {isActive
-					? 'bg-raised text-fg shadow-inset-highlight ring-1 ring-line ring-inset'
-					: 'text-mut hover:bg-raised/40 hover:text-fg'}"
+					? 'bg-raised text-fg shadow-inset-highlight ring-1 ring-line ring-inset active:bg-raised'
+					: 'text-mut hover:bg-raised/40 hover:text-fg active:bg-raised/60'}"
 			>
 				<span
 					class="absolute top-0 left-1/2 h-[2px] w-8 -translate-x-1/2 rounded-full bg-accent transition-opacity duration-200 {isActive
