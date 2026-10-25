@@ -7,45 +7,54 @@
 	import { refreshTrades, syncing } from '$lib/stores/trades';
 	import { theme, toggleTheme } from '$lib/stores/theme';
 	import { sidebarCollapsed, toggleSidebar } from '$lib/stores/ui';
+	import { STAGGER_DELAY, STAGGER_MAX } from '$lib/utils/motion-timing';
 
 	const statusLabel = $derived(
 		$connected === null ? 'checking' : $connected ? 'live' : 'offline'
 	);
+
+	const stagger = (i: number) => Math.min(i, STAGGER_MAX - 1) * STAGGER_DELAY;
 </script>
 
 <!-- Desktop: fixed brass-edged rail. Mobile uses TopBar + bottom tab bar. -->
 <aside
-	class="fixed inset-y-0 left-0 z-40 hidden flex-col border-r border-line bg-panel/85 backdrop-blur-xl transition-[width] duration-300 ease-spring lg:flex {$sidebarCollapsed
+	class="fixed inset-y-0 left-0 z-40 hidden flex-col border-r border-line bg-panel/90 backdrop-blur-xl transition-[width] duration-300 ease-spring lg:flex {$sidebarCollapsed
 		? 'w-[68px]'
 		: 'w-60'}"
 	aria-label="Workspace"
 >
-	<button
-		type="button"
-		onclick={toggleSidebar}
-		aria-expanded={!$sidebarCollapsed}
-		aria-label={$sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-		title={$sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-		class="absolute top-6 -right-3 z-50 grid h-6 w-6 place-items-center rounded-full border border-line bg-raised text-dim shadow-pop transition-colors hover:border-edge hover:text-fg"
-	>
-		{#if $sidebarCollapsed}
-			<PanelLeftOpen size={13} strokeWidth={2} aria-hidden="true" />
-		{:else}
-			<PanelLeftClose size={13} strokeWidth={2} aria-hidden="true" />
-		{/if}
-	</button>
-
-	<a href="/" class="flex items-center gap-3 px-5 pt-5 pb-6 {$sidebarCollapsed ? 'justify-center px-0' : ''}" title="Trading Journal">
-		<Logo size={36} />
+	<div class="flex items-center gap-2 px-4 pt-5 pb-5 {$sidebarCollapsed ? 'justify-center px-0' : ''}">
+		<a
+			href="/"
+			class="flex min-w-0 items-center gap-3"
+			title="Trading Journal"
+		>
+			<Logo size={36} />
+			{#if !$sidebarCollapsed}
+				<span class="flex min-w-0 flex-col leading-none">
+					<span class="display truncate text-lg leading-none text-fg">Trading Journal</span>
+					<span class="eyebrow mt-1.5">self-hosted</span>
+				</span>
+			{/if}
+		</a>
 		{#if !$sidebarCollapsed}
-			<span class="flex min-w-0 flex-col leading-none">
-				<span class="display truncate text-[19px] leading-none text-fg">Trading Journal</span>
-				<span class="eyebrow mt-1.5">self-hosted</span>
-			</span>
+			<button
+				type="button"
+				onclick={toggleSidebar}
+				aria-expanded="true"
+				aria-label="Collapse sidebar"
+				title="Collapse sidebar"
+				class="ml-auto grid h-7 w-7 shrink-0 place-items-center rounded-control border border-line bg-raised/60 text-dim transition-colors hover:border-edge hover:text-fg"
+			>
+				<PanelLeftClose size={14} strokeWidth={2} aria-hidden="true" />
+			</button>
 		{/if}
-	</a>
+	</div>
 
 	<nav aria-label="Primary" class="flex flex-col gap-1 px-3">
+		{#if !$sidebarCollapsed}
+			<p class="eyebrow px-3 pt-1 pb-1.5 opacity-60">Workspace</p>
+		{/if}
 		{#each NAV_LINKS as link, i (link.href)}
 			{@const Icon = link.icon}
 			{@const isActive = isActiveLink(link.href, page.url.pathname)}
@@ -53,15 +62,15 @@
 				href={link.href}
 				aria-current={isActive ? 'page' : undefined}
 				title={link.label}
-				class="group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition-all duration-300 ease-spring {$sidebarCollapsed
+				class="rise group relative flex items-center gap-3 rounded-control border px-3 py-2.5 text-sm transition-[background-color,border-color,color,box-shadow] duration-200 ease-spring {$sidebarCollapsed
 					? 'justify-center'
 					: ''} {isActive
-					? 'bg-raised text-fg shadow-[inset_0_1px_0_rgb(255_255_255/0.05)]'
-					: 'text-mut hover:bg-raised/60 hover:text-fg'}"
-				style="animation: rise 0.5s cubic-bezier(0.22, 1, 0.36, 1) {i * 70}ms backwards;"
+					? 'border-line bg-raised text-fg shadow-inset-highlight'
+					: 'border-transparent text-mut hover:bg-raised/50 hover:text-fg'}"
+				style="animation-delay: {stagger(i)}ms;"
 			>
 				<span
-					class="absolute top-1/2 left-0 h-5 w-[3px] -translate-y-1/2 rounded-full bg-accent transition-all duration-300 ease-spring {isActive
+					class="absolute top-1/2 left-0 h-4 w-[2px] -translate-y-1/2 rounded-full bg-accent transition-opacity duration-200 {isActive
 						? 'opacity-100'
 						: 'opacity-0'}"
 					aria-hidden="true"
@@ -69,7 +78,9 @@
 				<Icon
 					size={17}
 					strokeWidth={isActive ? 2 : 1.6}
-					class="transition-all duration-300 ease-spring {isActive ? 'scale-110 text-accent' : 'group-hover:scale-105'}"
+					class="shrink-0 transition-transform duration-200 ease-spring {isActive
+						? 'text-accent'
+						: 'group-hover:translate-x-0.5'}"
 					aria-hidden="true"
 				/>
 				{#if !$sidebarCollapsed}
@@ -79,75 +90,95 @@
 		{/each}
 	</nav>
 
-	<div class="mt-auto flex flex-col gap-2.5 px-3 pb-4">
-		<div
-			class="flex items-center gap-2 rounded-xl border border-line bg-raised/60 px-3 py-2 {$sidebarCollapsed
-				? 'justify-center px-0'
-				: ''}"
-			title={$connected === null
-				? 'Checking API'
-				: $connected
-					? 'API reachable'
-					: 'API unreachable'}
-		>
-			<span
-				class="h-1.5 w-1.5 shrink-0 rounded-full {$connected === null
-					? 'animate-pulse bg-dim'
+	<div class="mt-auto {$sidebarCollapsed ? 'px-2' : 'px-3'} pb-4">
+		<div class="rounded-card border border-line bg-raised/35 {$sidebarCollapsed ? 'p-1.5' : 'p-2'}">
+			<div
+				class="flex items-center gap-2 {$sidebarCollapsed ? 'justify-center' : 'px-2'} py-1"
+				title={$connected === null
+					? 'Checking API'
 					: $connected
-						? 'bg-win dot-live'
-						: 'bg-loss'}"
-				aria-hidden="true"
-			></span>
-			{#if !$sidebarCollapsed}
-				<span class="eyebrow">{statusLabel}</span>
-				<span class="eyebrow ml-auto opacity-60">api</span>
-			{/if}
+						? 'API reachable'
+						: 'API unreachable'}
+			>
+				<span
+					class="h-1.5 w-1.5 shrink-0 rounded-full {$connected === null
+						? 'animate-pulse bg-dim'
+						: $connected
+							? 'bg-win dot-live'
+							: 'bg-loss'}"
+					aria-hidden="true"
+				></span>
+				{#if !$sidebarCollapsed}
+					<span class="eyebrow">{statusLabel}</span>
+					<span class="eyebrow ml-auto opacity-60">api</span>
+				{/if}
+			</div>
+
+			<div class="mt-1.5 flex flex-col gap-1">
+				<button
+					type="button"
+					onclick={() => {
+						void refreshTrades();
+						void checkConnection();
+					}}
+					disabled={$syncing}
+					aria-label="Refresh trades"
+					title="Reload trades from the API"
+					class="btn btn-ghost h-8 w-full justify-center gap-1.5 {$sidebarCollapsed
+						? 'px-0'
+						: 'px-2'} text-xs"
+				>
+					<RefreshCw
+						size={14}
+						strokeWidth={2}
+						aria-hidden="true"
+						class={$syncing ? 'animate-spin' : ''}
+					/>
+					{#if !$sidebarCollapsed}
+						<span>{$syncing ? 'Refreshing' : 'Refresh'}</span>
+					{/if}
+				</button>
+
+				<button
+					type="button"
+					onclick={toggleTheme}
+					aria-label={$theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+					title="Toggle light / dark"
+					class="btn btn-ghost h-8 w-full justify-center gap-1.5 {$sidebarCollapsed
+						? 'px-0'
+						: 'px-2'} text-xs"
+				>
+					{#key $theme}
+						<span class="anim-pop inline-flex" style="animation-duration: 0.3s">
+							{#if $theme === 'dark'}
+								<Sun size={14} strokeWidth={1.8} aria-hidden="true" />
+							{:else}
+								<Moon size={14} strokeWidth={1.8} aria-hidden="true" />
+							{/if}
+						</span>
+					{/key}
+					{#if !$sidebarCollapsed}
+						<span>{$theme === 'dark' ? 'Light mode' : 'Dark mode'}</span>
+					{/if}
+				</button>
+
+				{#if $sidebarCollapsed}
+					<button
+						type="button"
+						onclick={toggleSidebar}
+						aria-expanded="false"
+						aria-label="Expand sidebar"
+						title="Expand sidebar"
+						class="btn btn-ghost h-8 w-full justify-center px-0 text-xs"
+					>
+						<PanelLeftOpen size={14} strokeWidth={2} aria-hidden="true" />
+					</button>
+				{/if}
+			</div>
 		</div>
 
-		<button
-			type="button"
-			onclick={() => {
-				void refreshTrades();
-				void checkConnection();
-			}}
-			disabled={$syncing}
-			title="Reload trades from the API"
-			class="btn btn-primary h-10 w-full justify-center text-[13px]"
-		>
-			<RefreshCw
-				size={15}
-				strokeWidth={2}
-				aria-hidden="true"
-				class={$syncing ? 'animate-spin' : ''}
-			/>
-			{#if !$sidebarCollapsed}
-				{$syncing ? 'Refreshing' : 'Refresh data'}
-			{/if}
-		</button>
-
-		<button
-			type="button"
-			onclick={toggleTheme}
-			title="Toggle light / dark"
-			class="btn btn-ghost h-9 w-full justify-center text-[13px]"
-		>
-			{#key $theme}
-				<span class="anim-pop inline-flex" style="animation-duration: 0.3s">
-					{#if $theme === 'dark'}
-						<Sun size={15} strokeWidth={1.8} aria-hidden="true" />
-					{:else}
-						<Moon size={15} strokeWidth={1.8} aria-hidden="true" />
-					{/if}
-				</span>
-			{/key}
-			{#if $theme === 'dark'}
-				{#if !$sidebarCollapsed}<span>Light mode</span>{/if}
-			{:else if !$sidebarCollapsed}<span>Dark mode</span>{/if}
-		</button>
-
 		{#if !$sidebarCollapsed}
-			<p class="eyebrow pt-1 text-center opacity-70">v2 · local</p>
+			<p class="eyebrow pt-2 text-center opacity-60">v2 · local</p>
 		{/if}
 	</div>
 </aside>
-/* stagger cap: max 8 items, delay <= STAGGER_DELAY * 8 = 256ms (PLAN §2.2) */
