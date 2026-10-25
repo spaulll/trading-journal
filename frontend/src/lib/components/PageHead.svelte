@@ -13,17 +13,21 @@
 </script>
 
 <!-- Shared page masthead: serif display title, mono meta line, slot for actions. -->
-<header class="rise mb-6 flex flex-wrap items-end justify-between gap-4">
-	<div class="min-w-0">
-		{#if eyebrow}
-			<p class="eyebrow mb-2.5 text-accent">{eyebrow}</p>
-		{/if}
-		<h1 class="display text-3xl text-fg">{title}</h1>
-		{#if meta}
-			<p class="num mt-2 text-[12.5px] text-mut">{meta}</p>
+<header class="rise mb-6">
+	<div class="flex flex-wrap items-end justify-between gap-x-4 gap-y-3">
+		<div class="min-w-0">
+			{#if eyebrow}
+				<p class="eyebrow mb-2 text-accent">{eyebrow}</p>
+			{/if}
+			<h1 class="display text-display text-fg">{title}</h1>
+		</div>
+		{#if children}
+			<div class="flex shrink-0 flex-wrap items-center gap-2" data-pagehead-actions>
+				{@render children()}
+			</div>
 		{/if}
 	</div>
-	{#if children}
-		{@render children()}
+	{#if meta}
+		<p class="num mt-2 text-sm text-mut">{meta}</p>
 	{/if}
 </header>

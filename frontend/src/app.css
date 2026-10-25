@@ -173,7 +173,7 @@ html {
 
 	/* ---------- Typography helpers ---------- */
 	.eyebrow {
-		@apply font-mono text-[10px] font-medium tracking-[0.2em] uppercase;
+		@apply font-mono text-xs font-medium tracking-[0.18em] uppercase;
 		color: rgb(var(--c-dim));
 	}
 	.display {
