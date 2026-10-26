@@ -363,7 +363,7 @@
 						type="button"
 						onclick={selectAllFiltered}
 						disabled={allFilteredSelected}
-						class="rounded-lg px-2 py-1 font-mono text-[11px] tracking-[0.06em] uppercase text-dim transition-colors hover:text-fg disabled:opacity-40"
+						class="rounded-lg px-2 py-1 font-mono text-[11px] tracking-[0.06em] uppercase text-mut transition-colors hover:text-fg disabled:cursor-not-allowed disabled:text-dim disabled:hover:text-dim"
 					>
 						All
 					</button>
@@ -371,7 +371,7 @@
 						type="button"
 						onclick={clearSelection}
 						disabled={selectedVisibleCount === 0}
-						class="rounded-lg px-2 py-1 font-mono text-[11px] tracking-[0.06em] uppercase text-dim transition-colors hover:text-fg disabled:opacity-40"
+						class="rounded-lg px-2 py-1 font-mono text-[11px] tracking-[0.06em] uppercase text-mut transition-colors hover:text-fg disabled:cursor-not-allowed disabled:text-dim disabled:hover:text-dim"
 					>
 						None
 					</button>
@@ -384,7 +384,7 @@
 						<option value={String(a.id)}>@{a.alias}</option>
 					{/each}
 				</select>
-				<button type="button" onclick={() => void moveFiltered()} disabled={!moveTarget || moving || (selectMode && selectedVisibleCount === 0)} class="btn btn-ghost h-8 px-3 text-[12px] disabled:opacity-40">
+				<button type="button" onclick={() => void moveFiltered()} disabled={!moveTarget || moving || (selectMode && selectedVisibleCount === 0)} class="btn btn-ghost h-8 px-3 text-[12px]">
 					{moving ? 'Moving…' : selectMode ? `Move ${selectedVisibleCount}` : 'Move'}
 				</button>
 			</div>
@@ -675,7 +675,7 @@
 					type="button"
 					onclick={() => gotoPage($tradesPage - 1, pages)}
 					disabled={$tradesPage <= 1}
-					class="btn btn-ghost h-8 px-2.5 text-[12px] disabled:opacity-40"
+					class="btn btn-ghost h-8 px-2.5 text-[12px]"
 				>
 					Prev
 				</button>
@@ -684,7 +684,7 @@
 					type="button"
 					onclick={() => gotoPage($tradesPage + 1, pages)}
 					disabled={$tradesPage >= pages}
-					class="btn btn-ghost h-8 px-2.5 text-[12px] disabled:opacity-40"
+					class="btn btn-ghost h-8 px-2.5 text-[12px]"
 				>
 					Next
 				</button>

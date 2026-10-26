@@ -137,7 +137,7 @@
 				type="button"
 				onclick={() => void run()}
 				disabled={!file || busy}
-				class="btn btn-primary h-9 shrink-0 px-4 text-[13px] disabled:opacity-50"
+				class="btn btn-primary h-9 shrink-0 px-4 text-[13px]"
 			>
 				<Upload size={14} strokeWidth={2.2} aria-hidden="true" />
 				{busy ? 'Importing…' : 'Import'}

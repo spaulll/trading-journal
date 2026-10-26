@@ -185,9 +185,9 @@
 			<form class="min-h-0 flex-1 overflow-y-auto px-5 py-4" onsubmit={submit}>
 				<p class="num mb-4 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11.5px] text-dim">
 					<span>Entry <span class="text-fg">{trade.entry_price ?? '—'}</span></span>
-					<span class="text-dim/60">·</span>
+					<span class="text-dim">·</span>
 					<span>SL <span class="text-fg">{trade.initial_sl ?? '—'}</span></span>
-					<span class="text-dim/60">·</span>
+					<span class="text-dim">·</span>
 					<span>{trade.ticket}</span>
 				</p>
 				<div class="grid grid-cols-2 gap-3 sm:grid-cols-3">

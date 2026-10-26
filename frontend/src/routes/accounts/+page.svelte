@@ -390,7 +390,7 @@
 					<summary class="flex cursor-pointer list-none items-center gap-1.5 text-[11px] font-medium tracking-[0.14em] uppercase text-dim transition-colors hover:text-fg">
 						<ChevronRight size={13} class="transition-transform group-open:rotate-90" aria-hidden="true" />
 						Timeline
-						{#if timelines[a.id]}<span class="text-dim/70">· {timelines[a.id].length}</span>{/if}
+						{#if timelines[a.id]}<span class="text-dim">· {timelines[a.id].length}</span>{/if}
 					</summary>
 					<div class="mt-2">
 						{#if timelineBusy[a.id]}

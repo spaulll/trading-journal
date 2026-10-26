@@ -70,7 +70,7 @@
 	<p class="num mt-1 text-[10px] text-dim">No exit price → skipped · entered net → kept</p>
 
 	<div class="mt-3 flex flex-wrap items-center gap-2 xl:mt-auto">
-		<button type="button" onclick={() => void check()} disabled={busy} class="btn h-9 px-4 text-[13px] disabled:opacity-50">
+		<button type="button" onclick={() => void check()} disabled={busy} class="btn h-9 px-4 text-[13px]">
 			{checking ? 'Checking…' : result ? 'Check again' : 'Check unpriced trades'}
 		</button>
 		{#if result && !result.apply && result.repairable > 0}
@@ -78,7 +78,7 @@
 				type="button"
 				onclick={() => void apply()}
 				disabled={busy}
-				class="btn btn-primary h-9 px-4 text-[13px] disabled:opacity-50"
+				class="btn btn-primary h-9 px-4 text-[13px]"
 			>
 				{applying ? 'Applying…' : `Apply repair · ${result.repairable}`}
 			</button>

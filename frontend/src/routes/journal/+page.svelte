@@ -186,7 +186,7 @@
 			type="button"
 			onclick={() => void generateReview()}
 			disabled={generating}
-			class="btn btn-ghost h-9 px-4 text-[13px] disabled:opacity-50"
+			class="btn btn-ghost h-9 px-4 text-[13px]"
 		>
 			{generating ? 'Summarizing…' : 'Summarize week'}
 		</button>

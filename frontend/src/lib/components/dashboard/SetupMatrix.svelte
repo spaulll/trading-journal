@@ -71,7 +71,7 @@
 											>{c.trade_count}t · {fmtNum(c.win_rate, 0)}%</span
 										>
 									{:else}
-										<span class="text-[11px] text-dim/50">—</span>
+										<span class="text-[11px] text-dim">—</span>
 									{/if}
 								</td>
 							{/each}

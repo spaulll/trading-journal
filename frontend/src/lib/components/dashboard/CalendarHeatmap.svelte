@@ -155,7 +155,7 @@
 
 			<div class="mb-0.5 grid grid-cols-7 gap-[3px]" aria-hidden="true">
 				{#each WEEKDAYS as wd, i (i)}
-					<span class="text-center font-mono text-[8px] tracking-[0.08em] text-dim/70 sm:text-[9px]">{wd}</span>
+					<span class="text-center font-mono text-[8px] tracking-[0.08em] text-dim sm:text-[9px]">{wd}</span>
 				{/each}
 			</div>
 

@@ -398,7 +398,7 @@
 						type="button"
 						onclick={() => void toggleBreach()}
 						disabled={breachBusy}
-						class="rounded-lg border px-2 py-1 font-mono text-[10px] font-bold tracking-[0.12em] uppercase transition-all disabled:opacity-50 {note?.discipline_breach
+						class="rounded-lg border px-2 py-1 font-mono text-[10px] font-bold tracking-[0.12em] uppercase transition-all disabled:cursor-not-allowed {note?.discipline_breach
 							? 'border-loss/50 bg-loss/12 text-loss'
 							: 'border-line text-dim hover:border-loss/40 hover:text-loss'}"
 						aria-pressed={note?.discipline_breach ?? false}

@@ -34,7 +34,7 @@
 			<span>
 				capital
 				<span class="font-semibold text-fg">{money(data.account_size)}</span>
-				{#if data.account_size_source === 'explicit'}<span class="text-dim/70"> (override)</span>{/if}
+				{#if data.account_size_source === 'explicit'}<span class="text-dim"> (override)</span>{/if}
 			</span>
 			<span>min sample {data.min_sample}</span>
 			<span>diffusion estimate</span>

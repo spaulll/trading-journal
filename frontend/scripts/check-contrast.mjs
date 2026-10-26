@@ -1,7 +1,15 @@
 #!/usr/bin/env node
-// Theme contrast audit (see PLAN.MD §1.2 and §6.1)
+// Theme + component contrast audit (see PLAN.MD §1.2, §6.1 and §6.2)
+//
 // Parses the RGB tokens declared in `frontend/src/app.css` and checks the
-// text / hairline pairs that must hold in BOTH themes.
+// text / hairline / component pairs that must hold in BOTH themes.
+//
+// Component pairs are checked on the FINAL COMPOSITE SURFACE: a badge is
+// `win` ink over `win / 12%` over the panel, so the check paints it in that
+// order instead of comparing the two raw tokens. The alpha values below mirror
+// the component classes they describe; the browser audit (`npm run audit:ui`)
+// measures the same pairs from computed styles.
+//
 // Uses Node only – no extra dependencies.
 
 import { readFileSync } from 'node:fs';
@@ -56,22 +64,78 @@ function contrast(fg, bg) {
 
 function blend(fg, bg) {
   const alpha = fg.alpha ?? 1;
-  return fg.rgb.map((channel, index) =>
-    Math.round(alpha * channel + (1 - alpha) * bg.rgb[index])
-  );
+  const base = bg.rgb ?? bg;
+  return fg.rgb.map((channel, index) => Math.round(alpha * channel + (1 - alpha) * base[index]));
 }
+
+// WCAG 2.1: 4.5:1 for normal text, 3:1 for large text and UI boundaries.
+const TEXT = 4.5;
+const LARGE = 3;
+const UI = 3;
 
 const SURFACES = ['--c-panel', '--c-raised', '--c-overlay'];
 const TEXT_PAIRS = [
   ['--c-fg', 7],
-  ['--c-mut', 4.5],
-  ['--c-dim', 4.5],
-  ['--c-accent', 4.5],
-  ['--c-win', 4.5],
-  ['--c-loss', 4.5]
+  ['--c-mut', TEXT],
+  ['--c-dim', TEXT],
+  ['--c-accent', TEXT],
+  ['--c-win', TEXT],
+  ['--c-loss', TEXT],
+  ['--c-flat', TEXT]
 ];
+
+/**
+ * Text painted over a translucent tint, e.g. the `tag-setup` badge
+ * (`--c-win` ink on `--c-win / 0.13` over the panel).
+ */
+const TINT_PAIRS = [
+  { label: 'setup tag', fg: '--c-win', tint: '--c-win', alpha: 0.13, base: '--c-panel' },
+  { label: 'mistake tag', fg: '--c-loss', tint: '--c-loss', alpha: 0.13, base: '--c-panel' },
+  { label: 'win stat chip', fg: '--c-win', tint: '--c-win', alpha: 0.12, base: '--c-panel' },
+  { label: 'loss stat chip', fg: '--c-loss', tint: '--c-loss', alpha: 0.12, base: '--c-panel' },
+  { label: 'breakeven stat chip', fg: '--c-flat', tint: '--c-flat', alpha: 0.12, base: '--c-panel' },
+  { label: 'calendar win cell', fg: '--c-win', tint: '--c-win', alpha: 0.1, base: '--c-panel' },
+  { label: 'calendar loss cell', fg: '--c-loss', tint: '--c-loss', alpha: 0.1, base: '--c-panel' },
+  { label: 'calendar breakeven cell', fg: '--c-flat', tint: '--c-flat', alpha: 0.1, base: '--c-panel' }
+];
+
+/**
+ * Component surfaces that are not a plain token pair: disabled controls,
+ * placeholders, tooltips, the danger button gradient, and the focus ring.
+ * Each entry names the component so a failure says where to look.
+ */
+const COMPONENT_PAIRS = [
+  { label: 'disabled control label (--c-dim on --c-raised)', fg: '--c-dim', bg: '--c-raised', min: TEXT },
+  { label: 'placeholder (--c-dim on --c-raised / 0.7)', fg: '--c-dim', tint: '--c-raised', alpha: 0.7, base: '--c-panel', min: TEXT },
+  { label: 'quiet label on base (--c-dim on --c-bg)', fg: '--c-dim', bg: '--c-bg', min: TEXT },
+  { label: 'tooltip title (--c-dim on --c-overlay)', fg: '--c-dim', bg: '--c-overlay', min: TEXT },
+  { label: 'tooltip body (--c-fg on --c-overlay)', fg: '--c-fg', bg: '--c-overlay', min: TEXT },
+  { label: 'active chip label (--c-fg on --c-raised)', fg: '--c-fg', bg: '--c-raised', min: TEXT },
+  // The danger button is a gradient; the bottom stop is the lighter end and
+  // therefore the worst case for its ink.
+  { label: 'danger button ink (top stop)', fg: '--c-brass-ink', tint: '--c-loss', alpha: 1, base: '--c-panel', min: TEXT },
+  { label: 'danger button ink (bottom stop)', fg: '--c-brass-ink', tint: '--c-loss', alpha: 0.9, base: '--c-panel', min: TEXT },
+  { label: 'primary button ink (top stop)', fg: '--c-brass-ink', tint: '--c-btn-from', alpha: 1, base: '--c-panel', min: TEXT },
+  { label: 'primary button ink (bottom stop)', fg: '--c-brass-ink', tint: '--c-btn-to', alpha: 1, base: '--c-panel', min: TEXT }
+];
+
+/** Non-text boundaries: focus ring and field focus border need 3:1. */
+const UI_PAIRS = [
+  { label: 'focus ring on base', fg: '--c-accent', bg: '--c-bg' },
+  { label: 'focus ring on panel', fg: '--c-accent', bg: '--c-panel' },
+  { label: 'focus ring on raised', fg: '--c-accent', bg: '--c-raised' },
+  { label: 'focus ring on overlay', fg: '--c-accent', bg: '--c-overlay' },
+  // `.field:focus` paints its border at 90% accent over the field surface.
+  {
+    label: 'field focus border (--c-accent / 0.9 on --c-raised)',
+    fg: '--c-accent',
+    alpha: 0.9,
+    bg: '--c-raised'
+  }
+];
+
 // Hairlines are deliberately quiet; this is a visibility floor, not the 3:1
-// non-text target. Component-level contrast is covered by the Phase 6 audit.
+// non-text target. Component-level contrast is covered above.
 const BORDER_PAIRS = [
   ['--c-line', 1.15],
   ['--c-edge', 1.15]
@@ -83,30 +147,71 @@ function token(tokens, name, theme) {
   return value;
 }
 
+function report(label, ratio, min) {
+  const ok = ratio >= min;
+  console.log(`  ${ok ? 'pass' : 'FAIL'} ${label}: ${ratio.toFixed(2)}:1 (min ${min}:1)`);
+  return ok ? 0 : 1;
+}
+
 function runTheme(theme, tokens) {
   let failures = 0;
 
   for (const surfaceName of SURFACES) {
     const surface = token(tokens, surfaceName, theme);
     for (const [textName, min] of TEXT_PAIRS) {
-      const ratio = contrast(token(tokens, textName, theme), surface);
-      const ok = ratio >= min;
-      console.log(
-        `  ${ok ? 'pass' : 'FAIL'} ${theme} ${textName} on ${surfaceName}: ${ratio.toFixed(1)}:1 (min ${min}:1)`
+      failures += report(
+        `${theme} ${textName} on ${surfaceName}`,
+        contrast(token(tokens, textName, theme), surface),
+        min
       );
-      if (!ok) failures++;
     }
+  }
+
+  for (const pair of TINT_PAIRS) {
+    const tint = { ...token(tokens, pair.tint, theme), alpha: pair.alpha };
+    const surface = blend(tint, token(tokens, pair.base, theme));
+    failures += report(
+      `${theme} ${pair.label}`,
+      contrast(token(tokens, pair.fg, theme), surface),
+      TEXT
+    );
+  }
+
+  for (const pair of COMPONENT_PAIRS) {
+    const fg = token(tokens, pair.fg, theme);
+    let surface;
+    if (pair.tint) {
+      surface = blend(
+        { ...token(tokens, pair.tint, theme), alpha: pair.alpha },
+        token(tokens, pair.base ?? '--c-panel', theme)
+      );
+    } else {
+      surface = token(tokens, pair.bg, theme);
+    }
+    failures += report(`${theme} ${pair.label}`, contrast(fg, surface), pair.min);
+  }
+
+  for (const pair of UI_PAIRS) {
+    const surface = token(tokens, pair.bg, theme);
+    const fg = token(tokens, pair.fg, theme);
+    // Rings and borders are painted over the surface with their own alpha.
+    const painted =
+      pair.alpha !== undefined
+        ? blend({ ...fg, alpha: pair.alpha }, surface)
+        : fg.alpha < 1
+          ? blend(fg, surface)
+          : fg;
+    failures += report(`${theme} ${pair.label}`, contrast(painted, surface), UI);
   }
 
   for (const [borderName, min] of BORDER_PAIRS) {
     const panel = token(tokens, '--c-panel', theme);
     const effective = blend(token(tokens, borderName, theme), panel);
-    const ratio = contrast(effective, panel);
-    const ok = ratio >= min;
-    console.log(
-      `  ${ok ? 'pass' : 'FAIL'} ${theme} ${borderName} hairline on --c-panel: ${ratio.toFixed(1)}:1 (min ${min}:1)`
+    failures += report(
+      `${theme} ${borderName} hairline on --c-panel`,
+      contrast(effective, panel),
+      min
     );
-    if (!ok) failures++;
   }
 
   return failures;

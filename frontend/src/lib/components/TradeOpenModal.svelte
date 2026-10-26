@@ -447,7 +447,7 @@
 						{#if preview.gross_pnl_usd !== null}
 							<span class="text-dim">
 								Reward {fmtMoney(preview.gross_pnl_usd)}{#if preview.quote_currency !== 'USD' && preview.gross_pnl !== null}
-									<span class="text-dim/70">({fmtCurrency(preview.gross_pnl, preview.quote_currency)})</span>
+									<span class="text-dim">({fmtCurrency(preview.gross_pnl, preview.quote_currency)})</span>
 								{/if}
 							</span>
 						{/if}

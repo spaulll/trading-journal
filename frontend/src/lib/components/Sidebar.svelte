@@ -56,7 +56,7 @@
 
 	<nav aria-label="Primary" class="flex flex-col gap-1 px-3">
 		{#if !$sidebarCollapsed}
-			<p class="eyebrow px-3 pt-1 pb-1.5 opacity-60">Workspace</p>
+			<p class="eyebrow px-3 pt-1 pb-1.5">Workspace</p>
 		{/if}
 		{#each NAV_LINKS as link, i (link.href)}
 			{@const Icon = link.icon}
@@ -114,7 +114,7 @@
 				></span>
 				{#if !$sidebarCollapsed}
 					<span class="eyebrow">{statusLabel}</span>
-					<span class="eyebrow ml-auto opacity-60">api</span>
+					<span class="eyebrow ml-auto">api</span>
 				{/if}
 			</div>
 
@@ -193,7 +193,7 @@
 		</div>
 
 		{#if !$sidebarCollapsed}
-			<p class="eyebrow pt-2 text-center opacity-60">v2 · local</p>
+			<p class="eyebrow pt-2 text-center">v2 · local</p>
 		{/if}
 	</div>
 </aside>

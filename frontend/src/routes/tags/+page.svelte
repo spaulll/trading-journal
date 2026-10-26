@@ -285,7 +285,7 @@
 				{/if}
 				<div class="mt-4 flex items-center justify-end gap-2">
 					<button type="button" onclick={() => (modal = null)} class="btn btn-ghost h-9 px-3 text-[13px]">Cancel</button>
-					<button type="submit" disabled={saving} class="btn btn-primary h-9 px-3 text-[13px] disabled:opacity-50">
+					<button type="submit" disabled={saving} class="btn btn-primary h-9 px-3 text-[13px]">
 						{saving ? 'Saving…' : 'Save'}
 					</button>
 				</div>
@@ -307,7 +307,7 @@
 						type="button"
 						onclick={() => void merge()}
 						disabled={!fMerge || saving}
-						class="btn btn-ghost h-9 shrink-0 gap-1.5 px-3 text-[13px] disabled:opacity-40"
+						class="btn btn-ghost h-9 shrink-0 gap-1.5 px-3 text-[13px]"
 					>
 						<GitMerge size={14} strokeWidth={2} aria-hidden="true" />
 						Merge
@@ -325,7 +325,7 @@
 						type="button"
 						onclick={() => void removeUnused()}
 						disabled={saving}
-						class="btn btn-danger mt-2.5 h-9 gap-1.5 px-3 text-[13px] disabled:opacity-40"
+						class="btn btn-danger mt-2.5 h-9 gap-1.5 px-3 text-[13px]"
 					>
 						<Trash2 size={14} strokeWidth={2} aria-hidden="true" />
 						{confirmDelete ? 'Click again to delete' : 'Delete unused tag'}

@@ -92,7 +92,7 @@
 		>
 			{o.label}
 			{#if o.count !== undefined}
-				<span class="ml-1 opacity-60 tabular-nums">{o.count}</span>
+				<span class="ml-1 text-dim tabular-nums">{o.count}</span>
 			{/if}
 		</button>
 	{/each}
