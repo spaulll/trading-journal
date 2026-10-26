@@ -143,7 +143,7 @@
 	}
 
 	const field = 'field font-mono text-[13px]';
-	const label = 'flex flex-col gap-1.5 text-[11px] font-medium tracking-[0.14em] uppercase text-dim';
+	const label = 'flex flex-col gap-1 text-[11px] font-medium tracking-[0.14em] uppercase text-dim';
 </script>
 
 <!-- svelte-ignore a11y_click_events_have_key_events -->
@@ -157,7 +157,7 @@
 	aria-modal="true"
 	aria-label="Close trade"
 >
-	<div transition:scale={MODAL} class="card w-full max-w-lg overflow-hidden shadow-pop">
+	<div transition:scale={MODAL} class="card flex max-h-[calc(100dvh-2rem)] w-full max-w-lg flex-col overflow-hidden shadow-pop">
 		<div class="flex items-center gap-2.5 border-b border-line px-5 py-4">
 			<span class="grid h-8 w-8 place-items-center rounded-lg bg-loss/12 text-loss">
 				<Flag size={16} strokeWidth={2} aria-hidden="true" />
@@ -182,7 +182,7 @@
 				This trade is already {trade.status.toLowerCase()}.
 			</p>
 		{:else}
-			<form class="px-5 py-4" onsubmit={submit}>
+			<form class="min-h-0 flex-1 overflow-y-auto px-5 py-4" onsubmit={submit}>
 				<p class="num mb-4 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11.5px] text-dim">
 					<span>Entry <span class="text-fg">{trade.entry_price ?? '—'}</span></span>
 					<span class="text-dim/60">·</span>
@@ -267,7 +267,9 @@
 					<p class="mt-3 text-[13px] font-medium text-loss" role="alert">{formError}</p>
 				{/if}
 
-				<div class="mt-5 flex justify-end gap-2 border-t border-line pt-4">
+				<div
+					class="sticky bottom-0 -mx-5 -mb-4 mt-5 flex justify-end gap-2 border-t border-line bg-panel px-5 py-3"
+				>
 					<button type="button" onclick={() => dismissLifecycle()} class="btn btn-ghost h-10 px-4 text-sm">
 						Cancel
 					</button>

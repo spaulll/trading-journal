@@ -274,6 +274,33 @@
 				fExitTime.trim() !== timeToInput(trade.exit_time ?? trade.timestamp_close))
 	);
 
+	/** Inline field validation — the field owns its message instead of a toast. */
+	function numError(raw: string, label: string): string {
+		const t = raw.trim();
+		if (t === '') return '';
+		return Number.isFinite(Number(t)) ? '' : `${label} must be a number`;
+	}
+
+	function timeError(raw: string, label: string): string {
+		const t = raw.trim();
+		if (t === '') return '';
+		return inputToUTC(t) === null ? `${label} needs a full date and time` : '';
+	}
+
+	const fieldErrors = $derived({
+		symbol: fSymbol.trim() === '' ? 'Symbol cannot be empty' : '',
+		size: numError(fSize, 'Size'),
+		entry: numError(fEntry, 'Entry'),
+		initSl: numError(fInitSl, 'Initial stop'),
+		currSl: numError(fCurrSl, 'Current stop'),
+		tp: numError(fTp, 'Target'),
+		exit: numError(fExit, 'Exit'),
+		fees: numError(fFees, 'Fees'),
+		entryTime: timeError(fEntryTime, 'Entry time'),
+		exitTime: timeError(fExitTime, 'Exit time')
+	});
+	const hasFieldError = $derived(Object.values(fieldErrors).some((message) => message !== ''));
+
 	function onBackdrop(e: MouseEvent): void {
 		if (e.target === e.currentTarget) void flushAndClose();
 	}
@@ -391,7 +418,7 @@
 	}
 
 	async function saveEdits(): Promise<void> {
-		if (!trade || savingEdits) return;
+		if (!trade || savingEdits || hasFieldError) return;
 		const wasOpen = trade.status === 'OPEN';
 		const payload: Record<string, unknown> = {};
 		const curAcc = trade.account_id === null || trade.account_id === undefined ? '' : String(trade.account_id);
@@ -575,6 +602,12 @@
 
 <svelte:window onpaste={onPaste} />
 
+{#snippet fieldMessage(message: string)}
+	{#if message}
+		<span class="text-[11px] leading-tight text-loss" role="status">{message}</span>
+	{/if}
+{/snippet}
+
 {#if trade}
 	<!-- svelte-ignore a11y_click_events_have_key_events -->
 	<div
@@ -706,33 +739,32 @@
 				<div class="mt-5">
 					<div class="mb-2 flex items-center justify-between gap-2">
 						<span class="eyebrow">Trade details</span>
-						<span class="flex shrink-0 items-center gap-2">
-							{#if willCloseOnSave}
-								<span class="num text-[11px] text-accent">Saving will close this trade</span>
-							{/if}
-							<button
-								type="button"
-								onclick={() => void saveEdits()}
-								disabled={!editsDirty || savingEdits}
-								class="btn h-7 shrink-0 px-3 text-[12px] {willCloseOnSave ? 'btn-danger' : 'btn-ghost'}"
-							>
-								{savingEdits ? 'Saving…' : willCloseOnSave ? 'Save & close trade' : 'Save changes'}
-							</button>
-						</span>
+						{#if hasFieldError}
+							<span class="num text-[11px] text-loss" role="status">Check the highlighted fields</span>
+						{:else if willCloseOnSave}
+							<span class="num text-[11px] text-accent">Saving will close this trade</span>
+						{/if}
 					</div>
-					<div class="grid grid-cols-3 gap-2">
-						<label class="flex min-w-0 flex-col gap-1 col-span-3">
-							<span class="eyebrow">Account · @{chipAlias($accountMap, trade.account_id)}</span>
+					<div class="grid grid-cols-3 gap-x-2 gap-y-3">
+						<label class="col-span-3 flex min-w-0 flex-col gap-1">
+							<span class="eyebrow">Account</span>
 							<select bind:value={fAccount} class="field h-9 font-mono text-[13px]">
 								<option value="">Unassigned</option>
 								{#each $accounts as a (a.id)}
 									<option value={String(a.id)}>@{a.alias} · {a.firm} {a.phase}</option>
 								{/each}
 							</select>
+							<span class="num text-[11px] leading-tight text-dim">Now @{chipAlias($accountMap, trade.account_id)}</span>
 						</label>
 						<label class="flex min-w-0 flex-col gap-1">
 							<span class="eyebrow">Symbol</span>
-							<input type="text" bind:value={fSymbol} class="field h-9 font-mono text-[13px]" />
+							<input
+								type="text"
+								bind:value={fSymbol}
+								aria-invalid={fieldErrors.symbol ? 'true' : undefined}
+								class="field h-9 font-mono text-[13px]"
+							/>
+							{@render fieldMessage(fieldErrors.symbol)}
 						</label>
 						<label class="flex min-w-0 flex-col gap-1">
 							<span class="eyebrow">Side</span>
@@ -743,53 +775,110 @@
 						</label>
 						<label class="flex min-w-0 flex-col gap-1">
 							<span class="eyebrow">Size</span>
-							<input type="text" inputmode="decimal" bind:value={fSize} class="field h-9 font-mono text-[13px]" />
+							<input
+								type="text"
+								inputmode="decimal"
+								bind:value={fSize}
+								aria-invalid={fieldErrors.size ? 'true' : undefined}
+								class="field h-9 font-mono text-[13px]"
+							/>
+							{@render fieldMessage(fieldErrors.size)}
 						</label>
 						<label class="flex min-w-0 flex-col gap-1">
 							<span class="eyebrow">Entry</span>
-							<input type="text" inputmode="decimal" bind:value={fEntry} class="field h-9 font-mono text-[13px]" />
+							<input
+								type="text"
+								inputmode="decimal"
+								bind:value={fEntry}
+								aria-invalid={fieldErrors.entry ? 'true' : undefined}
+								class="field h-9 font-mono text-[13px]"
+							/>
+							{@render fieldMessage(fieldErrors.entry)}
 						</label>
 						<label class="flex min-w-0 flex-col gap-1">
 							<span class="eyebrow">Init SL</span>
-							<input type="text" inputmode="decimal" bind:value={fInitSl} class="field h-9 font-mono text-[13px]" />
+							<input
+								type="text"
+								inputmode="decimal"
+								bind:value={fInitSl}
+								aria-invalid={fieldErrors.initSl ? 'true' : undefined}
+								class="field h-9 font-mono text-[13px]"
+							/>
+							{@render fieldMessage(fieldErrors.initSl)}
 						</label>
 						<label class="flex min-w-0 flex-col gap-1">
 							<span class="eyebrow">Curr SL</span>
-							<input type="text" inputmode="decimal" bind:value={fCurrSl} class="field h-9 font-mono text-[13px]" />
+							<input
+								type="text"
+								inputmode="decimal"
+								bind:value={fCurrSl}
+								aria-invalid={fieldErrors.currSl ? 'true' : undefined}
+								class="field h-9 font-mono text-[13px]"
+							/>
+							{@render fieldMessage(fieldErrors.currSl)}
 						</label>
 						<label class="flex min-w-0 flex-col gap-1">
 							<span class="eyebrow">Target</span>
-							<input type="text" inputmode="decimal" bind:value={fTp} class="field h-9 font-mono text-[13px]" />
+							<input
+								type="text"
+								inputmode="decimal"
+								bind:value={fTp}
+								aria-invalid={fieldErrors.tp ? 'true' : undefined}
+								class="field h-9 font-mono text-[13px]"
+							/>
+							{@render fieldMessage(fieldErrors.tp)}
 						</label>
 						<label class="flex min-w-0 flex-col gap-1">
 							<span class="eyebrow">Exit</span>
-							<input type="text" inputmode="decimal" bind:value={fExit} class="field h-9 font-mono text-[13px]" />
+							<input
+								type="text"
+								inputmode="decimal"
+								bind:value={fExit}
+								aria-invalid={fieldErrors.exit ? 'true' : undefined}
+								class="field h-9 font-mono text-[13px]"
+							/>
+							{@render fieldMessage(fieldErrors.exit)}
 						</label>
 						<label class="flex min-w-0 flex-col gap-1">
 							<span class="eyebrow">Fees</span>
-							<input type="text" inputmode="decimal" bind:value={fFees} class="field h-9 font-mono text-[13px]" />
+							<input
+								type="text"
+								inputmode="decimal"
+								bind:value={fFees}
+								aria-invalid={fieldErrors.fees ? 'true' : undefined}
+								class="field h-9 font-mono text-[13px]"
+							/>
+							{@render fieldMessage(fieldErrors.fees)}
 						</label>
 						<label class="flex min-w-0 flex-col gap-1">
 							<span class="eyebrow">Entry time ({tzMode === 'mt5' && $brokerOffset ? `MT5 · ${$brokerOffset.label}` : 'UTC'})</span>
-							<input type="datetime-local" bind:value={fEntryTime} class="field h-9 w-full font-mono text-[13px]" />
+							<input
+								type="datetime-local"
+								bind:value={fEntryTime}
+								aria-invalid={fieldErrors.entryTime ? 'true' : undefined}
+								class="field h-9 w-full font-mono text-[13px]"
+							/>
+							{@render fieldMessage(fieldErrors.entryTime)}
 							{#if timePreview(fEntryTime)}
 								<span class="num text-[11px] text-accent">→ {timePreview(fEntryTime)}</span>
 							{/if}
 						</label>
 						<label class="flex min-w-0 flex-col gap-1">
 							<span class="eyebrow">Exit time ({tzMode === 'mt5' && $brokerOffset ? `MT5 · ${$brokerOffset.label}` : 'UTC'})</span>
-							<input type="datetime-local" bind:value={fExitTime} class="field h-9 w-full font-mono text-[13px]" />
+							<input
+								type="datetime-local"
+								bind:value={fExitTime}
+								aria-invalid={fieldErrors.exitTime ? 'true' : undefined}
+								class="field h-9 w-full font-mono text-[13px]"
+							/>
+							{@render fieldMessage(fieldErrors.exitTime)}
 							{#if timePreview(fExitTime)}
 								<span class="num text-[11px] text-accent">→ {timePreview(fExitTime)}</span>
 							{/if}
 						</label>
 					</div>
-					<p class="num mt-1.5 text-[11px] text-dim">
-						Net and R recompute automatically from prices and fees. Times are
-						{tzMode === 'mt5' ? 'MT5 —' : 'UTC —'} changing entry re-resolves session and duration.
-						{#if trade.status === 'OPEN'}
-							<span class="text-accent">Adding an exit price + saving closes the trade — no separate close step.</span>
-						{/if}
+					<p class="num mt-2 text-[11px] leading-relaxed text-dim">
+						Times are {tzMode === 'mt5' ? 'MT5 —' : 'UTC —'} changing entry re-resolves session and duration.
 						{#if tzMode === 'utc'}
 							<span>Calibrate with <span class="font-mono">/brokertime</span> to type MT5 times directly.</span>
 						{/if}
@@ -798,7 +887,7 @@
 
 				<!-- Editors -->
 				<div class="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2">
-					<label class="flex flex-col gap-1.5">
+					<label class="flex flex-col gap-1">
 						<span class="eyebrow">Thesis · <span class="normal-case text-mut">autosaves</span></span>
 						<textarea
 							bind:value={thesis}
@@ -808,7 +897,7 @@
 							class="field resize-y text-[13px]"
 						></textarea>
 					</label>
-					<label class="flex flex-col gap-1.5">
+					<label class="flex flex-col gap-1">
 						<span class="eyebrow">Review notes · <span class="normal-case text-mut">autosaves</span></span>
 						<textarea
 							bind:value={notes}
@@ -838,7 +927,7 @@
 					</button>
 				</div>
 
-				<label class="mt-4 flex flex-col gap-1.5">
+				<label class="mt-4 flex flex-col gap-1">
 					<span class="eyebrow">Tags · <span class="normal-case text-mut">#setup !mistake · saves on blur</span></span>
 					<span class="flex gap-2">
 						<TagInput
@@ -984,6 +1073,33 @@
 					</button>
 				</div>
 			</div>
+
+			<!-- Sticky footer: the primary save action never scrolls out of reach. -->
+			<footer class="shrink-0 border-t border-line bg-panel px-5 py-3">
+				<div class="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+					<p
+						class="num min-w-0 flex-1 text-[11px] leading-snug {hasFieldError ? 'text-loss' : 'text-dim'}"
+						role="status"
+						aria-live="polite"
+					>
+						{#if hasFieldError}
+							Fix the highlighted fields before saving.
+						{:else if willCloseOnSave}
+							<span class="text-accent">An exit price closes this trade on save.</span>
+						{:else}
+							Net and R recompute from prices and fees.
+						{/if}
+					</p>
+					<button
+						type="button"
+						onclick={() => void saveEdits()}
+						disabled={!editsDirty || savingEdits || hasFieldError}
+						class="btn h-9 shrink-0 px-3.5 text-[13px] {willCloseOnSave ? 'btn-danger' : 'btn-primary'}"
+					>
+						{savingEdits ? 'Saving…' : willCloseOnSave ? 'Save & close trade' : 'Save changes'}
+					</button>
+				</div>
+			</footer>
 		</div>
 	</div>
 {/if}
