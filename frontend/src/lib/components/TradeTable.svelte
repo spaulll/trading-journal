@@ -6,11 +6,12 @@
 	import { api, type TradeDto } from '$lib/api';
 	import { aliasOf, accounts, accountMap, chipAlias, ledgerAccountScope, loadAccounts, selectedAccountId, setLedgerAccountScope } from '$lib/stores/accounts';
 	import { gotoPage, ledgerFilterQuery, ledgerFilters, ledgerQuery, pageCount, resetLedgerPage, setLedgerFilters, setPageSize, type LedgerSort, type LedgerStatus } from '$lib/stores/ledger';
-	import { loadTrades, openTrade, requestClose, tradeCounts, trades, tradesPage, tradesPageSize, tradesTotal, upsertTrade } from '$lib/stores/trades';
+	import { loadTrades, openTrade, requestClose, requestOpen, tradeCounts, trades, tradesPage, tradesPageSize, tradesTotal, upsertTrade } from '$lib/stores/trades';
 	import { toasts } from '$lib/stores/toast';
 	import { fmtCurrency, fmtDateTime, fmtMoney, fmtR, isUnpriced, pnlTone, rTone, toneBg, toneText, usdNet } from '$lib/utils/format';
 	import { hasOpenDialog } from '$lib/utils/dialogs';
 	import SegControl from '$lib/components/SegControl.svelte';
+	import StateBlock from '$lib/components/StateBlock.svelte';
 
 	/** The server takes 500 ids a batch — a bigger move is split into batches. */
 	const BULK_BATCH = 500;
@@ -160,6 +161,15 @@
 		} finally {
 			moving = false;
 		}
+	}
+
+	/** The starter action for a filtered-empty ledger: back to the whole book. */
+	function clearFilters(): void {
+		queryInput = '';
+		tagInput = '';
+		setLedgerFilters({ status: 'ALL', query: '', tag: '', tagExact: false, dateFrom: '', dateTo: '' });
+		setLedgerAccountScope('');
+		resetLedgerPage();
 	}
 
 	function toggleSelectMode(): void {
@@ -382,10 +392,14 @@
 	</div>
 
 	{#if filtered.length === 0}
-		<div class="card border-dashed px-6 py-12 text-center">
-			<p class="display text-lg text-fg">No trades match these filters</p>
-			<p class="mt-1.5 text-sm text-mut">Try a different symbol, tag, or status.</p>
-		</div>
+		<StateBlock
+			title="No trades match these filters"
+			body="Try a different symbol, tag, or status — or clear the filters to see the whole ledger."
+			actionLabel="Clear filters"
+			actionTone="ghost"
+			onAction={clearFilters}
+			secondary={[{ label: 'Open a trade', onAction: () => requestOpen() }]}
+		/>
 	{:else}
 		<!-- Desktop ledger: div-grid, ONE shared .tgrid template for header + rows -->
 		<div class="card hidden overflow-hidden md:block">

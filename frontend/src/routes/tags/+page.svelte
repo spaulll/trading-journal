@@ -155,6 +155,9 @@
 	<StateBlock
 		title="No tags yet"
 		body="Tag a trade with #setup or !mistake and the taxonomy builds itself from the ledger."
+		actionLabel="Open the ledger"
+		onAction={() => void goto('/')}
+		secondary={[{ label: 'Open the journal', onAction: () => void goto('/journal') }]}
 	/>
 {:else}
 	<div class="mb-3">
