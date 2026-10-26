@@ -410,7 +410,7 @@
 				<tbody>
 					{#each entries as entry (entry.id)}
 						{@const meta = kindMeta(entry.kind)}
-						<tr class="border-b border-line/70 transition-colors last:border-b-0 hover:bg-raised/35">
+						<tr class="border-b border-line transition-colors last:border-b-0 hover:bg-raised/35">
 							<td class="whitespace-nowrap px-4 py-3 num text-[12px] text-mut">{fmtDate(entry.occurred_on)}</td>
 							<td class="px-3 py-3">
 								<span class="block truncate text-[12.5px] font-medium text-fg" title={entry.firm}>{entry.firm}</span>
