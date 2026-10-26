@@ -351,7 +351,7 @@
 			transition:fly={DRAWER}
 			style:width={drawerW === null ? undefined : `${drawerW}px`}
 			style:max-width={drawerW === null ? undefined : '100dvw'}
-			class="group absolute inset-y-0 right-0 flex w-full max-w-md flex-col border-l border-line bg-panel shadow-pop {resizing
+			class="cq group absolute inset-y-0 right-0 flex w-full max-w-md flex-col border-l border-line bg-panel shadow-pop {resizing
 				? 'select-none'
 				: ''}"
 		>
@@ -524,7 +524,7 @@
 						<div class="skeleton h-20 rounded-xl" aria-hidden="true"></div>
 						<div class="skeleton mt-2 h-20 rounded-xl" aria-hidden="true"></div>
 					{:else}
-						<div class="grid grid-cols-1 gap-3">
+						<div class="drawer-notes">
 							<label class="flex flex-col gap-1">
 								<span class="eyebrow">Pre-market</span>
 								<textarea bind:value={preMarket} oninput={scheduleNoteAutosave} rows={3} placeholder="Plan before the session…" class="field resize-y text-[13px]"></textarea>

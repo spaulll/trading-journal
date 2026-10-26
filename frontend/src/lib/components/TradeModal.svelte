@@ -625,7 +625,7 @@
 			transition:fly={DRAWER}
 			style:width={drawerW === null ? undefined : `${drawerW}px`}
 			style:max-width={drawerW === null ? undefined : '100dvw'}
-			class="group absolute inset-y-0 right-0 flex w-full max-w-md flex-col border-l border-line bg-panel shadow-pop {resizing
+			class="cq group absolute inset-y-0 right-0 flex w-full max-w-md flex-col border-l border-line bg-panel shadow-pop {resizing
 				? 'select-none'
 				: ''}"
 		>
@@ -745,8 +745,8 @@
 							<span class="num text-[11px] text-accent">Saving will close this trade</span>
 						{/if}
 					</div>
-					<div class="grid grid-cols-3 gap-x-2 gap-y-3">
-						<label class="col-span-3 flex min-w-0 flex-col gap-1">
+					<div class="drawer-fields">
+						<label class="col-span-full flex min-w-0 flex-col gap-1">
 							<span class="eyebrow">Account</span>
 							<select bind:value={fAccount} class="field h-9 font-mono text-[13px]">
 								<option value="">Unassigned</option>
@@ -886,7 +886,7 @@
 				</div>
 
 				<!-- Editors -->
-				<div class="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2">
+				<div class="drawer-notes mt-5">
 					<label class="flex flex-col gap-1">
 						<span class="eyebrow">Thesis · <span class="normal-case text-mut">autosaves</span></span>
 						<textarea

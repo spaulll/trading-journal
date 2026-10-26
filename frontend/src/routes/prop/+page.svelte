@@ -325,13 +325,13 @@
 			{/if}
 		</section>
 
-		<section class="mb-5" aria-labelledby="firm-net-title">
+		<section class="cq mb-5" aria-labelledby="firm-net-title">
 			<div class="mb-2 flex items-center justify-between gap-3 px-1">
 				<h2 id="firm-net-title" class="eyebrow">Net by firm</h2>
 				<span class="num text-[10px] tracking-[0.1em] text-dim uppercase">{summary.currency}</span>
 			</div>
 			<!-- One firm stays a compact row; several form a balanced grid. -->
-			<div class="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3">
+			<div class="firm-strip">
 				{#each summary.by_firm as firm (firm.firm)}
 					<div class="card flex min-w-0 items-center justify-between gap-3 px-3.5 py-2.5">
 						<div class="min-w-0">

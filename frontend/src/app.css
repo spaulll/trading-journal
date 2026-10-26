@@ -395,6 +395,58 @@ html {
 		color: rgb(var(--c-fg));
 	}
 
+	/* ---------- Container queries ----------
+	   The trade drawer is resizable and the firm strip sits beside a rail that
+	   collapses, so these grids read their own width — not the viewport — to
+	   decide how many columns the content can actually afford. */
+	.cq {
+		container-type: inline-size;
+	}
+	/* Trade detail form: one column on a phone-width drawer, two at the
+	   default desktop width, three once the drawer is dragged wide enough for
+	   36–40px controls to stay legible. */
+	.drawer-fields {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr);
+		column-gap: 0.5rem;
+		row-gap: 0.75rem;
+	}
+	.drawer-notes {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr);
+		gap: 0.75rem;
+	}
+	@container (min-width: 26rem) {
+		.drawer-fields {
+			grid-template-columns: repeat(2, minmax(0, 1fr));
+		}
+	}
+	@container (min-width: 40rem) {
+		.drawer-fields {
+			grid-template-columns: repeat(3, minmax(0, 1fr));
+		}
+		.drawer-notes {
+			grid-template-columns: repeat(2, minmax(0, 1fr));
+		}
+	}
+	/* Firm strip: one firm stays a compact row; several fill a balanced grid
+	   that rebalances when the sidebar collapses. */
+	.firm-strip {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr);
+		gap: 0.5rem;
+	}
+	@container (min-width: 30rem) {
+		.firm-strip {
+			grid-template-columns: repeat(2, minmax(0, 1fr));
+		}
+	}
+	@container (min-width: 60rem) {
+		.firm-strip {
+			grid-template-columns: repeat(3, minmax(0, 1fr));
+		}
+	}
+
 	/* ---------- Table ---------- */
 	.thead {
 		@apply font-mono text-[10px] tracking-[0.16em] uppercase;
