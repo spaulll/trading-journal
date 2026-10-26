@@ -205,7 +205,7 @@
 			{:else}
 				<ul class="mt-1">
 					{#each runs.slice(0, 5) as run (run.id)}
-						<li class="border-b border-line/60 py-1.5 last:border-0">
+						<li class="border-b border-line py-1.5 last:border-0">
 							<div class="flex min-w-0 items-baseline gap-2">
 								<span class="num min-w-0 flex-1 break-all text-[11px] text-fg" title={run.filename}>
 									{shortName(run.filename)}

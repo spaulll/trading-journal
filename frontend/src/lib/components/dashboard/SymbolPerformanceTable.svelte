@@ -36,7 +36,7 @@
 			</thead>
 			<tbody>
 				{#each data.symbols as row (row.symbol)}
-					<tr class="border-b border-line/60 transition-colors hover:bg-raised/40">
+					<tr class="border-b border-line transition-colors hover:bg-raised/40">
 						<td class="px-1 py-2 whitespace-nowrap">
 							<span class="font-mono text-[12px] font-semibold text-fg">{row.symbol}</span>
 							{#if !row.registered}

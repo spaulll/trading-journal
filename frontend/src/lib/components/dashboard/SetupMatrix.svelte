@@ -44,7 +44,7 @@
 				</thead>
 				<tbody>
 					{#each data.rows as row (row.label)}
-						<tr class="group border-b border-line/60 transition-colors hover:bg-raised/40">
+						<tr class="group border-b border-line transition-colors hover:bg-raised/40">
 							<th
 								class="sticky left-0 z-10 bg-panel px-2 py-2 text-left text-[12px] font-semibold whitespace-nowrap text-fg group-hover:bg-raised"
 								scope="row"

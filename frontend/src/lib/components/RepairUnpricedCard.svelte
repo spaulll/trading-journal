@@ -106,9 +106,9 @@
 				<p class="num mt-0.5 text-[11px] text-dim">{result.kept_net} kept the net you entered.</p>
 			{/if}
 			{#if visible.length > 0}
-				<ul class="mt-2 border-t border-line/60">
+				<ul class="mt-2 border-t border-line">
 					{#each visible as row (row.ticket)}
-						<li class="border-b border-line/60 py-1.5 last:border-0">
+						<li class="border-b border-line py-1.5 last:border-0">
 							<div class="flex min-w-0 flex-wrap items-baseline gap-x-2">
 								<span class="num min-w-0 break-all text-[11px] text-fg">{row.ticket}</span>
 								<span class="text-[10px] uppercase tracking-wide {tone(row.action)}">{label(row.action)}</span>

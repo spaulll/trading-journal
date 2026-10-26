@@ -53,7 +53,7 @@
 							</tr>
 						</thead>
 						<tbody>
-							<tr class="border-b border-line/60 bg-raised/30">
+							<tr class="border-b border-line bg-raised/30">
 								<th class="px-1 py-2 text-left text-[11px] font-semibold whitespace-nowrap text-fg" scope="row">
 									{card.data.overall.label}
 								</th>
@@ -73,7 +73,7 @@
 								</td>
 							</tr>
 							{#each card.data.groups as group (group.key)}
-								<tr class="border-b border-line/60 transition-colors last:border-0 hover:bg-raised/40">
+								<tr class="border-b border-line transition-colors last:border-0 hover:bg-raised/40">
 									<th class="px-1 py-2 text-left text-[11.5px] font-medium whitespace-nowrap text-fg" scope="row">
 										{group.label}
 									</th>

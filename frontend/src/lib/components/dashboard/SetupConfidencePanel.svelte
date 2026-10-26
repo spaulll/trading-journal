@@ -61,7 +61,7 @@
 				</thead>
 				<tbody>
 					{#each data.tags as row (row.name)}
-						<tr class="border-b border-line/60 transition-colors hover:bg-raised/40">
+						<tr class="border-b border-line transition-colors hover:bg-raised/40">
 							<th class="px-1 py-2 text-left whitespace-nowrap" scope="row">
 								<span class="font-mono text-[11px] text-dim">#</span>
 								<span class="text-[12px] font-semibold text-fg">{row.name}</span>
