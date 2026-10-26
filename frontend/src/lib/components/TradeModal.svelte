@@ -519,14 +519,16 @@
 		}
 	}
 
+	let uploadInFlight = false;
 	async function uploadFiles(files: FileList | File[]): Promise<void> {
-		if (!trade || uploading) return;
+		if (!trade || uploading || uploadInFlight) return;
 		const imgs = [...files].filter((f) => f.type.startsWith('image/'));
 		if (imgs.length === 0) {
 			toasts.push('error', 'Only image files can be uploaded.');
 			return;
 		}
 		uploading = true;
+		uploadInFlight = true;
 		try {
 			for (const file of imgs) {
 				const shot = await api.uploadScreenshot(trade.id, file, uploadLabel);
@@ -537,6 +539,7 @@
 			toasts.push('error', `Upload failed — ${err instanceof Error ? err.message : 'unknown error'}`);
 		} finally {
 			uploading = false;
+			uploadInFlight = false;
 		}
 	}
 
@@ -563,8 +566,11 @@
 
 	function onPaste(e: ClipboardEvent): void {
 		if (!trade || uploading) return;
+		const target = e.target as HTMLElement | null;
+		const typing = target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable);
 		const imgs = filesFromClipboard(e);
 		if (imgs.length) {
+			if (typing) return;
 			e.preventDefault();
 			void uploadFiles(imgs);
 		}
@@ -984,7 +990,6 @@
 							dragOver = true;
 						}}
 						ondragleave={() => (dragOver = false)}
-						onpaste={onPaste}
 						onkeydown={(e) => {
 							if (e.key === 'Enter') document.getElementById('shot-file')?.click();
 						}}
