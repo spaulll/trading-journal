@@ -12,6 +12,10 @@
 	font-weight: 400 700;
 	font-style: normal;
 	font-display: swap;
+	size-adjust: 100%;
+	ascent-override: 95%;
+	descent-override: 25%;
+	line-gap-override: 0%;
 }
 @font-face {
 	font-family: 'Geist Mono';
@@ -19,6 +23,10 @@
 	font-weight: 400 600;
 	font-style: normal;
 	font-display: swap;
+	size-adjust: 100%;
+	ascent-override: 95%;
+	descent-override: 25%;
+	line-gap-override: 0%;
 }
 @font-face {
 	font-family: 'Instrument Serif';
@@ -26,6 +34,10 @@
 	font-weight: 400;
 	font-style: normal;
 	font-display: swap;
+	size-adjust: 100%;
+	ascent-override: 90%;
+	descent-override: 30%;
+	line-gap-override: 0%;
 }
 @font-face {
 	font-family: 'Instrument Serif';
@@ -33,6 +45,10 @@
 	font-weight: 400;
 	font-style: italic;
 	font-display: swap;
+	size-adjust: 100%;
+	ascent-override: 90%;
+	descent-override: 30%;
+	line-gap-override: 0%;
 }
 
 /* ============================================================
@@ -117,6 +133,11 @@ html {
 		color: rgb(var(--c-fg));
 	}
 
+	/* One keyboard language: a 2px brass ring, outside the box with a 2px gap.
+	   `--c-accent` clears 3:1 on base, panel, raised and overlay (checked by
+	   `npm run check:contrast`), so the ring is visible on every surface.
+	   Controls that live inside an overflow-hidden surface use `.focus-inset`
+	   below instead — the outside ring would be clipped there. */
 	:focus-visible {
 		outline: 2px solid rgb(var(--c-accent));
 		outline-offset: 2px;
@@ -215,6 +236,10 @@ html {
 	.btn:active {
 		transform: scale(0.975);
 	}
+	.btn:focus-visible {
+		outline: 2px solid rgb(var(--c-accent));
+		outline-offset: 2px;
+	}
 	/* Disabled is a surface, not a fade: the label keeps its full-contrast
 	   `--c-dim` ink on a flat raised fill. Opacity alone would drop the text
 	   below AA without saying anything about the state. */
@@ -244,6 +269,13 @@ html {
 			inset 0 1px 0 rgb(255 255 255 / 0.35),
 			0 16px 30px -14px rgb(var(--c-accent) / 1);
 		transform: translateY(-1px);
+	}
+	/* Brass buttons already have a strong borderless treatment; the keyboard
+	   ring is the only thing that identifies focus, so it stays outside and
+	   brass so it reads against the gradient. */
+	.btn-primary:focus-visible {
+		outline: 2px solid rgb(var(--c-accent));
+		outline-offset: 2px;
 	}
 	/* Light sweep on hover — the "premium" tell. */
 	.btn-primary::after {
@@ -315,9 +347,17 @@ html {
 		color: rgb(var(--c-dim));
 		transform: none;
 	}
+	/* Icon-only buttons still need a keyboard-visible ring. They are small,
+	   bordered, and live on raised surfaces, so the inset ring is the only
+	   treatment that survives their own overflow clipping and the surface
+	   beneath them without visually competing with the border. */
+	.btn-icon:focus-visible {
+		outline: none;
+		border-color: rgb(var(--c-accent));
+		box-shadow: inset 0 0 0 2px rgb(var(--c-accent));
+	}
 
-	/* ---------- Segmented control / filter chip ---------- */
-	.chip {
+	/* ---------- Segmented control / filter chip ---------- */	.chip {
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
@@ -329,7 +369,7 @@ html {
 			background-color 0.22s ease,
 			color 0.22s ease,
 			box-shadow 0.22s ease,
-			transform 0.2s ease-spring;
+		transform 0.2s ease-spring;
 	}
 	.chip:hover {
 		color: rgb(var(--c-fg));
@@ -342,6 +382,23 @@ html {
 		color: rgb(var(--c-dim));
 		transform: none;
 	}
+	/* Chip buttons are the cells of a segmented control. They get the same
+	   inset ring as fields and icon buttons so keyboard focus is visible on
+	   the pill itself, not only on the active state. */
+	.chip:focus-visible {
+		outline: none;
+		box-shadow:
+			0 1px 2px rgb(0 0 0 / 0.18),
+			inset 0 0 0 2px rgb(var(--c-accent)),
+			inset 0 1px 0 rgb(255 255 255 / 0.06);
+	}
+	.dark .chip:focus-visible {
+		box-shadow:
+			0 1px 2px rgb(0 0 0 / 0.4),
+			inset 0 0 0 2px rgb(var(--c-accent)),
+			inset 0 1px 0 rgb(255 255 255 / 0.07);
+	}
+
 	.chip[data-active='true'] {
 		background: rgb(var(--c-raised));
 		color: rgb(var(--c-fg));
@@ -352,6 +409,18 @@ html {
 	.dark .chip[data-active='true'] {
 		box-shadow:
 			0 1px 2px rgb(0 0 0 / 0.4),
+			inset 0 1px 0 rgb(255 255 255 / 0.07);
+	}
+	.chip[data-active='true']:focus-visible {
+		box-shadow:
+			0 1px 2px rgb(0 0 0 / 0.18),
+			inset 0 0 0 2px rgb(var(--c-accent)),
+			inset 0 1px 0 rgb(255 255 255 / 0.06);
+	}
+	.dark .chip[data-active='true']:focus-visible {
+		box-shadow:
+			0 1px 2px rgb(0 0 0 / 0.4),
+			inset 0 0 0 2px rgb(var(--c-accent)),
 			inset 0 1px 0 rgb(255 255 255 / 0.07);
 	}
 
@@ -372,9 +441,19 @@ html {
 		box-shadow:
 			inset 0 1px 2px rgb(0 0 0 / 0.12),
 			0 0 0 3px rgb(var(--c-accent) / 0.16);
-	}
-	textarea.field {
+	}	textarea.field {
 		@apply h-auto py-2.5 leading-relaxed;
+	}
+
+	/* Compact select in a toolbar or drawer: the field's focus treatment —
+	   border plus halo — without the 40px height. */
+	.field-compact {
+		@apply rounded-lg border bg-raised/70 text-fg outline-none transition;
+		border-color: rgb(var(--c-edge));
+	}
+	.field-compact:focus {
+		border-color: rgb(var(--c-accent) / 0.9);
+		box-shadow: 0 0 0 3px rgb(var(--c-accent) / 0.18);
 	}
 
 	/* ---------- Tags ---------- */
@@ -530,6 +609,15 @@ html {
 }
 
 @layer utilities {
+	/* Cards, rows and tiles clip their own overflow, so a control inside them
+	   paints the same 2px brass ring on the inside edge instead of losing it. */
+	.focus-inset {
+		outline: none;
+	}
+	.focus-inset:focus-visible {
+		outline: 2px solid rgb(var(--c-accent));
+		outline-offset: -2px;
+	}
 	.no-scrollbar {
 		scrollbar-width: none;
 		-ms-overflow-style: none;

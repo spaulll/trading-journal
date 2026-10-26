@@ -260,7 +260,7 @@
 		</label>
 
 		<label
-			class="relative flex h-9 items-center gap-1.5 rounded-xl border border-line bg-raised/70 px-2.5 text-sm text-dim"
+			class="relative flex h-9 items-center gap-1.5 rounded-xl border border-line bg-raised/70 px-2.5 text-sm text-dim transition-[border-color,box-shadow,background-color] duration-200 focus-within:border-accent/60 focus-within:bg-raised focus-within:ring-2 focus-within:ring-accent/20"
 		>
 			<span class="font-mono text-[10px] tracking-[0.16em] uppercase">Acct</span>
 			<select
@@ -287,7 +287,7 @@
 		</label>
 
 		<label
-			class="relative flex h-9 items-center gap-1.5 rounded-xl border border-line bg-raised/70 px-2.5 text-sm text-dim"
+			class="relative flex h-9 items-center gap-1.5 rounded-xl border border-line bg-raised/70 px-2.5 text-sm text-dim transition-[border-color,box-shadow,background-color] duration-200 focus-within:border-accent/60 focus-within:bg-raised focus-within:ring-2 focus-within:ring-accent/20"
 		>
 			<span class="font-mono text-[10px] tracking-[0.16em] uppercase">Sort</span>
 			<select
@@ -377,7 +377,7 @@
 					</button>
 				{/if}
 				<span class="font-mono text-[10px] tracking-[0.16em] text-dim uppercase">Move {selectMode ? 'selected' : 'shown'} to</span>
-				<select bind:value={moveTarget} class="h-8 rounded-lg border border-line bg-panel px-2 font-mono text-[12px] text-fg outline-none" aria-label="Move target account">
+				<select bind:value={moveTarget} class="field-compact h-8 px-2 font-mono text-[12px]" aria-label="Move target account">
 					<option value="">Pick…</option>
 					<option value="unassigned">Unassigned</option>
 					{#each $accounts as a (a.id)}
@@ -452,7 +452,7 @@
 									onclick={(e) => toggleExpand(t.id, e)}
 									aria-label="Preview trade {t.symbol ?? t.id}"
 									aria-expanded={expanded.has(t.id)}
-									class="grid h-6 w-6 shrink-0 place-items-center rounded-md text-dim transition-all duration-300 ease-spring hover:bg-raised hover:text-fg focus-visible:outline-none {expanded.has(
+									class="focus-inset grid h-6 w-6 shrink-0 place-items-center rounded-md text-dim transition-all duration-300 ease-spring hover:bg-raised hover:text-fg {expanded.has(
 										t.id
 									)
 										? 'rotate-180 text-accent'
@@ -522,7 +522,7 @@
 											e.stopPropagation();
 											requestClose(t.id);
 										}}
-										class="rounded-lg border border-line px-2.5 py-1 font-mono text-[10px] font-bold tracking-[0.12em] uppercase text-loss transition-all duration-200 hover:border-loss/50 hover:bg-loss/12 focus-visible:outline-none active:scale-95"
+										class="focus-inset rounded-lg border border-line px-2.5 py-1 font-mono text-[10px] font-bold tracking-[0.12em] uppercase text-loss transition-all duration-200 hover:border-loss/50 hover:bg-loss/12 active:scale-95"
 									>
 										Close
 									</button>
@@ -618,7 +618,7 @@
 										requestClose(t.id);
 									}}
 									aria-label="Close trade"
-									class="rounded-lg border border-line px-2.5 py-1 font-mono text-[10px] font-bold tracking-[0.12em] uppercase text-loss transition-all active:scale-95"
+									class="focus-inset rounded-lg border border-line px-2.5 py-1 font-mono text-[10px] font-bold tracking-[0.12em] uppercase text-loss transition-all active:scale-95"
 								>
 									Close
 								</button>
@@ -662,7 +662,7 @@
 					<select
 						value={$tradesPageSize}
 						onchange={(e) => setPageSize(Number(e.currentTarget.value))}
-						class="h-8 rounded-lg border border-line bg-panel px-2 font-mono text-[12px] text-fg outline-none"
+						class="field-compact h-8 px-2 font-mono text-[12px]"
 						aria-label="Rows per page"
 					>
 						<option value="25">25</option>

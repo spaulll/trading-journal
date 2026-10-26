@@ -36,7 +36,7 @@
 				type="button"
 				onclick={() => toasts.dismiss(toast.id)}
 				aria-label="Dismiss"
-				class="shrink-0 rounded-md p-0.5 text-dim transition-colors hover:text-fg active:scale-95"
+				class="focus-inset shrink-0 rounded-md p-0.5 text-dim transition-colors hover:text-fg active:scale-95"
 			>
 				<X size={14} strokeWidth={1.8} aria-hidden="true" />
 			</button>
