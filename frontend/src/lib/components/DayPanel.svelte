@@ -525,61 +525,54 @@
 						<div class="skeleton mt-2 h-20 rounded-xl" aria-hidden="true"></div>
 					{:else}
 						<div class="grid grid-cols-1 gap-3">
-							<label class="flex flex-col gap-1.5">
+							<label class="flex flex-col gap-1">
 								<span class="eyebrow">Pre-market</span>
 								<textarea bind:value={preMarket} oninput={scheduleNoteAutosave} rows={3} placeholder="Plan before the session…" class="field resize-y text-[13px]"></textarea>
 							</label>
-							<label class="flex flex-col gap-1.5">
+							<label class="flex flex-col gap-1">
 								<span class="eyebrow">EOD review</span>
 								<textarea bind:value={eod} oninput={scheduleNoteAutosave} rows={4} placeholder="How did the day go? (also settable via the bot's EOD reply)" class="field resize-y text-[13px]"></textarea>
 							</label>
 						</div>
-						<div class="mt-2 flex items-center justify-between gap-2">
-							{#if note}
-								<button
-									type="button"
-									onclick={() => void doDelete()}
-									class="btn h-8 gap-1.5 px-3 text-[13px] {confirmDelete
-										? 'btn-danger shadow-pop'
-										: 'text-loss hover:bg-loss/10'}"
-								>
-									<Trash2 size={14} strokeWidth={1.8} aria-hidden="true" />
-									{confirmDelete ? 'Confirm delete?' : 'Delete note'}
-								</button>
-							{:else}
-								<span
-									class="num text-[11px] {noteState === 'error' ? 'text-loss' : 'text-dim'}"
-									role="status"
-									aria-live="polite"
-									aria-atomic="true"
-								>
-									{#if saving || noteState === 'saving'}Saving day note…{:else if noteState === 'saved'}{noteHint || 'Saved'}{:else if noteState === 'error'}Autosave failed — {noteHint}{:else if dirty}Unsaved changes…{/if}
-								</span>
-							{/if}
-							<span class="flex shrink-0 items-center gap-2">
-								{#if note}
-									<span
-										class="num text-[11px] {noteState === 'error' ? 'text-loss' : 'text-dim'}"
-										role="status"
-										aria-live="polite"
-										aria-atomic="true"
-									>
-										{#if saving || noteState === 'saving'}Saving day note…{:else if noteState === 'saved'}{noteHint || 'Saved'}{:else if noteState === 'error'}Autosave failed — {noteHint}{:else if dirty}Unsaved changes…{/if}
-									</span>
-								{/if}
-								<button
-									type="button"
-									onclick={() => void saveNote(false)}
-									disabled={!dirty || saving}
-									class="btn btn-ghost h-8 px-3.5 text-[13px]"
-								>
-									{saving ? 'Saving…' : 'Save now'}
-								</button>
-							</span>
-						</div>
 					{/if}
 				</div>
 			</div>
+
+			<!-- Sticky footer: the note actions stay reachable while the day scrolls. -->
+			<footer class="shrink-0 border-t border-line bg-panel px-5 py-3">
+				<div class="flex items-center justify-between gap-2">
+					<div class="flex min-w-0 items-center gap-2">
+						{#if note && !loading}
+							<button
+								type="button"
+								onclick={() => void doDelete()}
+								class="btn h-8 gap-1.5 px-3 text-[13px] {confirmDelete
+									? 'btn-danger shadow-pop'
+									: 'text-loss hover:bg-loss/10'}"
+							>
+								<Trash2 size={14} strokeWidth={1.8} aria-hidden="true" />
+								{confirmDelete ? 'Confirm delete?' : 'Delete note'}
+							</button>
+						{/if}
+						<span
+							class="num min-w-0 truncate text-[11px] {noteState === 'error' ? 'text-loss' : 'text-dim'}"
+							role="status"
+							aria-live="polite"
+							aria-atomic="true"
+						>
+							{#if loading}{:else if saving || noteState === 'saving'}Saving day note…{:else if noteState === 'saved'}{noteHint || 'Saved'}{:else if noteState === 'error'}Autosave failed — {noteHint}{:else if dirty}Unsaved changes…{/if}
+						</span>
+					</div>
+					<button
+						type="button"
+						onclick={() => void saveNote(false)}
+						disabled={loading || !dirty || saving}
+						class="btn btn-ghost h-8 shrink-0 px-3.5 text-[13px]"
+					>
+						{saving ? 'Saving…' : 'Save now'}
+					</button>
+				</div>
+			</footer>
 		</div>
 	</div>
 {/if}

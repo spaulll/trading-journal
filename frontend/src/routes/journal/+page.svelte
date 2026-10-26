@@ -167,7 +167,7 @@
 	</button>
 </PageHead>
 
-<section aria-label="Weekend review" class="card rise mb-4 p-5">
+<section aria-label="Weekend review" class="rise mb-5 border-b border-line pb-5">
 	<div class="flex flex-wrap items-center gap-2">
 		<Sparkles size={16} strokeWidth={2} aria-hidden="true" class="text-accent" />
 		<h2 class="text-[15px] font-semibold text-fg">Weekend review</h2>
@@ -186,7 +186,7 @@
 			type="button"
 			onclick={() => void generateReview()}
 			disabled={generating}
-			class="btn btn-primary h-9 px-4 text-[13px] disabled:opacity-50"
+			class="btn btn-ghost h-9 px-4 text-[13px] disabled:opacity-50"
 		>
 			{generating ? 'Summarizing…' : 'Summarize week'}
 		</button>
@@ -303,7 +303,7 @@
 	<div class="flex flex-col gap-4">
 		{#each notes as n, ni (n.id)}
 			{@const glance = dayNet(n.date)}
-			<article class="card rise p-5" style="animation-delay: {Math.min(ni, 11) * 55}ms" aria-label="Note for {n.date}">
+			<article class="card rise p-4 sm:p-5" style="animation-delay: {Math.min(ni, 11) * 55}ms" aria-label="Note for {n.date}">
 				<div class="flex flex-wrap items-center gap-2">
 					<h2 class="num text-lg font-semibold text-fg">{fmtDate(n.date)}</h2>
 					{#if n.discipline_breach}
@@ -316,10 +316,10 @@
 					</span>
 				</div>
 				{#if n.pre_market}
-					<p class="mt-3 text-[13px] leading-relaxed text-mut"><span class="font-semibold text-fg">Plan:</span> {n.pre_market}</p>
+					<p class="mt-3 text-[13px] leading-relaxed text-pretty text-mut"><span class="font-semibold text-fg">Plan:</span> {n.pre_market}</p>
 				{/if}
 				{#if n.eod_review}
-					<p class="mt-2 text-[13px] leading-relaxed whitespace-pre-line text-fg">{n.eod_review}</p>
+					<p class="mt-2 text-[13px] leading-relaxed whitespace-pre-line text-pretty text-fg">{n.eod_review}</p>
 				{/if}
 				{#if !n.pre_market && !n.eod_review}
 					<p class="num mt-2 text-[12px] text-dim">Empty note.</p>
