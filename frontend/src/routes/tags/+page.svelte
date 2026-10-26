@@ -187,7 +187,7 @@
 				<span class="thead text-right">Edit</span>
 			</div>
 			{#each shown as t (t.id)}
-				<div class="row-line {cols} items-center border-b border-line/50 last:border-b-0">
+				<div class="row-line {cols} items-center border-b border-line last:border-b-0">
 					<span class="flex min-w-0 items-center gap-2">
 						<button
 							type="button"
