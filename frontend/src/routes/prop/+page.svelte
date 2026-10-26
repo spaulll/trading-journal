@@ -283,7 +283,7 @@
 				<div class="relative flex flex-wrap items-start justify-between gap-x-3 gap-y-1">
 					<div class="min-w-0">
 						<p class="eyebrow">Net cash</p>
-						<p class="num mt-2 text-3xl leading-none font-semibold wrap-break-word {netTone(summary.net)}">
+						<p class="display mt-2.5 text-[2.2rem] leading-none tabular-nums wrap-break-word {netTone(summary.net)} sm:text-[2.5rem] md:text-[2.6rem] xl:text-[2.8rem]">
 							{fmtCurrency(summary.net, summary.currency)}
 						</p>
 						<p class="mt-2 text-[11.5px] leading-relaxed text-dim">
