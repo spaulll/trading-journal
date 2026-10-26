@@ -39,7 +39,7 @@
 	let fNote = $state('');
 
 	const field = 'field font-mono text-[13px]';
-	const label = 'flex flex-col gap-1.5 text-[11px] font-medium tracking-[0.14em] uppercase text-dim';
+	const label = 'flex flex-col gap-1 text-[11px] font-medium tracking-[0.14em] uppercase text-dim';
 
 	const firmNames = $derived(
 		[...new Set(entries.map((entry) => entry.firm))].sort((a, b) => a.localeCompare(b))
@@ -269,35 +269,49 @@
 	/>
 {:else}
 	{#if summary}
-		<section class="mb-4" aria-label="Prop cash totals">
-			<div class="grid grid-cols-2 gap-2.5 xl:grid-cols-4">
-				<div class="card p-4">
+		<section class="mb-5" aria-label="Prop cash totals">
+			<!-- Lead metric: the net number is the only large figure on the page. -->
+			<div class="card relative overflow-hidden p-5">
+				<span
+					class="pointer-events-none absolute inset-0 {summary.net > 0
+						? 'kpi-glow-win'
+						: summary.net < 0
+							? 'kpi-glow-loss'
+							: ''}"
+					aria-hidden="true"
+				></span>
+				<div class="relative flex flex-wrap items-start justify-between gap-x-3 gap-y-1">
+					<div class="min-w-0">
+						<p class="eyebrow">Net cash</p>
+						<p class="num mt-2 text-3xl leading-none font-semibold wrap-break-word {netTone(summary.net)}">
+							{fmtCurrency(summary.net, summary.currency)}
+						</p>
+						<p class="mt-2 text-[11.5px] leading-relaxed text-dim">
+							Received minus spent across {summary.by_firm.length} firm{summary.by_firm.length === 1 ? '' : 's'}.
+						</p>
+					</div>
+					<span class="num shrink-0 rounded-md border border-line bg-raised/60 px-1.5 py-0.5 text-[10px] tracking-[0.12em] text-mut uppercase">
+						{summary.currency}
+					</span>
+				</div>
+			</div>
+
+			<!-- Supporting metrics: quiet, on the page canvas, no second hero card. -->
+			<div class="mt-3 grid grid-cols-3 gap-x-4 gap-y-3 border-t border-line pt-3">
+				<div class="min-w-0">
 					<p class="eyebrow">Spent</p>
-					<p class="num mt-1.5 whitespace-nowrap text-[clamp(17px,4.6vw,22px)] font-semibold text-fg">
-						{money(summary.spent, summary.currency)}
-					</p>
-					<p class="mt-1 text-[10.5px] text-dim">Fees, resets &amp; activation</p>
+					<p class="num mt-1 truncate text-lg font-semibold text-fg">{money(summary.spent, summary.currency)}</p>
+					<p class="mt-0.5 text-[10.5px] text-dim">Fees, resets &amp; activation</p>
 				</div>
-				<div class="card p-4">
+				<div class="min-w-0">
 					<p class="eyebrow">Received</p>
-					<p class="num mt-1.5 whitespace-nowrap text-[clamp(17px,4.6vw,22px)] font-semibold text-fg">
-						{money(summary.received, summary.currency)}
-					</p>
-					<p class="mt-1 text-[10.5px] text-dim">Payouts + refunds</p>
+					<p class="num mt-1 truncate text-lg font-semibold text-fg">{money(summary.received, summary.currency)}</p>
+					<p class="mt-0.5 text-[10.5px] text-dim">Payouts + refunds</p>
 				</div>
-				<div class="card p-4">
-					<p class="eyebrow">Net</p>
-					<p class="num mt-1.5 whitespace-nowrap text-[clamp(17px,4.6vw,22px)] font-semibold {netTone(summary.net)}">
-						{fmtCurrency(summary.net, summary.currency)}
-					</p>
-					<p class="mt-1 text-[10.5px] text-dim">Received minus spent</p>
-				</div>
-				<div class="card p-4">
+				<div class="min-w-0">
 					<p class="eyebrow">ROI</p>
-					<p class="num mt-1.5 whitespace-nowrap text-[clamp(17px,4.6vw,22px)] font-semibold text-fg">
-						{roiLabel(summary.roi)}
-					</p>
-					<p class="mt-1 text-[10.5px] text-dim">Received / spent</p>
+					<p class="num mt-1 truncate text-lg font-semibold text-fg">{roiLabel(summary.roi)}</p>
+					<p class="mt-0.5 text-[10.5px] text-dim">Received ÷ spent</p>
 				</div>
 			</div>
 			{#if summary.unpriced > 0}
@@ -311,33 +325,28 @@
 			{/if}
 		</section>
 
-		<section class="mb-4" aria-labelledby="firm-net-title">
+		<section class="mb-5" aria-labelledby="firm-net-title">
 			<div class="mb-2 flex items-center justify-between gap-3 px-1">
 				<h2 id="firm-net-title" class="eyebrow">Net by firm</h2>
 				<span class="num text-[10px] tracking-[0.1em] text-dim uppercase">{summary.currency}</span>
 			</div>
-			<div class="card flex flex-col divide-y divide-line overflow-hidden xl:flex-row xl:divide-x xl:divide-y-0">
+			<!-- One firm stays a compact row; several form a balanced grid. -->
+			<div class="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3">
 				{#each summary.by_firm as firm (firm.firm)}
-					<div class="min-w-0 px-4 py-2.5 xl:flex-1">
-						<div class="flex items-center justify-between gap-3 xl:block">
-							<div class="min-w-0">
-								<p class="truncate text-[12.5px] font-semibold text-fg" title={firm.firm}>{firm.firm}</p>
-								<p class="num mt-0.5 text-[10px] text-dim">
-									{firm.entries} entr{firm.entries === 1 ? 'y' : 'ies'}
-									{#if firm.unpriced > 0}
-										<span class="text-accent">· {firm.unpriced} unpriced</span>
-									{/if}
-								</p>
-							</div>
-							<div class="shrink-0 text-right xl:mt-2 xl:text-left">
-								<p class="num whitespace-nowrap text-[15px] font-semibold {netTone(firm.net)}">
-									{fmtCurrency(firm.net, summary.currency)}
-								</p>
-								<p class="mt-0.5 text-[10px] text-dim">
-									ROI <span class="num text-mut">{roiLabel(firm.roi)}</span>
-								</p>
-							</div>
+					<div class="card flex min-w-0 items-center justify-between gap-3 px-3.5 py-2.5">
+						<div class="min-w-0">
+							<p class="truncate text-[12.5px] font-semibold text-fg" title={firm.firm}>{firm.firm}</p>
+							<p class="num mt-0.5 truncate text-[10px] text-dim">
+								{firm.entries} entr{firm.entries === 1 ? 'y' : 'ies'} · ROI
+								<span class="text-mut">{roiLabel(firm.roi)}</span>
+								{#if firm.unpriced > 0}
+									<span class="text-accent">· {firm.unpriced} unpriced</span>
+								{/if}
+							</p>
 						</div>
+						<p class="num shrink-0 whitespace-nowrap text-[15px] font-semibold {netTone(firm.net)}">
+							{fmtCurrency(firm.net, summary.currency)}
+						</p>
 					</div>
 				{/each}
 			</div>
