@@ -388,8 +388,9 @@
 		</div>
 	{:else}
 		<!-- Desktop ledger: div-grid, ONE shared .tgrid template for header + rows -->
-		<div class="card hidden overflow-x-auto md:block" role="table" aria-label="Trade history">
-			<div class="min-w-[940px]">
+		<div class="card hidden overflow-hidden md:block">
+			<div class="ledger-scroll overflow-auto" role="table" aria-label="Trade history">
+				<div class="min-w-[960px]">
 				<div role="row" class="tgrid sticky top-0 z-10 border-b border-line bg-panel">
 					<span role="columnheader" class="flex items-center justify-center gap-1 px-1 py-2.5 text-center">
 						{#if selectMode}
@@ -421,7 +422,7 @@
 							class="tgrid trow anim-fade cursor-pointer row-line transition-colors duration-200 hover:bg-raised/50 focus-visible:outline-none {selectMode && selected.has(t.id) ? 'bg-accent/10' : ''}"
 							style="animation-delay: {Math.min(i, 29) * 20}ms"
 						>
-							<span role="cell" class="flex items-center justify-center gap-1 px-1 py-2.5 text-center">
+							<span role="cell" class="flex items-center justify-center gap-1 px-1 py-[7px] text-center">
 								{#if selectMode}
 									<input
 										type="checkbox"
@@ -435,7 +436,7 @@
 								<button
 									type="button"
 									onclick={(e) => toggleExpand(t.id, e)}
-									aria-label="Preview"
+									aria-label="Preview trade {t.symbol ?? t.id}"
 									aria-expanded={expanded.has(t.id)}
 									class="grid h-6 w-6 shrink-0 place-items-center rounded-md text-dim transition-all duration-300 ease-spring hover:bg-raised hover:text-fg focus-visible:outline-none {expanded.has(
 										t.id
@@ -446,27 +447,29 @@
 									<ChevronDown size={15} strokeWidth={1.8} aria-hidden="true" />
 								</button>
 							</span>
-							<span role="cell" class="px-3 py-2.5 font-mono whitespace-nowrap text-[12.5px] text-mut">
+							<span role="cell" class="px-3 py-[7px] font-mono whitespace-nowrap text-[13px] text-mut">
 								{fmtDateTime(t.timestamp_open)}
 							</span>
-							<span role="cell" class="truncate px-3 py-2.5 whitespace-nowrap">
-								<span class="num text-[13px] font-semibold text-fg uppercase">{t.symbol ?? '—'}</span>
-								<span
-									class="ml-1.5 font-mono text-[10px] font-bold tracking-[0.12em] uppercase {(t.direction ?? '').toLowerCase() ===
-									'sell'
-										? 'text-loss'
-										: 'text-win'}"
-								>
-									{t.direction ?? ''}
+							<span role="cell" class="min-w-0 px-3 py-[7px]">
+								<span class="flex items-center gap-1.5 whitespace-nowrap">
+									<span class="num text-[13px] leading-none font-semibold text-fg uppercase">{t.symbol ?? '—'}</span>
+									<span
+										class="font-mono text-[9px] leading-none font-bold tracking-[0.12em] uppercase {(t.direction ?? '').toLowerCase() ===
+										'sell'
+											? 'text-loss'
+											: 'text-win'}"
+									>
+										{t.direction ?? ''}
+									</span>
 								</span>
-								<span class="ml-1.5 font-mono text-[10px] text-dim">@{chipAlias($accountMap, t.account_id)}</span>
+								<span class="mt-0.5 block truncate font-mono text-[10px] leading-none text-dim">@{chipAlias($accountMap, t.account_id)}</span>
 							</span>
-							<span role="cell" class="px-3 py-2.5 text-right font-mono whitespace-nowrap text-[12.5px] tabular-nums text-mut">
+							<span role="cell" class="px-3 py-[7px] text-right font-mono whitespace-nowrap text-[13px] tabular-nums text-mut">
 								<span class="text-fg">{t.entry_price?.toFixed(2) ?? '—'}</span>
 								<span class="px-1 text-dim">→</span>
 								<span class="text-fg">{t.exit_price?.toFixed(2) ?? '—'}</span>
 							</span>
-							<span role="cell" class="px-3 py-2.5 text-right whitespace-nowrap">
+							<span role="cell" class="px-3 py-[7px] text-right whitespace-nowrap">
 								{#if isUnpriced(t)}
 									<span
 										class="num inline-block rounded-md bg-flat/12 px-1.5 py-0.5 text-[10px] font-bold tracking-[0.1em] uppercase text-flat"
@@ -476,7 +479,7 @@
 									</span>
 								{:else}
 									<span
-										class="num inline-block rounded-md px-1.5 py-0.5 text-[12.5px] font-semibold {toneBg[
+										class="num inline-block rounded-md px-1.5 py-0.5 text-[13px] font-semibold {toneBg[
 											pnlTone(usdNet(t))
 										]} {toneText[pnlTone(usdNet(t))]}"
 										title={brokerLabel(t)}
@@ -485,10 +488,10 @@
 									</span>
 								{/if}
 							</span>
-							<span role="cell" class="px-3 py-2.5 text-right font-mono whitespace-nowrap text-[12.5px] tabular-nums {toneText[rTone(t.r_multiple)]}">
+							<span role="cell" class="px-3 py-[7px] text-right font-mono whitespace-nowrap text-[13px] tabular-nums {toneText[rTone(t.r_multiple)]}">
 								{fmtR(t.r_multiple)}
 							</span>
-							<span role="cell" class="min-w-0 px-3 py-2.5">
+							<span role="cell" class="min-w-0 px-3 py-[7px]">
 								<span class="flex flex-wrap gap-1">
 									{#each t.tags as tag (tag.id)}
 										<span class={tagChip(tag.name, tag.category)}>
@@ -497,7 +500,7 @@
 									{/each}
 								</span>
 							</span>
-							<span role="cell" class="px-3 py-2.5 text-right whitespace-nowrap">
+							<span role="cell" class="px-3 py-[7px] text-right whitespace-nowrap">
 								{#if t.status === 'OPEN'}
 									<button
 										type="button"
@@ -534,18 +537,20 @@
 							</div>
 						{/if}
 					{/each}
+				</div>
 			</div>
 		</div>
 
 		<!-- Mobile cards -->
 		<div class="grid grid-cols-1 gap-2.5 md:hidden">
 			{#each filtered as t, i (t.id)}
+				{@const isShort = (t.direction ?? '').toLowerCase() === 'sell'}
 				<div
 					role="button"
 					tabindex={0}
 					onclick={() => (selectMode ? toggleOne(t.id) : openTrade(t.id))}
 					onkeydown={(e) => activateRow(e, t.id)}
-					class="card card-hover rise relative overflow-hidden p-3.5 text-left focus-visible:outline-none active:scale-[0.99] {selectMode && selected.has(t.id) ? 'border-accent/60' : ''}"
+					class="card card-hover rise relative overflow-hidden p-3.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/70 active:scale-[0.99] {selectMode && selected.has(t.id) ? 'border-accent/60' : ''}"
 					style="animation-delay: {Math.min(i, 14) * 40}ms"
 				>
 					<span
@@ -557,7 +562,7 @@
 						aria-hidden="true"
 					></span>
 					<div class="flex items-center justify-between gap-2 pl-1.5">
-						<span class="flex items-center gap-2">
+						<span class="flex min-w-0 items-center gap-1.5">
 							{#if selectMode}
 								<input
 									type="checkbox"
@@ -568,9 +573,17 @@
 									class="h-4 w-4 shrink-0 cursor-pointer accent-[var(--c-accent)]"
 								/>
 							{/if}
-							<span class="num text-sm font-semibold text-fg uppercase">{t.symbol ?? '—'} <span class="font-mono text-[10px] font-normal text-dim normal-case">@{chipAlias($accountMap, t.account_id)}</span></span>
+							<span class="num truncate text-sm font-semibold text-fg uppercase">{t.symbol ?? '—'}</span>
+							<span
+								class="shrink-0 rounded-md px-1.5 py-0.5 font-mono text-[9px] font-bold tracking-[0.12em] uppercase {isShort
+									? 'bg-loss/12 text-loss'
+									: 'bg-win/12 text-win'}"
+							>
+								{t.direction ?? '—'}
+							</span>
+							<span class="truncate font-mono text-[10px] text-dim">@{chipAlias($accountMap, t.account_id)}</span>
 						</span>
-						<span class="flex items-center gap-2">
+						<span class="flex shrink-0 items-center gap-2">
 							{#if isUnpriced(t)}
 								<span
 									class="num rounded-md bg-flat/12 px-1.5 py-0.5 text-[10px] font-bold tracking-[0.1em] uppercase text-flat"
@@ -598,7 +611,13 @@
 							{/if}
 						</span>
 					</div>
-					<div class="mt-1.5 flex items-center justify-between pl-1.5 text-xs">
+					<div class="mt-2 flex min-w-0 items-center gap-1 pl-1.5 font-mono text-[11.5px] text-mut">
+						<span class="shrink-0 text-dim">Entry → Exit</span>
+						<span class="truncate text-fg">{t.entry_price?.toFixed(2) ?? '—'}</span>
+						<span class="shrink-0 text-dim">→</span>
+						<span class="truncate text-fg">{t.exit_price?.toFixed(2) ?? '—'}</span>
+					</div>
+					<div class="mt-1 flex items-center justify-between pl-1.5 text-xs">
 						<span class="text-dim">{fmtDateTime(t.timestamp_open)}</span>
 						<span class="font-mono tabular-nums {toneText[rTone(t.r_multiple)]}">{fmtR(t.r_multiple)}</span>
 					</div>
