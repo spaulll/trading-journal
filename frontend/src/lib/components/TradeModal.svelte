@@ -7,6 +7,7 @@
 		appendScreenshot,
 		closeTrade,
 		ensureTrade,
+		removeScreenshot,
 		removeTrade,
 		requestClose,
 		selectedTradeId,
@@ -68,6 +69,7 @@
 		//
 		// Tags are deliberately not saved here: an unmount in the middle of
 		// typing would persist a half-typed token as a permanent tag.
+		clearShotDeleteTimer();
 		if (notesTimer) {
 			clearTimeout(notesTimer);
 			notesTimer = null;
@@ -134,6 +136,11 @@
 	}
 	let zoomShot: ScreenshotDto | null = $state(null);
 	let confirmDelete = $state(false);
+	// Screenshot removal is two-step: the asset is deleted in Immich (the only
+	// copy), so a stray click must not do it.
+	let confirmShotDelete = $state<number | null>(null);
+	let deletingShot = $state<number | null>(null);
+	let shotDeleteTimer: ReturnType<typeof setTimeout> | null = null;
 	let savingNotes = $state(false);
 	let savingTags = $state(false);
 	// Chained saves. A request that arrives while another is running waits
@@ -228,6 +235,8 @@
 			fExitTime = timeToInput(trade.exit_time ?? trade.timestamp_close);
 			confirmDelete = false;
 			zoomShot = null;
+			confirmShotDelete = null;
+			clearShotDeleteTimer();
 			notesState = 'idle';
 			notesHint = '';
 			tagsState = 'idle';
@@ -517,6 +526,70 @@
 			select.value = shot.label;
 			toasts.push('error', `Label update failed — ${err instanceof Error ? err.message : 'unknown error'}`);
 		}
+	}
+
+	function clearShotDeleteTimer(): void {
+		if (shotDeleteTimer) {
+			clearTimeout(shotDeleteTimer);
+			shotDeleteTimer = null;
+		}
+	}
+
+	/** First click arms, second click inside the window deletes. */
+	function requestShotDelete(shotId: number): void {
+		if (deletingShot !== null) return;
+		if (confirmShotDelete === shotId) {
+			void deleteShot(shotId);
+			return;
+		}
+		confirmShotDelete = shotId;
+		clearShotDeleteTimer();
+		shotDeleteTimer = setTimeout(() => (confirmShotDelete = null), 4000);
+	}
+
+	function shotDeleteBtnClass(shotId: number): string {
+		return confirmShotDelete === shotId
+			? 'border-loss/60 bg-loss/90 px-2 font-mono text-[10px] font-semibold text-white opacity-100'
+			: 'w-6 border-line bg-base/70 text-mut opacity-100 hover:border-loss/50 hover:text-loss focus-visible:opacity-100 sm:opacity-0 sm:group-hover/tile:opacity-100 sm:group-focus-within/tile:opacity-100';
+	}
+
+	async function deleteShot(shotId: number): Promise<void> {
+		if (!trade || deletingShot !== null) return;
+		const tradeId = trade.id;
+		clearShotDeleteTimer();
+		confirmShotDelete = null;
+		deletingShot = shotId;
+		try {
+			const res = await api.deleteScreenshot(shotId);
+			removeScreenshot(tradeId, shotId);
+			if (zoomShot?.id === shotId) zoomShot = null;
+			toasts.push(
+				'success',
+				res.immich_deleted
+					? 'Screenshot deleted — removed from Immich too.'
+					: 'Screenshot removed — the Immich asset stays, another trade uses it.'
+			);
+		} catch (err) {
+			toasts.push('error', `Screenshot delete failed — ${err instanceof Error ? err.message : 'unknown error'}`);
+		} finally {
+			deletingShot = null;
+		}
+	}
+
+	/**
+	 * Immich renders the thumbnail a moment after accepting the upload, so a
+	 * fresh asset can 404 once. Retry with a cache-buster instead of leaving
+	 * a broken tile until the next page refresh.
+	 */
+	function retryThumbnail(e: Event, assetId: string): void {
+		const img = e.currentTarget as HTMLImageElement;
+		img.style.opacity = '0';
+		const attempt = Number(img.dataset.thumbAttempt ?? '0');
+		if (attempt >= 4) return;
+		img.dataset.thumbAttempt = String(attempt + 1);
+		setTimeout(() => {
+			img.src = `${api.thumbUrl(assetId)}?retry=${attempt + 1}`;
+		}, 800 * (attempt + 1));
 	}
 
 	let uploadInFlight = false;
@@ -1025,7 +1098,7 @@
 					{#if trade.screenshots.length > 0}
 						<div class="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
 							{#each trade.screenshots as shot (shot.id)}
-								<div class="flex min-w-0 flex-col gap-1">
+								<div class="group/tile relative flex min-w-0 flex-col gap-1">
 									<button
 										type="button"
 										onclick={() => (zoomShot = shot)}
@@ -1036,7 +1109,12 @@
 											src={api.thumbUrl(shot.immich_asset_id)}
 											alt="{shot.label} screenshot"
 											loading="lazy"
-											onload={(e) => (e.currentTarget.previousElementSibling as HTMLElement)?.remove()}
+											onload={(e) => {
+												const img = e.currentTarget as HTMLImageElement;
+												img.style.opacity = '';
+												(img.previousElementSibling as HTMLElement | null)?.remove();
+											}}
+											onerror={(e) => retryThumbnail(e, shot.immich_asset_id)}
 											class="absolute inset-0 h-full w-full object-cover transition-transform duration-300 ease-spring group-hover:scale-[1.04]"
 										/>
 										<span
@@ -1049,6 +1127,27 @@
 											aria-hidden="true"
 											class="absolute right-1.5 bottom-1.5 z-10 text-accent opacity-0 transition-opacity duration-200 group-hover:opacity-100"
 										/>
+									</button>
+									<!-- Two-step: the asset lives in Immich and is deleted there too. -->
+									<button
+										type="button"
+										onclick={() => requestShotDelete(shot.id)}
+										disabled={deletingShot !== null}
+										aria-label={confirmShotDelete === shot.id
+											? 'Confirm delete screenshot'
+											: 'Delete screenshot (also deletes it from Immich)'}
+										title="Delete screenshot (also deletes it from Immich)"
+										class="absolute top-1.5 right-1.5 z-20 grid h-6 place-items-center rounded-lg border backdrop-blur transition-all duration-200 disabled:cursor-not-allowed {shotDeleteBtnClass(
+											shot.id
+										)}"
+									>
+										{#if deletingShot === shot.id}
+											<span class="h-3 w-3 animate-spin rounded-full border border-mut border-t-transparent" aria-hidden="true"></span>
+										{:else if confirmShotDelete === shot.id}
+											Delete?
+										{:else}
+											<Trash2 size={13} strokeWidth={1.9} aria-hidden="true" />
+										{/if}
 									</button>
 									<select
 										value={shot.label}

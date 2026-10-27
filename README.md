@@ -232,7 +232,7 @@ FastAPI publishes the live schema at `/docs` (Swagger UI) and `/openapi.json`; e
 | Symbols | `GET/POST /api/symbols`; `GET /api/symbols/preview`; `PATCH /api/symbols/{spec_id}` |
 | FX | `GET/POST /api/fx-rates`; `GET /api/fx-rates/effective`; `GET /api/fx-rates/pivot` |
 | Tags | `GET /api/tags`; `POST /api/tags/merge`; `PATCH/DELETE /api/tags/{tag_id}` |
-| Screenshots | `GET /api/screenshots/{asset_id}/thumbnail`; `GET /api/screenshots/{asset_id}/full`; `PATCH /api/screenshots/{screenshot_id}` |
+| Screenshots | `GET /api/screenshots/{asset_id}/thumbnail`; `GET /api/screenshots/{asset_id}/full`; `PATCH /api/screenshots/{screenshot_id}`; `DELETE /api/screenshots/{screenshot_id}` (also deletes the Immich asset) |
 | Analytics | All `GET` under `/api/analytics/`: `summary`, `equity-curve`, `drawdown`, `r-distribution`, `tag-performance`, `calendar`, `monthly-calendar`, `kpi-dashboard`, `activity-and-streaks`, `long-short-stats`, `radar-profiles`, `symbol-performance`, `setup-confidence`, `setup-matrix`, `risk-of-ruin` |
 | Settings | `GET /api/settings/broker-offset`; `GET/PUT /api/settings/trading-day` |
 | Daily notes | `GET /api/daily-notes`; `GET/PUT/DELETE /api/daily-notes/{day}`; `GET /api/daily-notes/{day}/adherence` |

@@ -219,20 +219,49 @@ export function upsertTrade(trade: TradeDto): void {
 	cacheTrades([trade]);
 }
 
+/**
+ * Patch one trade everywhere the client keeps it.
+ *
+ * The drawer resolves its trade from `tradeCache`, while the ledger, the
+ * open-positions strip and the day drawer read their own lists. Updating only
+ * one of them made an uploaded screenshot invisible until a page refresh
+ * rebuilt the cache from the server.
+ */
+function patchTrade(tradeId: number, patch: (trade: TradeDto) => TradeDto): void {
+	const apply = (list: TradeDto[]) =>
+		list.map((t) => (t.id === tradeId ? patch(t) : t));
+	trades.update(apply);
+	openTrades.update(apply);
+	dayTrades.update(apply);
+	tradeCache.update((cache) => {
+		const trade = cache.get(tradeId);
+		if (!trade) return cache;
+		const next = new Map(cache);
+		next.set(tradeId, patch(trade));
+		return next;
+	});
+}
+
 export function appendScreenshot(tradeId: number, shot: ScreenshotDto): void {
-	trades.update((list) =>
-		list.map((t) => (t.id === tradeId ? { ...t, screenshots: [...t.screenshots, shot] } : t))
+	patchTrade(tradeId, (t) =>
+		t.screenshots.some((s) => s.id === shot.id)
+			? t
+			: { ...t, screenshots: [...t.screenshots, shot] }
 	);
 }
 
 export function updateScreenshot(tradeId: number, shot: ScreenshotDto): void {
-	trades.update((list) =>
-		list.map((t) =>
-			t.id === tradeId
-				? { ...t, screenshots: t.screenshots.map((s) => (s.id === shot.id ? shot : s)) }
-				: t
-		)
-	);
+	patchTrade(tradeId, (t) => ({
+		...t,
+		screenshots: t.screenshots.map((s) => (s.id === shot.id ? shot : s))
+	}));
+}
+
+export function removeScreenshot(tradeId: number, screenshotId: number): void {
+	patchTrade(tradeId, (t) => ({
+		...t,
+		screenshots: t.screenshots.filter((s) => s.id !== screenshotId)
+	}));
 }
 
 export function removeTrade(id: number): void {

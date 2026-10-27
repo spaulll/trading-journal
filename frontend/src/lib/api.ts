@@ -894,6 +894,11 @@ export const api = {
 	},
 	patchScreenshot: (shotId: number, label: string) =>
 		req<ScreenshotDto>(`/api/screenshots/${shotId}`, json({ method: 'PATCH', body: JSON.stringify({ label }) })),
+	/** Deletes the asset in Immich as well — there is no second copy. */
+	deleteScreenshot: (shotId: number) =>
+		req<{ deleted: number; immich_deleted: boolean }>(`/api/screenshots/${shotId}`, {
+			method: 'DELETE'
+		}),
 	getBrokerOffset: () =>
 		req<{ offset_minutes: number | null; label: string | null }>('/api/settings/broker-offset'),
 	/** Where the trading day rolls over — and which day the app calls today. */

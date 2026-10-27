@@ -249,9 +249,16 @@ async def add_assets_to_album(album_id: str, asset_ids: list[str], album_name: O
 
 
 async def delete_assets(asset_ids: list[str]) -> None:
-    """Best-effort orphan cleanup (force = skip trash)."""
+    """Delete assets for real (force = skip trash).
+
+    A 404 means Immich does not know the id anymore — the asset is already
+    gone, so the caller can still drop its own record instead of getting
+    stuck on a row it can never clean up.
+    """
     async with _client() as client:
         resp = await client.request("DELETE", "/api/assets", json={"ids": asset_ids, "force": True})
+        if resp.status_code == 404:
+            return
         resp.raise_for_status()
 
 

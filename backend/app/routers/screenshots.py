@@ -90,6 +90,38 @@ async def upload_screenshot(
     return ScreenshotRead.model_validate(shot.model_dump())
 
 
+@router.delete("/api/screenshots/{screenshot_id}")
+async def delete_screenshot(screenshot_id: int, session: Session = Depends(get_session)):
+    """Remove one screenshot — from Immich first, then from the journal.
+
+    The asset is the only copy, so the Immich delete has to succeed before
+    the row disappears: a failed remote delete keeps the row (and the UI
+    retry) honest instead of leaving an orphan in Immich with no way back.
+
+    Immich dedupes identical bytes, so one asset can back rows on more than
+    one trade. In that case the remote asset stays — dropping it would blank
+    the other trades' screenshots — and only this trade's row goes.
+    """
+    shot = session.get(Screenshot, screenshot_id)
+    if shot is None:
+        raise HTTPException(status_code=404, detail="Screenshot not found")
+    shared = session.exec(
+        select(Screenshot.id).where(
+            Screenshot.immich_asset_id == shot.immich_asset_id,
+            Screenshot.id != shot.id,
+        )
+    ).first()
+    immich_deleted = shared is None
+    if immich_deleted:
+        try:
+            await immich_client.delete_assets([shot.immich_asset_id])
+        except (httpx.HTTPError, RuntimeError) as exc:
+            raise HTTPException(status_code=502, detail=f"Immich delete failed: {exc}")
+    session.delete(shot)
+    session.commit()
+    return {"deleted": screenshot_id, "immich_deleted": immich_deleted}
+
+
 class ScreenshotLabelPatch(SQLModel):
     label: str
 
