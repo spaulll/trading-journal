@@ -27,6 +27,7 @@
 	import { accounts, loadAccounts, selectedAccountId } from '$lib/stores/accounts';
 	import { markOffline, markOnline, snapshotAt } from '$lib/stores/offline';
 	import { SNAPSHOT_KEYS, readSnapshot, saveSnapshot } from '$lib/offline-snapshot';
+	import { readOverview, writeOverview } from '$lib/analytics-overview-cache';
 	import { fmtMoney } from '$lib/utils/format';
 	import {
 		api,
@@ -152,15 +153,14 @@
 		};
 	}
 
-	/** The last overview per account + period, so a revisit paints before the refetch lands. */
-	const overviewCache = new Map<string, { at: number; data: AnalyticsOverview }>();
+	/** Account + period → the key the module-scope overview cache is stored under. */
 	const overviewKey = (acct: number | null, y: number, m: number): string =>
 		`${acct ?? 'all'}|${y}|${m}`;
 
 	async function load(): Promise<void> {
 		const acct = $selectedAccountId;
 		const key = overviewKey(acct, year, monthCursor.m);
-		const cached = overviewCache.get(key);
+		const cached = readOverview(key);
 		if (cached) {
 			// Stale-while-revalidate: show the last result now, confirm it below.
 			applySnapshot(overviewToSnapshot(cached.data));
@@ -171,7 +171,7 @@
 		error = null;
 		try {
 			const overview = await api.analyticsOverview(acct, year, monthCursor.m);
-			overviewCache.set(key, { at: Date.now(), data: overview });
+			writeOverview(key, overview);
 			const snap = overviewToSnapshot(overview);
 			applySnapshot(snap);
 			snapshotRestored = false;
