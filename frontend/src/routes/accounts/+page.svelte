@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { ChevronRight, Pencil, Plus, Trash2, TriangleAlert, X } from 'lucide-svelte';
+	import { ChevronRight, Pencil, Plus, Trash2, TriangleAlert, Wallet, X } from 'lucide-svelte';
 	import { fade, scale } from 'svelte/transition';
 	import PageHead from '$lib/components/PageHead.svelte';
 	import StateBlock from '$lib/components/StateBlock.svelte';
@@ -258,7 +258,8 @@
 	}
 
 	const field = 'field font-mono text-[13px]';
-	const label = 'flex flex-col gap-1.5 text-[11px] font-medium tracking-[0.14em] uppercase text-dim';
+	const label = 'flex flex-col gap-1 text-[11px] font-medium tracking-[0.14em] uppercase text-dim';
+	const legend = 'px-1 font-mono text-[10px] tracking-[0.16em] text-dim uppercase';
 </script>
 
 <svelte:head>
@@ -426,68 +427,108 @@
 		onclick={(e) => e.target === e.currentTarget && (modal = null)}
 		use:dialogLayer={() => (modal = null)}
 		tabindex={-1}
-		class="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-base/75 p-4 backdrop-blur-[3px] sm:p-6"
+		class="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-base/75 p-4 backdrop-blur-[3px]"
 		role="dialog"
 		aria-modal="true"
 		aria-label={modal.editing ? 'Edit account' : 'Add account'}
 	>
-		<div transition:scale={MODAL} class="card w-full max-w-lg overflow-hidden p-0 shadow-pop">
+		<div
+			transition:scale={MODAL}
+			class="card flex max-h-[calc(100dvh-2rem)] w-full max-w-xl flex-col overflow-hidden p-0 shadow-pop"
+		>
 			<div class="flex items-center gap-2.5 border-b border-line px-5 py-4">
-				<h2 class="display text-xl text-fg">{modal.editing ? `Edit @${modal.editing.alias}` : 'Add account'}</h2>
+				<span class="grid h-8 w-8 place-items-center rounded-lg bg-accent/12 text-accent">
+					<Wallet size={16} strokeWidth={2} aria-hidden="true" />
+				</span>
+				<h2 class="display text-xl text-fg">
+					{modal.editing ? `Edit @${modal.editing.alias}` : 'Add account'}
+				</h2>
 				<button type="button" onclick={() => (modal = null)} aria-label="Close" class="btn-icon ml-auto h-8 w-8">
 					<X size={17} strokeWidth={1.8} aria-hidden="true" />
 				</button>
 			</div>
-			<form class="px-5 py-4" onsubmit={submit}>
-				<div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
-					<label class={label}>Firm<input type="text" bind:value={fFirm} placeholder="FTMO" class={field} /></label>
-					<label class={label}>Alias<input type="text" bind:value={fAlias} placeholder="ftmo100k-f1" autocomplete="off" class="{field} lowercase" /></label>
-					<label class={label}>Login <span class="normal-case tracking-normal text-dim">(optional)</span><input type="text" bind:value={fLogin} placeholder="88421" class={field} /></label>
-					<label class={label}>Phase
-						<select bind:value={fPhase} class={field}>
-							{#each PHASES as p}<option value={p}>{p}</option>{/each}
-						</select>
-					</label>
-					<label class={label}>Base currency<input type="text" bind:value={fBase} maxlength={5} placeholder="USD" autocomplete="off" class="{field} uppercase" /></label>
-					<label class={label}>Start balance ({baseCode})<input type="number" bind:value={fStart} step="any" class={field} /></label>
-					<label class={label}>Profit target % <span class="normal-case tracking-normal text-dim">(empty = none · {targetUsd})</span><input type="number" bind:value={fTarget} step="any" class={field} /></label>
-					<label class={label}>Daily max loss % <span class="normal-case tracking-normal text-dim">({dailyUsd})</span><input type="number" bind:value={fDaily} step="any" class={field} /></label>
-					<label class={label}>Daily basis
-						<select bind:value={fDailyBasis} class={field}>
-							<option value="balance">balance (closed)</option>
-							<option value="equity">equity (floating)</option>
-						</select>
-					</label>
-					<label class={label}>Max loss % <span class="normal-case tracking-normal text-dim">({maxUsd})</span><input type="number" bind:value={fMax} step="any" class={field} /></label>
-					<label class={label}>Max mode
-						<select bind:value={fMaxMode} class={field}>
-							<option value="static">static (from start)</option>
-							<option value="trailing">trailing (from peak)</option>
-						</select>
-					</label>
-					{#if fMaxMode === 'trailing'}
-						<label class={label}>Trails on
-							<select bind:value={fTrailing} class={field}>
-								<option value="balance_peak">closed balance peak</option>
-								<option value="equity_peak">equity peak</option>
+
+			<form class="min-h-0 flex-1 overflow-y-auto px-5 pt-4" onsubmit={submit}>
+				<fieldset class="rounded-xl border border-line p-3">
+					<legend class={legend}>Identity</legend>
+					<div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+						<label class={label}>Firm<input type="text" bind:value={fFirm} placeholder="FTMO" class={field} /></label>
+						<label class={label}>Alias<input type="text" bind:value={fAlias} placeholder="ftmo100k-f1" autocomplete="off" class="{field} lowercase" /></label>
+						<label class={label}>Login <span class="normal-case tracking-normal text-dim">(optional)</span><input type="text" bind:value={fLogin} placeholder="88421" class={field} /></label>
+						<label class={label}>Phase
+							<select bind:value={fPhase} class={field}>
+								{#each PHASES as p}<option value={p}>{p}</option>{/each}
 							</select>
 						</label>
-					{/if}
-					<label class={label}>Min trading days <span class="normal-case tracking-normal text-dim">(0 = none)</span><input type="number" bind:value={fMinDays} min="0" step="1" class={field} /></label>
-					<label class={label}>Consistency max % <span class="normal-case tracking-normal text-dim">(empty = none)</span><input type="number" bind:value={fConsistency} min="0" max="100" step="any" class={field} /></label>
-					<label class="{label} sm:col-span-2">Challenge deadline <span class="normal-case tracking-normal text-dim">(optional · drives the days warning)</span><input type="date" bind:value={fDeadline} class={field} /></label>
-					<label class={label}>Status
-						<select bind:value={fStatus} class={field}>
-							<option value="active">active</option>
-							<option value="breach">breach</option>
-							<option value="passed">passed</option>
-							<option value="archived">archived</option>
-						</select>
-					</label>
+						<label class={label}>Status
+							<select bind:value={fStatus} class={field}>
+								<option value="active">active</option>
+								<option value="breach">breach</option>
+								<option value="passed">passed</option>
+								<option value="archived">archived</option>
+							</select>
+						</label>
+					</div>
+				</fieldset>
+
+				<fieldset class="mt-3 rounded-xl border border-line p-3">
+					<legend class={legend}>Balance &amp; limits</legend>
+					<div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+						<label class={label}>Base currency<input type="text" bind:value={fBase} maxlength={5} placeholder="USD" autocomplete="off" class="{field} uppercase" /></label>
+						<label class={label}>Start balance ({baseCode})<input type="number" bind:value={fStart} step="any" class={field} /></label>
+						<label class={label}>Daily max loss % <span class="normal-case tracking-normal text-dim">(of start)</span><input type="number" bind:value={fDaily} step="any" class={field} /></label>
+						<label class={label}>Daily basis
+							<select bind:value={fDailyBasis} class={field}>
+								<option value="balance">balance (closed)</option>
+								<option value="equity">equity (floating)</option>
+							</select>
+						</label>
+						<label class={label}>Max loss % <span class="normal-case tracking-normal text-dim">(of start)</span><input type="number" bind:value={fMax} step="any" class={field} /></label>
+						<label class={label}>Max mode
+							<select bind:value={fMaxMode} class={field}>
+								<option value="static">static (from start)</option>
+								<option value="trailing">trailing (from peak)</option>
+							</select>
+						</label>
+						{#if fMaxMode === 'trailing'}
+							<label class={label}>Trails on
+								<select bind:value={fTrailing} class={field}>
+									<option value="balance_peak">closed balance peak</option>
+									<option value="equity_peak">equity peak</option>
+								</select>
+							</label>
+						{/if}
+						<label class={label}>Profit target % <span class="normal-case tracking-normal text-dim">(empty = none)</span><input type="number" bind:value={fTarget} step="any" class={field} /></label>
+					</div>
+				</fieldset>
+
+				<fieldset class="mt-3 rounded-xl border border-line p-3">
+					<legend class={legend}>Challenge rules</legend>
+					<div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+						<label class={label}>Min trading days <span class="normal-case tracking-normal text-dim">(0 = none)</span><input type="number" bind:value={fMinDays} min="0" step="1" class={field} /></label>
+						<label class={label}>Consistency max % <span class="normal-case tracking-normal text-dim">(empty = none)</span><input type="number" bind:value={fConsistency} min="0" max="100" step="any" class={field} /></label>
+						<label class="{label} sm:col-span-2">Challenge deadline <span class="normal-case tracking-normal text-dim">(optional · drives the days warning)</span><input type="date" bind:value={fDeadline} class={field} /></label>
+					</div>
+				</fieldset>
+
+				<div class="mt-4 rounded-xl border border-line bg-raised/60 px-3.5 py-3" aria-live="polite">
+					<p class="eyebrow">Risk resolution</p>
+					<p class="num mt-1.5 flex flex-wrap items-baseline gap-x-3 gap-y-1 text-[11.5px] text-mut">
+						<span>Daily ≈ <span class="font-semibold text-fg">{dailyUsd}</span></span>
+						<span>Max ≈ <span class="font-semibold text-fg">{maxUsd}</span></span>
+						<span>Target <span class="font-semibold text-fg">{targetUsd}</span></span>
+					</p>
+					<p class="mt-1.5 text-[11px] leading-relaxed text-dim">
+						Limits are % of start balance and resolve in {baseCode}. The day resets at the configured
+						trading-day boundary.
+					</p>
 				</div>
-				<p class="num mt-3 text-[11px] text-dim">Limits are % of start balance and resolve in {baseCode} live (1k/5k/10k/100k all work). Day resets at the configured trading-day boundary.</p>
+
 				{#if formError}<p class="mt-3 text-[13px] font-medium text-loss" role="alert">{formError}</p>{/if}
-				<div class="mt-5 flex justify-end gap-2 border-t border-line pt-4">
+
+				<div
+					class="sticky bottom-0 -mx-5 mt-5 flex justify-end gap-2 border-t border-line bg-panel px-5 py-3"
+				>
 					<button type="button" onclick={() => (modal = null)} class="btn btn-ghost h-10 px-4 text-sm">Cancel</button>
 					<button type="submit" disabled={saving} class="btn btn-primary h-10 px-5 text-sm">
 						{saving ? 'Saving…' : modal.editing ? 'Save changes' : 'Add account'}
