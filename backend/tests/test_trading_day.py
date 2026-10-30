@@ -8,7 +8,7 @@ day — the rule every day bucket in the app has to agree on.
 
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 from app.models import Trade
 from app.services.scheduler import _trades_today, eod_summary_text
@@ -25,6 +25,36 @@ def test_the_default_boundary_is_local_midnight():
     setting = TradingDay()
     assert setting.boundary_hour == 0
     assert setting.timezone == "Asia/Kolkata"
+
+
+def test_an_evening_boundary_names_the_session_for_the_day_it_ends_on():
+    """GFT's 5 PM New York reset is the broker's next calendar day.
+
+    A session that opens at 17:00 New York is 00:00 on a +3 broker, so it
+    must carry the *next* date or every daily total is compared against the
+    wrong MT5 statement.
+    """
+    setting = TradingDay(boundary_hour=17, timezone="America/New_York")
+
+    # 14:30 in New York on the 6th is still the 6th's session.
+    assert setting.day_of(datetime(2026, 10, 6, 18, 30)) == date(2026, 10, 6)
+    # 17:30 in New York on the 6th is already the broker's 7th.
+    assert setting.day_of(datetime(2026, 10, 6, 21, 30)) == date(2026, 10, 7)
+
+    # bounds() is the inverse: the 7th's session opens at 5 PM on the 6th.
+    start, end = setting.bounds(date(2026, 10, 7))
+    assert start == datetime(2026, 10, 6, 21, 0)  # 17:00 EDT
+    assert end == datetime(2026, 10, 7, 21, 0)
+
+
+def test_a_day_that_contains_a_dst_change_is_not_24_hours():
+    setting = TradingDay(boundary_hour=17, timezone="America/New_York")
+    # US summer time ends at 02:00 on 1 Nov 2026, inside the session
+    # labelled the 1st (it opened at 17:00 on 31 Oct).
+    start, end = setting.bounds(date(2026, 11, 1))
+    assert start == datetime(2026, 10, 31, 21, 0)  # 17:00 EDT
+    assert end == datetime(2026, 11, 1, 22, 0)  # 17:00 EST
+    assert end - start == timedelta(hours=25)
 
 
 def test_a_close_at_half_past_eleven_utc_belongs_to_the_next_local_day():

@@ -17,13 +17,18 @@ one thing in the table and another in the export or the summary:
 The day bounds come in two flavours because the journal asks a different
 question from the table: ``date_from``/``date_to`` bound the *open*
 timestamp, ``closed_from``/``closed_to`` the *close* timestamp.
+``bucket_from``/``bucket_to`` are different again: they are the naive-UTC bounds
+of one *trading day* (resolved by the caller through the configured
+boundary), and a trade belongs to that day by its close — or by its open
+when it has not closed yet. That is the bucket the calendar and the day
+drawer both mean by "this day".
 """
 
 from dataclasses import dataclass, replace
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import func, or_
+from sqlalchemy import and_, func, or_
 from sqlmodel import Session, select
 
 from app.models import Tag, Trade, TradeTagLink
@@ -50,6 +55,9 @@ class TradeFilters:
     # Close-day bounds.
     closed_from: Optional[datetime] = None
     closed_to: Optional[datetime] = None
+    # One trading-day bucket, already resolved to naive-UTC bounds [from, to).
+    bucket_from: Optional[datetime] = None
+    bucket_to: Optional[datetime] = None
     account_id: Optional[int] = None
     unassigned: bool = False
 
@@ -103,6 +111,22 @@ def apply_trade_filters(statement, filters: TradeFilters):  # noqa: ANN001 — S
         statement = statement.where(Trade.timestamp_close >= filters.closed_from)
     if filters.closed_to:
         statement = statement.where(Trade.timestamp_close <= filters.closed_to)
+    if filters.bucket_from is not None and filters.bucket_to is not None:
+        # Close day, with the open day as the fallback for a trade that is
+        # still running. This is the calendar's definition, not UTC midnight.
+        statement = statement.where(
+            or_(
+                and_(
+                    Trade.timestamp_close >= filters.bucket_from,
+                    Trade.timestamp_close < filters.bucket_to,
+                ),
+                and_(
+                    Trade.timestamp_close.is_(None),
+                    Trade.timestamp_open >= filters.bucket_from,
+                    Trade.timestamp_open < filters.bucket_to,
+                ),
+            )
+        )
     if filters.account_id is not None:
         statement = statement.where(Trade.account_id == filters.account_id)
     elif filters.unassigned:

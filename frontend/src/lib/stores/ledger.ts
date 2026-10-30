@@ -62,8 +62,10 @@ export function buildLedgerQuery(
 	}
 	if (account === 'unassigned') qs.set('unassigned', 'true');
 	else if (account) qs.set('account_id', account);
-	if (filters.dateFrom) qs.set('date_from', `${filters.dateFrom}T00:00:00`);
-	if (filters.dateTo) qs.set('date_to', `${filters.dateTo}T23:59:59`);
+	// Trading days, not UTC midnight: the server resolves each date through
+	// the configured boundary, and a trade belongs to the day it closes.
+	if (filters.dateFrom) qs.set('day_from', filters.dateFrom);
+	if (filters.dateTo) qs.set('day_to', filters.dateTo);
 	if (filters.sort !== 'newest') qs.set('sort', filters.sort);
 	for (const [key, value] of Object.entries(extra)) {
 		if (value === undefined || value === '') continue;

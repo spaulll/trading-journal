@@ -48,13 +48,33 @@ class TradingDay:
     def day_of(self, moment: datetime) -> date_type:
         """The trading day a naive-UTC moment belongs to.
 
-        A moment before the boundary hour belongs to the trading day that
-        started the day before.
+        Two steps, and both matter:
+
+        1. a moment before the boundary belongs to the session that started
+           the day before;
+        2. a session that starts in the afternoon or evening is **named for
+           the day it ends on**, which is how a broker labels it. GFT resets
+           at 17:00 New York; the session that opens then is the broker's
+           next calendar day, so it must carry the next date — otherwise
+           "today" reads as yesterday all afternoon and every daily P&L is
+           compared against the wrong MT5 statement.
+
+        A midnight boundary is unchanged: the session starts and ends on the
+        same date, so both steps agree with the old behaviour.
         """
         local = moment.replace(tzinfo=timezone.utc).astimezone(self.zone)
         day = local.date()
         if local.hour < self.boundary_hour:
             day = day - timedelta(days=1)
+        if self.boundary_hour >= 12:
+            # The session started after midday; it takes the next date.
+            day = day + timedelta(days=1)
+        return day
+
+    def _session_start(self, day: date_type) -> date_type:
+        """The calendar date whose boundary opens the session named ``day``."""
+        if self.boundary_hour >= 12:
+            return day - timedelta(days=1)
         return day
 
     def bounds(self, day: date_type) -> tuple[datetime, datetime]:
@@ -63,7 +83,10 @@ class TradingDay:
         The end is the *next* local boundary, not start + 24h: on a DST
         transition the trading day is 23 or 25 hours long.
         """
-        return self._start_utc(day), self._start_utc(day + timedelta(days=1))
+        start_day = self._session_start(day)
+        return self._start_utc(start_day), self._start_utc(
+            start_day + timedelta(days=1)
+        )
 
     def _start_utc(self, day: date_type) -> datetime:
         """The naive-UTC instant the trading day starts."""

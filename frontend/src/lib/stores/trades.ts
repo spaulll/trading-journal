@@ -166,7 +166,7 @@ export async function loadOpenPositions(): Promise<void> {
 export async function loadDayTrades(day: string): Promise<void> {
 	try {
 		const { items } = await api.listTradesPaged(
-			`?status=CLOSED&closed_from=${day}T00:00:00&closed_to=${day}T23:59:59&page_size=200`
+			`?status=CLOSED&day=${day}&page_size=200`
 		);
 		dayTrades.set(items);
 		cacheTrades(items);

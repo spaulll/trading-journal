@@ -9,7 +9,7 @@ import csv
 import io
 import json
 import os
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import Optional, Union
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
@@ -95,7 +95,22 @@ def to_trade_read(trade: Trade) -> TradeRead:
 
 
 def _guardrail_status(session: Session) -> dict:
-    """Trading-day PnL + open count vs caps (configured day boundary)."""
+    """Trading-day PnL + open count vs caps (configured day boundary).
+
+    The loss cap and the trade-count cap ask different questions, so they
+    read different timestamps:
+
+    - the loss cap sums every trade **closed** inside the trading day, even
+      one that was opened yesterday. A loss carried into today is still
+      today's loss — the old query only looked at trades opened today and
+      let a carried-over loser disappear;
+    - the trade-count cap counts the trades **opened** today, because
+      "three trades a day" is about how often you press the button.
+
+    An unpriced close has no USD number. Summing it as zero would quietly
+    hide a loss, so it is excluded from the total and counted separately;
+    ``data_incomplete`` tells the page the day is not fully priced.
+    """
     try:
         max_loss = float(os.getenv("MAX_DAILY_LOSS", "-250.0"))
     except ValueError:
@@ -114,24 +129,33 @@ def _guardrail_status(session: Session) -> dict:
     day_start, day_end = setting.bounds(today)
     # Trading-day basis (timestamp_open/close), not created_at — so backfilled
     # history imported today doesn't trip the guardrail.
-    todays = session.exec(
+    opened_today = session.exec(
         select(Trade).where(
             Trade.timestamp_open >= day_start,
             Trade.timestamp_open < day_end,
         )
     ).all()
+    closed_today = session.exec(
+        select(Trade).where(
+            Trade.status == "CLOSED",
+            Trade.timestamp_close >= day_start,
+            Trade.timestamp_close < day_end,
+        )
+    ).all()
     daily_pnl = 0.0
-    for t in todays:
-        if t.status != "CLOSED":
+    unpriced = 0
+    for trade in closed_today:
+        value = usd_net(trade)
+        if value is None:
+            unpriced += 1
             continue
-        closed_at = _as_naive_utc(t.timestamp_close)
-        if closed_at is None or closed_at < day_start or closed_at >= day_end:
-            continue
-        daily_pnl += usd_net(t) or 0.0
+        daily_pnl += value
     return {
-        "breached": daily_pnl <= max_loss or len(todays) >= max_trades,
+        "breached": daily_pnl <= max_loss or len(opened_today) >= max_trades,
         "daily_pnl": round(daily_pnl, 2),
-        "trades": len(todays),
+        "trades": len(opened_today),
+        "unpriced": unpriced,
+        "data_incomplete": unpriced > 0,
         "max_loss": max_loss,
         "max_trades": max_trades,
         "day": today.isoformat(),
@@ -168,11 +192,17 @@ def _alert_guardrail(text: str) -> None:
 
 def _guardrail_breach_message(guard: dict, ticket: str, action: str) -> str:
     """One wording for every guardrail alert, whatever closed the trade."""
-    return (
+    message = (
         f"🚨 GUARDRAIL BREACH on {action} {ticket}: "
         f"day PnL {guard['daily_pnl']:+.2f} (cap {guard['max_loss']:+.2f}), "
         f"{guard['trades']} trades (cap {guard['max_trades']}). Walk away from the screen!"
     )
+    if guard.get("unpriced"):
+        message += (
+            f" {guard['unpriced']} closed trade"
+            f"{'' if guard['unpriced'] == 1 else 's'} had no USD value and is not in that total."
+        )
+    return message
 
 
 def _generate_ticket(session: Session, symbol: str) -> str:
@@ -252,11 +282,7 @@ def open_trade(payload: TradeOpenRequest, session: Session = Depends(get_session
     session.commit()
     session.refresh(trade)
     if guard["breached"]:
-        _alert_guardrail(
-            f"🚨 GUARDRAIL BREACH on open {trade.ticket}: "
-            f"day PnL {guard['daily_pnl']:+.2f} (cap {guard['max_loss']:+.2f}), "
-            f"{guard['trades']} trades (cap {guard['max_trades']}). Walk away from the screen!"
-        )
+        _alert_guardrail(_guardrail_breach_message(guard, trade.ticket, "open"))
     return to_trade_read(trade)
 
 
@@ -374,10 +400,16 @@ def insert_backfill_record(session: Session, rec: BackfillRecord) -> tuple[str, 
         raise HTTPException(status_code=422, detail=f"Bad direction: {rec.direction!r}")
     if rec.size <= 0:
         raise HTTPException(status_code=422, detail="size must be positive")
-    if rec.exit_time < rec.entry_time:
+    # The stored timestamp is naive UTC, whatever the caller sent. An aware
+    # input ("10:00+05:30", "10:00Z") keeps its instant instead of being
+    # written as its wall clock and landing in the wrong trading day.
+    entry_time = as_naive_utc(rec.entry_time)
+    exit_time = as_naive_utc(rec.exit_time)
+    assert entry_time is not None and exit_time is not None
+    if exit_time < entry_time:
         raise HTTPException(status_code=422, detail="exit_time precedes entry_time")
 
-    ticket = (rec.ticket or "").strip() or _backfill_ticket(session, rec.symbol, rec.entry_time)
+    ticket = (rec.ticket or "").strip() or _backfill_ticket(session, rec.symbol, entry_time)
     if session.exec(select(Trade).where(Trade.ticket == ticket)).first() is not None:
         return ticket, False
     account_id = _resolve_account_id(session, rec.account_id)
@@ -405,12 +437,12 @@ def insert_backfill_record(session: Session, rec: BackfillRecord) -> tuple[str, 
     trade = Trade(
         ticket=ticket,
         account_id=account_id,
-        timestamp_open=rec.entry_time,
-        timestamp_close=rec.exit_time,
-        entry_time=rec.entry_time,
-        exit_time=rec.exit_time,
-        duration_minutes=duration_minutes(rec.entry_time, rec.exit_time),
-        session=normalize_session(rec.session, rec.entry_time),
+        timestamp_open=entry_time,
+        timestamp_close=exit_time,
+        entry_time=entry_time,
+        exit_time=exit_time,
+        duration_minutes=duration_minutes(entry_time, exit_time),
+        session=normalize_session(rec.session, entry_time),
         direction=direction,
         symbol=rec.symbol.upper(),
         size=rec.size,
@@ -649,8 +681,29 @@ def _filters(
     closed_to: Optional[datetime],
     account_id: Optional[int],
     unassigned: bool,
+    session: Session,
+    day: Optional[date] = None,
+    day_from: Optional[date] = None,
+    day_to: Optional[date] = None,
 ) -> TradeFilters:
-    """The filter state every ledger entry point shares."""
+    """The filter state every ledger entry point shares.
+
+    ``day``/``day_from``/``day_to`` are *trading* days, resolved here through
+    the configured boundary — the browser never guesses where midnight is.
+    A range is inclusive at both ends.
+    """
+    setting = get_trading_day(session)
+    bucket_from = bucket_to = None
+    if day is not None:
+        bucket_from, bucket_to = setting.bounds(day)
+    elif day_from is not None or day_to is not None:
+        first = day_from or day_to
+        last = day_to or day_from
+        assert first is not None and last is not None
+        if first > last:
+            first, last = last, first
+        bucket_from = setting.bounds(first)[0]
+        bucket_to = setting.bounds(last)[1]
     return TradeFilters(
         status=status,
         symbol=symbol,
@@ -661,6 +714,8 @@ def _filters(
         date_to=date_to,
         closed_from=closed_from,
         closed_to=closed_to,
+        bucket_from=bucket_from,
+        bucket_to=bucket_to,
         account_id=account_id,
         unassigned=unassigned,
     )
@@ -679,6 +734,12 @@ def list_trades(
     closed_to: Optional[datetime] = Query(default=None, description="Close-day upper bound"),
     account_id: Optional[int] = Query(default=None, description="Filter to one account"),
     unassigned: bool = Query(default=False, description="Only trades with no account"),
+    day: Optional[date] = Query(
+        default=None,
+        description="Trading day (YYYY-MM-DD) — by close, or by open while still running",
+    ),
+    day_from: Optional[date] = Query(default=None, description="First trading day of a range"),
+    day_to: Optional[date] = Query(default=None, description="Last trading day of a range"),
     sort: Optional[str] = Query(default=None, description="newest | oldest | net-desc | net-asc | r-desc"),
     page: int = Query(default=1, ge=1),
     # Large default so first-page clients (Trades page, bots) see the full
@@ -706,6 +767,10 @@ def list_trades(
         closed_to,
         account_id,
         unassigned,
+        session=session,
+        day=day,
+        day_from=day_from,
+        day_to=day_to,
     )
     base = filters.without_status()
     counts = {
@@ -740,6 +805,12 @@ def list_trade_ids(
     closed_to: Optional[datetime] = Query(default=None, description="Close-day upper bound"),
     account_id: Optional[int] = Query(default=None, description="Filter to one account"),
     unassigned: bool = Query(default=False, description="Only trades with no account"),
+    day: Optional[date] = Query(
+        default=None,
+        description="Trading day (YYYY-MM-DD) — by close, or by open while still running",
+    ),
+    day_from: Optional[date] = Query(default=None, description="First trading day of a range"),
+    day_to: Optional[date] = Query(default=None, description="Last trading day of a range"),
     sort: Optional[str] = Query(default=None, description="newest | oldest | net-desc | net-asc | r-desc"),
     session: Session = Depends(get_session),
 ):
@@ -761,6 +832,10 @@ def list_trade_ids(
         closed_to,
         account_id,
         unassigned,
+        session=session,
+        day=day,
+        day_from=day_from,
+        day_to=day_to,
     )
     statement = sort_trades(apply_trade_filters(select(Trade.id), filters), sort)
     ids = [int(row) for row in session.exec(statement).all()]
@@ -780,6 +855,12 @@ def export_trades(
     closed_to: Optional[datetime] = Query(default=None, description="Close-day upper bound"),
     account_id: Optional[int] = Query(default=None, description="Filter to one account"),
     unassigned: bool = Query(default=False, description="Only trades with no account"),
+    day: Optional[date] = Query(
+        default=None,
+        description="Trading day (YYYY-MM-DD) — by close, or by open while still running",
+    ),
+    day_from: Optional[date] = Query(default=None, description="First trading day of a range"),
+    day_to: Optional[date] = Query(default=None, description="Last trading day of a range"),
     sort: Optional[str] = Query(default=None, description="newest | oldest | net-desc | net-asc | r-desc"),
     session: Session = Depends(get_session),
 ):
@@ -804,6 +885,10 @@ def export_trades(
         closed_to,
         account_id,
         unassigned,
+        session=session,
+        day=day,
+        day_from=day_from,
+        day_to=day_to,
     )
     statement = sort_trades(apply_trade_filters(select(Trade), filters), sort)
     trades = session.exec(statement.limit(EXPORT_LIMIT)).all()
@@ -880,6 +965,12 @@ def patch_trade(trade_id: int, patch: TradePatch, session: Session = Depends(get
         _resolve_account_id(session, data["account_id"])
     if "status" in data and data["status"]:
         data["status"] = data["status"].upper()
+    # The naive-UTC policy applies to edits too: an aware datetime must be
+    # converted to its instant, not stored as its wall clock (which would
+    # move the trade into another trading day).
+    for key in ("entry_time", "exit_time", "timestamp_open", "timestamp_close"):
+        if key in data and data[key] is not None:
+            data[key] = as_naive_utc(data[key])
     for key, value in data.items():
         setattr(trade, key, value)
     # A symbol change also changes the currency the P&L is quoted in. Only
