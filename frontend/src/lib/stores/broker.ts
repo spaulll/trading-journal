@@ -19,3 +19,10 @@ export async function loadBrokerOffset(): Promise<void> {
 		// Offline backend — inputs stay in UTC mode.
 	}
 }
+
+/** Re-read the clock after the misc page changes it. */
+export async function refreshBrokerOffset(): Promise<void> {
+	loaded = false;
+	brokerOffset.set(null);
+	await loadBrokerOffset();
+}

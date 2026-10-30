@@ -119,6 +119,32 @@ export interface TradingDayDto {
 	default_timezone: string;
 }
 
+/** One manual correction to the broker clock. */
+export interface BrokerClockOverrideDto {
+	effective_from: string;
+	offset_minutes: number;
+}
+
+/** A firm's broker clock, resolved for "now". */
+export interface BrokerClockDto {
+	firm: string;
+	configured: boolean;
+	base_offset_minutes: number | null;
+	dst: string | null;
+	dst_label: string | null;
+	overrides: BrokerClockOverrideDto[];
+	offset_minutes: number | null;
+	label: string | null;
+	manual: boolean;
+	next_change: { at: string; offset_minutes: number; label: string } | null;
+}
+
+export interface BrokerClockListDto {
+	now: string;
+	dst_rules: { value: string; label: string }[];
+	clocks: BrokerClockDto[];
+}
+
 /** How the day lined up with the pre-market plan. */
 export interface AdherenceDto {
 	day: string;
@@ -901,6 +927,28 @@ export const api = {
 		}),
 	getBrokerOffset: () =>
 		req<{ offset_minutes: number | null; label: string | null }>('/api/settings/broker-offset'),
+	/** Every firm's clock, resolved for right now. */
+	getBrokerClock: () => req<BrokerClockListDto>('/api/settings/broker-clock'),
+	putBrokerClock: (patch: { firm?: string | null; base_offset_minutes: number; dst: string }) =>
+		req<BrokerClockDto>(
+			'/api/settings/broker-clock',
+			json({ method: 'PUT', body: JSON.stringify(patch) })
+		),
+	overrideBrokerClock: (patch: {
+		firm?: string | null;
+		offset_minutes: number;
+		effective_from?: string;
+	}) =>
+		req<BrokerClockDto>(
+			'/api/settings/broker-clock/override',
+			json({ method: 'POST', body: JSON.stringify(patch) })
+		),
+	clearBrokerClockOverride: (firm?: string | null) => {
+		const qs = firm ? `?firm=${encodeURIComponent(firm)}` : '';
+		return req<BrokerClockDto>(`/api/settings/broker-clock/override${qs}`, {
+			method: 'DELETE'
+		});
+	},
 	/** Where the trading day rolls over — and which day the app calls today. */
 	getTradingDay: () => req<TradingDayDto>('/api/settings/trading-day'),
 	putTradingDay: (patch: { boundary_hour?: number; timezone?: string }) =>

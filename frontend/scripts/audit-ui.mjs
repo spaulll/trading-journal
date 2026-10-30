@@ -5,7 +5,7 @@
 import { chromium } from 'playwright';
 import process from 'node:process';
 
-const ROUTES = ['/', '/analytics', '/accounts', '/prop', '/journal', '/tags'];
+const ROUTES = ['/', '/analytics', '/accounts', '/prop', '/journal', '/tags', '/misc'];
 const VIEWPORTS = [
 	{ name: 'mobile', width: 375, height: 667 },
 	{ name: 'tablet', width: 768, height: 1024 },
