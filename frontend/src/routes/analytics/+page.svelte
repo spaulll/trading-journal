@@ -32,6 +32,7 @@
 		api,
 		errMsg,
 		type ActivityStreaks,
+		type AnalyticsOverview,
 		type CalendarDay,
 		type DirectionStats,
 		type DrawdownBreakdown as DrawdownBreakdownDto,
@@ -127,86 +128,76 @@
 		}
 	}
 
+	/** Flatten the one aggregate payload into the snapshot shape the page already renders. */
+	function overviewToSnapshot(o: AnalyticsOverview): AnalyticsSnapshot {
+		return {
+			summary: o.summary,
+			points: o.equity_curve.points,
+			tags: o.tag_performance.tags,
+			symbolPerf: o.symbol_performance,
+			matrix: o.setup_matrix,
+			confidence: o.setup_confidence,
+			drawdownAccount: o.drawdown_account,
+			drawdownSetup: o.drawdown_setup,
+			ruin: o.risk_of_ruin,
+			days: o.calendar.days,
+			year: o.calendar.year,
+			kpi: o.kpi_dashboard,
+			monthData: o.monthly_calendar,
+			monthCursor: { y: o.monthly_calendar.year, m: o.monthly_calendar.month },
+			activity: o.activity_and_streaks,
+			longShort: o.long_short_stats,
+			radarData: o.radar_profiles,
+			rBuckets: o.r_distribution.buckets
+		};
+	}
+
+	/** The last overview per account + period, so a revisit paints before the refetch lands. */
+	const overviewCache = new Map<string, { at: number; data: AnalyticsOverview }>();
+	const overviewKey = (acct: number | null, y: number, m: number): string =>
+		`${acct ?? 'all'}|${y}|${m}`;
+
 	async function load(): Promise<void> {
-		loading = true;
-		error = null;
 		const acct = $selectedAccountId;
+		const key = overviewKey(acct, year, monthCursor.m);
+		const cached = overviewCache.get(key);
+		if (cached) {
+			// Stale-while-revalidate: show the last result now, confirm it below.
+			applySnapshot(overviewToSnapshot(cached.data));
+			loading = false;
+		} else {
+			loading = true;
+		}
+		error = null;
 		try {
-			const [s, e, t, sp, sm, cf, dda, dds, rr, c, k, mc, a, ls, rd, rb] = await Promise.all([
-				api.summary(acct),
-				api.equityCurve(acct),
-				api.tagPerformance(acct),
-				api.symbolPerformance(acct),
-				api.setupMatrix(acct),
-				api.setupConfidence(acct),
-				api.drawdown('account', acct),
-				api.drawdown('setup', acct),
-				api.riskOfRuin(acct),
-				api.calendar(year, acct),
-				api.kpi(acct),
-				api.monthlyCalendar(monthCursor.y, monthCursor.m, acct),
-				api.activity(acct),
-				api.longShort(acct),
-				api.radar(acct),
-				api.rDistribution(acct)
-			]);
+			const overview = await api.analyticsOverview(acct, year, monthCursor.m);
+			overviewCache.set(key, { at: Date.now(), data: overview });
+			const snap = overviewToSnapshot(overview);
+			applySnapshot(snap);
+			snapshotRestored = false;
+			markOnline();
+			if (!acct) {
+				snapshotAt.set(saveSnapshot<AnalyticsSnapshot>(SNAPSHOT_KEYS.analytics, snap) ?? null);
+			}
 			try {
 				prop = acct ? await api.propStatus(acct) : null;
 			} catch {
 				prop = null;
 			}
-			summary = s;
-			points = e.points;
-			tags = t.tags;
-			symbolPerf = sp;
-			matrix = sm;
-			confidence = cf;
-			drawdownAccount = dda;
-			drawdownSetup = dds;
-			ruin = rr;
-			days = c.days;
-			year = c.year;
-			kpi = k;
-			monthData = mc;
-			monthCursor = { y: mc.year, m: mc.month };
-			activity = a;
-			longShort = ls;
-			radarData = rd;
-			rBuckets = rb.buckets;
-			snapshotRestored = false;
-			markOnline();
-			if (!acct) {
-				snapshotAt.set(
-					saveSnapshot<AnalyticsSnapshot>(SNAPSHOT_KEYS.analytics, {
-						summary: s,
-						points: e.points,
-						tags: t.tags,
-						symbolPerf: sp,
-						matrix: sm,
-						confidence: cf,
-						drawdownAccount: dda,
-						drawdownSetup: dds,
-						ruin: rr,
-						days: c.days,
-						year: c.year,
-						kpi: k,
-						monthData: mc,
-						monthCursor: { y: mc.year, m: mc.month },
-						activity: a,
-						longShort: ls,
-						radarData: rd,
-						rBuckets: rb.buckets
-					}) ?? null
-				);
-			}
 		} catch (e) {
+			// We already have fresh-enough data on screen — keep it, don't flash an error.
+			if (cached) {
+				snapshotRestored = true;
+				markOffline(new Date(cached.at).toISOString());
+				return;
+			}
 			// Server unreachable: restore the last labelled snapshot (overall only).
 			if (!acct) {
-				const snap = readSnapshot<AnalyticsSnapshot>(SNAPSHOT_KEYS.analytics);
-				if (snap && snap.data.summary) {
-					applySnapshot(snap.data);
+				const snapshot = readSnapshot<AnalyticsSnapshot>(SNAPSHOT_KEYS.analytics);
+				if (snapshot && snapshot.data.summary) {
+					applySnapshot(snapshot.data);
 					snapshotRestored = true;
-					markOffline(snap.savedAt);
+					markOffline(snapshot.savedAt);
 					error = null;
 					return;
 				}

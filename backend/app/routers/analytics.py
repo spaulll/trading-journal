@@ -6,13 +6,17 @@ calendar) power the current dashboard. v2 TradeZella endpoints
 radar-profiles) power the Phase 4 widgets.
 """
 
+import hashlib
+import json
 from collections import defaultdict
 from datetime import date as date_type
 from datetime import datetime, timedelta, timezone
 from math import floor
 from typing import Literal, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
+from fastapi.encoders import jsonable_encoder
+from fastapi.responses import JSONResponse
 from sqlmodel import Session, select
 
 from app.database import get_session
@@ -40,6 +44,17 @@ router = APIRouter(prefix="/api/analytics", tags=["analytics"])
 
 
 def _closed_trades(session: Session, account_id: Optional[int] = None) -> list[Trade]:
+    """Every closed trade in close order, memoised for the life of the session.
+
+    A page asks for a dozen widgets (the ``/overview`` aggregate); without
+    this the CLOSED set is scanned and re-sorted once per widget. The cache
+    lives on ``session.info`` and ``get_session`` hands each request its own
+    Session, so it never outlives the request that filled it. Callers only
+    read the list, so sharing the one object is safe.
+    """
+    cache: dict[Optional[int], list[Trade]] = session.info.setdefault("_closed_trades", {})
+    if account_id in cache:
+        return cache[account_id]
     statement = (
         select(Trade)
         .where(Trade.status == "CLOSED")
@@ -51,6 +66,7 @@ def _closed_trades(session: Session, account_id: Optional[int] = None) -> list[T
     # Rows without a close timestamp sort first under ASC with NULLs;
     # keep chronological order by pushing NULL timestamps to the end.
     trades.sort(key=lambda t: (t.timestamp_close is None, t.timestamp_close, t.id or 0))
+    cache[account_id] = trades
     return trades
 
 
@@ -338,18 +354,22 @@ def r_distribution(account_id: Optional[int] = Query(default=None), session: Ses
 
 @router.get("/tag-performance")
 def tag_performance(account_id: Optional[int] = Query(default=None), session: Session = Depends(get_session)):
+    """Per-tag results.
+
+    Two queries plus the one memoised CLOSED scan cover the whole page — the
+    tag list, every link row, and the trades — instead of one trade query per
+    tag. A trade linked to a tag twice still counts once, as ``id IN (...)``
+    did before.
+    """
     tags = session.exec(select(Tag)).all()
+    linked: dict[int, set[int]] = defaultdict(set)
+    for link in session.exec(select(TradeTagLink)).all():
+        if link.trade_id is not None:
+            linked[link.tag_id].add(link.trade_id)
+    closed = {t.id: t for t in _closed_trades(session, account_id)}
     rows = []
     for tag in tags:
-        link_stmt = select(Trade).where(
-                Trade.id.in_(
-                    select(TradeTagLink.trade_id).where(TradeTagLink.tag_id == tag.id)
-                ),
-                Trade.status == "CLOSED",
-            )
-        if account_id is not None:
-            link_stmt = link_stmt.where(Trade.account_id == account_id)
-        link_rows = session.exec(link_stmt).all()
+        link_rows = [closed[i] for i in linked.get(tag.id, ()) if i in closed]
         nets = [usd_net(t) for t in link_rows]
         counts = analytics_rules.split_outcomes(nets)
         known = [n for n in nets if n is not None]
@@ -1127,3 +1147,75 @@ def radar_profiles(account_id: Optional[int] = Query(default=None), session: Ses
             }
         )
     return {"weekday": weekday, "sessions": sessions}
+
+
+@router.get("/overview")
+def overview(
+    request: Request,
+    account_id: Optional[int] = Query(default=None),
+    year: Optional[int] = Query(default=None, description="Calendar year for the day heatmap"),
+    month: Optional[int] = Query(default=None, ge=1, le=12, description="Month for the month grid"),
+    session: Session = Depends(get_session),
+):
+    """Every analytics widget in one request.
+
+    The dashboard used to fan out into sixteen calls, each re-scanning the
+    CLOSED set and paying its own round trip. This composes the same widget
+    functions over one session — so the trades load once — and returns them
+    under a single payload. The individual endpoints stay for direct callers.
+
+    Every parameter is passed explicitly: calling an endpoint function
+    directly would otherwise leave FastAPI's ``Query`` default objects in
+    place of the real ``None``/``False`` values. The response carries an
+    ``ETag`` so a revalidation that finds nothing changed is a cheap 304.
+    """
+    payload = {
+        "summary": summary(
+            account_id=account_id,
+            status=None,
+            symbol=None,
+            query=None,
+            tag=None,
+            tag_exact=False,
+            date_from=None,
+            date_to=None,
+            closed_from=None,
+            closed_to=None,
+            unassigned=False,
+            session=session,
+        ),
+        "equity_curve": equity_curve(account_id=account_id, session=session),
+        "tag_performance": tag_performance(account_id=account_id, session=session),
+        "symbol_performance": symbol_performance(account_id=account_id, session=session),
+        "setup_matrix": setup_matrix(account_id=account_id, session=session),
+        "setup_confidence": setup_confidence(
+            tag=None, account_id=account_id, min_sample=None, session=session
+        ),
+        "drawdown_account": drawdown(group_by="account", account_id=account_id, session=session),
+        "drawdown_setup": drawdown(group_by="setup", account_id=account_id, session=session),
+        "risk_of_ruin": risk_of_ruin(
+            tag=None,
+            account_id=account_id,
+            account_size=None,
+            risk_per_trade=None,
+            min_sample=None,
+            session=session,
+        ),
+        "calendar": calendar(year=year, account_id=account_id, session=session),
+        "kpi_dashboard": kpi_dashboard(account_id=account_id, session=session),
+        "monthly_calendar": monthly_calendar(
+            year=year, month=month, account_id=account_id, session=session
+        ),
+        "activity_and_streaks": activity_and_streaks(account_id=account_id, session=session),
+        "long_short_stats": long_short_stats(account_id=account_id, session=session),
+        "radar_profiles": radar_profiles(account_id=account_id, session=session),
+        "r_distribution": r_distribution(account_id=account_id, session=session),
+    }
+
+    encoded = jsonable_encoder(payload)
+    body = json.dumps(encoded, sort_keys=True, separators=(",", ":")).encode()
+    etag = '"' + hashlib.sha256(body).hexdigest()[:20] + '"'
+    headers = {"ETag": etag, "Cache-Control": "private, no-cache"}
+    if request.headers.get("if-none-match") == etag:
+        return Response(status_code=304, headers=headers)
+    return JSONResponse(content=encoded, headers=headers)

@@ -531,3 +531,94 @@ def test_risk_of_ruin_accepts_explicit_capital_and_risk(client):
     assert row["risk_per_trade"] == 250.0
     assert row["risk_source"] == "explicit"
     assert row["risk_units"] == 20.0
+
+
+# --- the /overview aggregate -------------------------------------------------
+
+
+def test_overview_matches_every_individual_widget(client):
+    """The aggregate must be the same numbers the sixteen calls returned.
+
+    It exists only to collapse the round trips; if it ever drifted from the
+    endpoints it replaces, the dashboard would quietly disagree with itself.
+    """
+    with Session(engine) as session:
+        account = _account(session, "ftmo", 10_000)
+        fvg = _tag(session, "fvg")
+        _store(
+            [
+                _closed(
+                    "OV-1", 120.0, minutes=1, account_id=account.id, tags=[fvg],
+                    realized_risk=100.0, r=1.2,
+                ),
+                _closed(
+                    "OV-2", -50.0, minutes=2, account_id=account.id, tags=[fvg],
+                    realized_risk=100.0, r=-0.5,
+                ),
+                _closed("OV-3", 80.0, minutes=3, account_id=account.id, r=0.8),
+            ],
+            session,
+        )
+
+    overview = client.get(
+        "/api/analytics/overview", params={"year": 2026, "month": 9}
+    ).json()
+    singles = {
+        "summary": client.get("/api/analytics/summary").json(),
+        "equity_curve": client.get("/api/analytics/equity-curve").json(),
+        "tag_performance": client.get("/api/analytics/tag-performance").json(),
+        "symbol_performance": client.get("/api/analytics/symbol-performance").json(),
+        "setup_matrix": client.get("/api/analytics/setup-matrix").json(),
+        "setup_confidence": client.get("/api/analytics/setup-confidence").json(),
+        "drawdown_account": client.get(
+            "/api/analytics/drawdown", params={"group_by": "account"}
+        ).json(),
+        "drawdown_setup": client.get(
+            "/api/analytics/drawdown", params={"group_by": "setup"}
+        ).json(),
+        "risk_of_ruin": client.get("/api/analytics/risk-of-ruin").json(),
+        "calendar": client.get("/api/analytics/calendar", params={"year": 2026}).json(),
+        "kpi_dashboard": client.get("/api/analytics/kpi-dashboard").json(),
+        "monthly_calendar": client.get(
+            "/api/analytics/monthly-calendar", params={"year": 2026, "month": 9}
+        ).json(),
+        "activity_and_streaks": client.get("/api/analytics/activity-and-streaks").json(),
+        "long_short_stats": client.get("/api/analytics/long-short-stats").json(),
+        "radar_profiles": client.get("/api/analytics/radar-profiles").json(),
+        "r_distribution": client.get("/api/analytics/r-distribution").json(),
+    }
+    for key, single in singles.items():
+        assert overview[key] == single, key
+
+
+def test_overview_honours_the_account_filter(client):
+    with Session(engine) as session:
+        first = _account(session, "ftmo", 10_000)
+        other = _account(session, "funded", 10_000)
+        first_id, other_id = first.id, other.id
+        _store([_closed("OV-A", 100.0, minutes=1, account_id=first_id)], session)
+        _store([_closed("OV-B", -40.0, minutes=2, account_id=other_id)], session)
+
+    body = client.get("/api/analytics/overview", params={"account_id": first_id}).json()
+    assert body["summary"]["total_trades"] == 1
+    assert body["summary"]["net_pnl"] == 100.0
+
+
+def test_overview_revalidates_with_an_etag(client):
+    first = client.get("/api/analytics/overview")
+    etag = first.headers["etag"]
+    assert etag and first.headers["cache-control"] == "private, no-cache"
+
+    again = client.get("/api/analytics/overview", headers={"If-None-Match": etag})
+    assert again.status_code == 304
+
+
+def test_closed_trades_loads_once_per_session():
+    """The aggregate's whole point: one CLOSED scan shared by every widget."""
+    from app.routers.analytics import _closed_trades
+
+    with Session(engine) as session:
+        first = _closed_trades(session)
+        assert _closed_trades(session) is first
+        # A different account filter is a different key, never a stale hit.
+        assert _closed_trades(session, account_id=999_999) is not first

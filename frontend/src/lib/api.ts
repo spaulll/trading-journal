@@ -663,6 +663,26 @@ export interface RadarProfiles {
 	}[];
 }
 
+/** Every analytics widget in one payload — the shape of `/api/analytics/overview`. */
+export interface AnalyticsOverview {
+	summary: SummaryDto;
+	equity_curve: { points: EquityPoint[] };
+	tag_performance: { tags: TagPerf[] };
+	symbol_performance: SymbolPerformance;
+	setup_matrix: SetupMatrix;
+	setup_confidence: SetupConfidence;
+	drawdown_account: DrawdownBreakdown;
+	drawdown_setup: DrawdownBreakdown;
+	risk_of_ruin: RiskOfRuin;
+	calendar: { year: number; days: CalendarDay[] };
+	kpi_dashboard: KpiDashboard;
+	monthly_calendar: MonthlyCalendarDto;
+	activity_and_streaks: ActivityStreaks;
+	long_short_stats: { buy: DirectionStats; sell: DirectionStats; all?: DirectionStats };
+	radar_profiles: RadarProfiles;
+	r_distribution: { buckets: RBucket[] };
+}
+
 export class ApiError extends Error {
 	status: number;
 	constructor(status: number, message: string) {
@@ -855,6 +875,15 @@ export const api = {
 					? `?account_id=${params}`
 					: '';
 		return req<SummaryDto>(`/api/analytics/summary${qs}`);
+	},
+	/** Every analytics widget in one request — replaces the sixteen-call fan-out. */
+	analyticsOverview: (accountId?: number | null, year?: number, month?: number) => {
+		const qs = new URLSearchParams();
+		if (accountId) qs.set('account_id', String(accountId));
+		if (year) qs.set('year', String(year));
+		if (month) qs.set('month', String(month));
+		const s = qs.toString() ? `?${qs}` : '';
+		return req<AnalyticsOverview>(`/api/analytics/overview${s}`);
 	},
 	equityCurve: (accountId?: number | null) =>
 		req<{ points: EquityPoint[] }>(
