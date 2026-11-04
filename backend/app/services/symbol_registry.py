@@ -87,6 +87,10 @@ DEFAULT_SPECS: tuple[dict, ...] = (
      "pip_size": 1.0, "quote_currency": "USD", "category": "index"},
     {"symbol": "DE40", "display": "DAX 40", "contract_size": 1.0,
      "pip_size": 1.0, "quote_currency": "USD", "category": "index"},
+    # --- Energy futures --------------------------------------------------
+    # WTI crude: one lot controls 100 barrels, quoted in $ per barrel.
+    {"symbol": "USOIL", "display": "WTI Crude Oil (USOIL)", "contract_size": 100.0,
+     "pip_size": 0.01, "quote_currency": "USD", "category": "future"},
 )
 
 

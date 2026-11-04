@@ -45,7 +45,9 @@ def test_the_registry_is_seeded_with_the_default_specs():
         specs = list_specs(session)
     assert len(specs) == len(DEFAULT_SPECS)
     symbols = {s.symbol for s in specs}
-    for expected in ("EURUSD", "AUDUSD", "GOLD", "XAGUSD", "BTCUSD", "NAS100", "DE40"):
+    for expected in (
+        "EURUSD", "AUDUSD", "GOLD", "XAGUSD", "BTCUSD", "NAS100", "DE40", "USOIL"
+    ):
         assert expected in symbols
 
 
@@ -56,6 +58,8 @@ def test_a_seeded_symbol_keeps_its_contract_size():
         assert find_spec(session, "XAGUSD").contract_size == 5000.0
         assert find_spec(session, "BTCUSD").contract_size == 1.0
         assert find_spec(session, "NAS100").contract_size == 1.0
+        assert find_spec(session, "USOIL").contract_size == 100.0
+        assert find_spec(session, "USOIL").category == "future"
 
 
 def test_an_unregistered_symbol_has_no_spec():
@@ -138,6 +142,9 @@ def test_seeding_adds_a_symbol_that_is_missing():
         ("US30", 0.5, 42000.0, 41900.0, -50.0),
         ("SPX500", 1.0, 5800.0, 5810.0, 10.0),
         ("DE40", 2.0, 20000.0, 20010.0, 20.0),
+        # Energy futures: 100 barrels per lot, $1 move = $100.
+        ("USOIL", 1.0, 70.00, 71.00, 100.0),
+        ("USOIL", 0.5, 70.00, 69.00, -50.0),
     ],
 )
 def test_every_registered_symbol_prices_from_its_contract_size(
