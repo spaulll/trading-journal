@@ -12,16 +12,6 @@
 	let error = $state<string | null>(null);
 	let open = $state(false);
 
-	// Add row
-	let adding = $state(false);
-	let saving = $state(false);
-	let fSymbol = $state('');
-	let fContract = $state('100000');
-	let fPip = $state('0.01');
-	let fQuote = $state('USD');
-	let fCategory = $state('fx');
-	let formError = $state<string | null>(null);
-
 	const CATEGORIES = ['fx', 'metal', 'crypto', 'index', 'future'];
 	const label = 'flex flex-col gap-1 text-[11px] font-medium tracking-[0.14em] uppercase text-dim';
 	const field = 'field font-mono text-[13px]';
@@ -40,14 +30,37 @@
 
 	void load();
 
-	function beginAdd(): void {
-		adding = true;
+	// Add modal
+	let adding = $state(false);
+	let saving = $state(false);
+	let fSymbol = $state('');
+	let fDisplay = $state('');
+	let fCategory = $state('fx');
+	let fContract = $state('100000');
+	let fPip = $state('0.01');
+	let fQuote = $state('USD');
+	let fEnabled = $state(true);
+	let formError = $state<string | null>(null);
+
+	function openAdd(): void {
+		fSymbol = '';
+		fDisplay = '';
+		fCategory = 'fx';
+		fContract = '100000';
+		fPip = '0.01';
+		fQuote = 'USD';
+		fEnabled = true;
 		formError = null;
+		adding = true;
 	}
 
 	function cancelAdd(): void {
 		adding = false;
 		formError = null;
+	}
+
+	function onAddBackdrop(e: MouseEvent): void {
+		if (e.target === e.currentTarget) cancelAdd();
 	}
 
 	async function create(): Promise<void> {
@@ -71,20 +84,15 @@
 		try {
 			await api.createSymbol({
 				symbol,
-				display: symbol,
+				display: fDisplay.trim() || symbol,
 				category: fCategory,
 				contract_size: contract,
 				pip_size: pip,
 				quote_currency: fQuote.trim().toUpperCase() || 'USD',
-				enabled: true
+				enabled: fEnabled
 			});
 			toasts.push('success', `${symbol} registered — future trades on it will be priced.`);
-			adding = false;
-			fSymbol = '';
-			fContract = '100000';
-			fPip = '0.01';
-			fQuote = 'USD';
-			fCategory = 'fx';
+			cancelAdd();
 			await load();
 		} catch (e) {
 			formError = errMsg(e);
@@ -104,7 +112,7 @@
 	let editSaving = $state(false);
 	let editError = $state<string | null>(null);
 
-	function onBackdrop(e: MouseEvent): void {
+	function onEditBackdrop(e: MouseEvent): void {
 		if (e.target === e.currentTarget) cancelEdit();
 	}
 
@@ -181,56 +189,14 @@
 			Contracts differ per firm — add or adjust any pair here.
 		</p>
 
-		{#if adding}
-			<div class="mt-3 rounded-xl border border-line bg-raised/30 p-3" aria-label="Add symbol form">
-				<div class="grid grid-cols-2 gap-x-2 gap-y-2 sm:grid-cols-4">
-					<label class="flex min-w-0 flex-col gap-1">
-						<span class="font-mono text-[10px] tracking-[0.14em] text-dim uppercase">Symbol</span>
-						<input type="text" bind:value={fSymbol} placeholder="EURTRY" class="field h-8 font-mono text-[12px]" />
-					</label>
-					<label class="flex min-w-0 flex-col gap-1">
-						<span class="font-mono text-[10px] tracking-[0.14em] text-dim uppercase">Contract size</span>
-						<input type="number" bind:value={fContract} class="field h-8 font-mono text-[12px]" />
-					</label>
-					<label class="flex min-w-0 flex-col gap-1">
-						<span class="font-mono text-[10px] tracking-[0.14em] text-dim uppercase">Pip size</span>
-						<input type="number" bind:value={fPip} step="any" class="field h-8 font-mono text-[12px]" />
-					</label>
-					<label class="flex min-w-0 flex-col gap-1">
-						<span class="font-mono text-[10px] tracking-[0.14em] text-dim uppercase">Quote currency</span>
-						<input type="text" bind:value={fQuote} placeholder="USD" class="field h-8 font-mono text-[12px]" />
-					</label>
-					<label class="flex min-w-0 flex-col gap-1">
-						<span class="font-mono text-[10px] tracking-[0.14em] text-dim uppercase">Category</span>
-						<select bind:value={fCategory} class="field h-8 text-[12px]">
-							{#each CATEGORIES as c (c)}
-								<option value={c}>{c}</option>
-							{/each}
-						</select>
-					</label>
-				</div>
-				<div class="mt-2.5 flex flex-wrap items-center gap-2">
-					<button type="button" onclick={() => void create()} disabled={saving} class="btn btn-primary h-8 px-3 text-[12px]">
-						{saving ? 'Saving…' : 'Register'}
-					</button>
-					<button type="button" onclick={cancelAdd} disabled={saving} class="btn h-8 px-3 text-[12px]">
-						Cancel
-					</button>
-					{#if formError}
-						<span role="alert" class="num text-[11px] text-loss">{formError}</span>
-					{/if}
-				</div>
-			</div>
-		{:else}
-			<div class="mt-3">
-				<button type="button" onclick={beginAdd} class="btn h-8 px-3 text-[12px]">
-					<Plus size={13} aria-hidden="true" class="mr-1" /> Add symbol
-				</button>
-				{#if error}
-					<span class="num ml-2 text-[11px] text-loss">{error}</span>
-				{/if}
-			</div>
-		{/if}
+		<div class="mt-3">
+			<button type="button" onclick={openAdd} class="btn h-8 px-3 text-[12px]">
+				<Plus size={13} aria-hidden="true" class="mr-1" /> Add symbol
+			</button>
+			{#if error}
+				<span class="num ml-2 text-[11px] text-loss">{error}</span>
+			{/if}
+		</div>
 
 		<div class="mt-3 max-h-72 overflow-y-auto rounded-xl border border-line">
 			<table class="w-full border-collapse text-left text-[12px]">
@@ -249,6 +215,7 @@
 						<tr class="border-b border-line last:border-0">
 							<td class="py-1.5 pl-3 pr-2">
 								<span class="num font-semibold text-fg">{spec.symbol}</span>
+								<span class="block text-[10px] text-dim">{spec.display}</span>
 							</td>
 							<td class="py-1.5 pr-2 text-right"><span class="num text-mut">{fmtNum(spec.contract_size)}</span></td>
 							<td class="py-1.5 pr-2 text-right"><span class="num text-mut">{fmtNum(spec.pip_size)}</span></td>
@@ -279,11 +246,89 @@
 	{/if}
 </section>
 
+{#if adding}
+	<!-- svelte-ignore a11y_click_events_have_key_events -->
+	<div
+		transition:fade={FADE}
+		onclick={onAddBackdrop}
+		use:dialogLayer={() => cancelAdd()}
+		tabindex={-1}
+		class="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-base/75 p-4 backdrop-blur-[3px]"
+		role="dialog"
+		aria-modal="true"
+		aria-label="Add symbol"
+	>
+		<div transition:scale={MODAL} class="card w-full max-w-md overflow-hidden p-0 shadow-pop">
+			<div class="flex items-center gap-2.5 border-b border-line px-5 py-4">
+				<span class="grid h-8 w-8 place-items-center rounded-lg bg-accent/12 text-accent">
+					<Plus size={17} strokeWidth={2} aria-hidden="true" />
+				</span>
+				<h2 class="display text-xl text-fg">Add symbol</h2>
+				<button type="button" onclick={() => cancelAdd()} aria-label="Close" class="btn-icon ml-auto h-8 w-8">
+					<X size={17} strokeWidth={1.8} aria-hidden="true" />
+				</button>
+			</div>
+
+			<form class="px-5 py-4" onsubmit={(e) => { e.preventDefault(); void create(); }}>
+				<div class="grid grid-cols-2 gap-3">
+					<label class={label}>
+						Symbol
+						<input type="text" bind:value={fSymbol} placeholder="EURTRY" class="{field} uppercase" />
+					</label>
+					<label class={label}>
+						Display name
+						<input type="text" bind:value={fDisplay} placeholder="EUR/TRY" class={field} />
+					</label>
+					<label class={label}>
+						Category
+						<select bind:value={fCategory} class={field}>
+							{#each CATEGORIES as c (c)}
+								<option value={c}>{c}</option>
+							{/each}
+						</select>
+					</label>
+					<label class={label}>
+						Contract size
+						<input type="number" bind:value={fContract} min="0" step="any" class={field} />
+					</label>
+					<label class={label}>
+						Pip size
+						<input type="number" bind:value={fPip} min="0" step="any" class={field} />
+					</label>
+					<label class={label}>
+						Quote currency
+						<input type="text" bind:value={fQuote} placeholder="USD" class={field} />
+					</label>
+					<label class="flex items-end gap-2 pb-1">
+						<input type="checkbox" bind:checked={fEnabled} class="accent-accent" />
+						<span class="text-[13px] text-fg">Enabled</span>
+					</label>
+				</div>
+
+				{#if formError}
+					<p role="alert" class="mt-3 rounded-xl border border-loss/40 bg-loss/8 px-3 py-2 text-[13px] text-loss">
+						{formError}
+					</p>
+				{/if}
+
+				<div class="mt-4 flex items-center justify-end gap-2 border-t border-line pt-4">
+					<button type="button" onclick={() => cancelAdd()} disabled={saving} class="btn h-9 px-4 text-[13px]">
+						Cancel
+					</button>
+					<button type="submit" disabled={saving} class="btn btn-primary h-9 px-4 text-[13px]">
+						{saving ? 'Registering…' : 'Register'}
+					</button>
+				</div>
+			</form>
+		</div>
+	</div>
+{/if}
+
 {#if editing}
 	<!-- svelte-ignore a11y_click_events_have_key_events -->
 	<div
 		transition:fade={FADE}
-		onclick={onBackdrop}
+		onclick={onEditBackdrop}
 		use:dialogLayer={() => cancelEdit()}
 		tabindex={-1}
 		class="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-base/75 p-4 backdrop-blur-[3px]"
