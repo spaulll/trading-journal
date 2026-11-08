@@ -47,7 +47,14 @@ from app.services.symbol_registry import (
     apply_trade_risk,
     compute_r_multiple,
 )
-from app.services.trade_money import quote_currency_for, set_trade_pnl
+from app.services.trade_money import (
+    account_base_currency,
+    base_input_to_quote,
+    quote_currency_for,
+    set_trade_pnl,
+    symbol_rate_fallback,
+    trade_date,
+)
 
 # Every timestamp shape MT5 has been seen to write. Dotted dates are the
 # report default; the dashed ones appear in hand-cleaned exports.
@@ -699,9 +706,30 @@ def _apply_row(session: Session, trade: Trade, row: dict, account_id: Optional[i
         trade.tp = row.get("tp")
     trade.status = "CLOSED"
     trade.quote_currency = quote_currency_for(session, trade.symbol)
-    # Quote P&L and its USD view move together; net = gross - fees.
+    # Statement money is in the account's deposit currency, not the symbol's
+    # quote currency. For a non-USD-quoted pair the quote-currency amounts
+    # are derived at the close-day rate so the stored record stays correct.
     gross = row.get("gross_pnl") if row.get("_has_gross") else trade.gross_pnl
     fees = row.get("fees") if row.get("_has_fees") else (trade.fees or 0.0)
+    if row.get("_has_gross"):
+        gross = base_input_to_quote(
+            session,
+            account_base_currency(session, account_id),
+            trade.quote_currency,
+            gross,
+            trade_date(trade),
+            symbol_rate_fallback(trade),
+        )
+    if row.get("_has_fees"):
+        fees = base_input_to_quote(
+            session,
+            account_base_currency(session, account_id),
+            trade.quote_currency,
+            fees,
+            trade_date(trade),
+            symbol_rate_fallback(trade),
+        )
+    # Quote P&L and its USD view move together; net = gross - fees.
     set_trade_pnl(session, trade, gross, fees)
     trade.r_multiple = compute_r_multiple(
         trade.direction,

@@ -28,7 +28,15 @@ from sqlmodel import Session, select
 
 from app.models import Screenshot, Trade
 from app.services.timeutils import as_naive_utc, wall_to_naive_utc
-from app.services.trade_money import quote_currency_for, set_trade_pnl, usd_net
+from app.services.trade_money import (
+    account_base_currency,
+    base_input_to_quote,
+    quote_currency_for,
+    set_trade_pnl,
+    symbol_rate_fallback,
+    trade_date,
+    usd_net,
+)
 from app.services.broker_clock import IST_OFFSET
 
 log = logging.getLogger("telegram_bot")
@@ -929,9 +937,22 @@ async def do_close_on_trade(chat_id: int, session: Session, trade_id: int, args:
     if trade is None or trade.status != "OPEN":
         await send_text(chat_id, "❌ That trade is no longer open.")
         return
-    fees = args["fees"] if args["fees"] is not None else (trade.fees or 0.0)
+    # Manual money inputs are what the broker shows: the account's deposit
+    # currency. For a non-USD-quoted pair they are converted to the quote
+    # currency so the stored amount matches the symbol's own P&L.
+    when = trade_date(trade)
+    base = account_base_currency(session, trade.account_id)
+    fallback_rate = symbol_rate_fallback(trade)
+    if args["fees"] is not None:
+        fees = base_input_to_quote(
+            session, base, trade.quote_currency, args["fees"], when, fallback_rate
+        )
+    else:
+        fees = trade.fees or 0.0
     if args["gross_pnl"] is not None:
-        gross = args["gross_pnl"]
+        gross = base_input_to_quote(
+            session, base, trade.quote_currency, args["gross_pnl"], when, fallback_rate
+        )
     else:
         gross = estimate_gross_quote_pnl(
             session, trade.direction, trade.symbol, trade.size, trade.entry_price, args["exit_price"]
@@ -985,7 +1006,10 @@ START = (
     "👋 Welcome to your Trading Journal bot!\n"
     "I log your trades, nudge you on stale positions and send a nightly EOD recap.\n"
     "Just type a trade (<code>buy gold, 0.1, 4000, 3990, 4020</code>) "
-    "or send /help for the full syntax."
+    "or send /help for the full syntax.\n"
+    "\n"
+    "💵 P&L and fees on close/backfill are entered in USD — the journal "
+    "converts them to the pair's own currency."
 )
 
 HELP = (

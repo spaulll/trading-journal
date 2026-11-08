@@ -17,6 +17,7 @@ import sqlite3
 import tempfile
 from pathlib import Path
 
+import pytest
 from sqlmodel import SQLModel, create_engine
 
 # --- helpers ---------------------------------------------------------------
@@ -237,7 +238,9 @@ def test_a_day_with_two_currencies_sums_in_usd_and_keeps_the_breakdown(client):
         gross_pnl=100.0,
         ticket="MIX-USD",
     )
-    _backfill(client, ticket="MIX-JPY")
+    # The default account is USD-based, so this JPY leg's P&L is entered
+    # in USD (33.33 ≈ 5,000 JPY at 150) and stored in yen.
+    _backfill(client, ticket="MIX-JPY", gross_pnl=33.33)
 
     day = client.get("/api/analytics/calendar", params={"year": 2024}).json()["days"]
     assert len(day) == 1
@@ -245,7 +248,9 @@ def test_a_day_with_two_currencies_sums_in_usd_and_keeps_the_breakdown(client):
     assert day[0]["net_pnl"] == 133.33
     assert day[0]["trade_count"] == 2
     assert day[0]["unpriced"] == 0
-    assert day[0]["by_currency"] == {"JPY": 5000.0, "USD": 100.0}
+    assert day[0]["by_currency"]["USD"] == 100.0
+    # 33.33 USD at 150 stores as 4,999.5 yen — close enough to 5,000.
+    assert day[0]["by_currency"]["JPY"] == pytest.approx(5000.0, abs=1.0)
 
 
 def test_a_usdjpy_trade_without_a_stored_rate_uses_its_exit_price(client):
@@ -254,8 +259,12 @@ def test_a_usdjpy_trade_without_a_stored_rate_uses_its_exit_price(client):
     The exit price quotes yen per dollar; the conversion needs dollars per
     yen, so the stored rate must be the inverse. Using it upright would
     turn a 5,000-yen win into roughly $750,000.
+
+    The backfilled P&L is the deposit currency (USD), so the 5,000-yen win
+    is entered as its dollar equivalent; the stored quote amount stays in
+    yen.
     """
-    _backfill(client, ticket="JPY-IMPLIED")
+    _backfill(client, ticket="JPY-IMPLIED", gross_pnl=round(5000.0 / 150.5, 2))
 
     trade = _trade(client, "JPY-IMPLIED")
     assert trade["quote_currency"] == "JPY"
@@ -346,7 +355,8 @@ def test_an_account_declares_its_base_currency(client):
 def test_a_usd_account_sums_a_yen_trade_in_usd(client):
     account = _account(client, alias="usd-account", base_currency="USD", start_balance=10_000.0)
     _rate(client, "2024-03-10", "USD", "JPY", 150.0)
-    _backfill(client, account_id=account["id"], ticket="USD-ACCT-JPY")
+    # Deposit currency is USD, so the 5,000-yen win is entered as $33.33.
+    _backfill(client, account_id=account["id"], ticket="USD-ACCT-JPY", gross_pnl=33.33)
 
     prop = client.get(f"/api/accounts/{account['id']}/prop-status").json()
     assert prop["base_currency"] == "USD"
@@ -358,7 +368,7 @@ def test_a_usd_account_sums_a_yen_trade_in_usd(client):
         f"/api/accounts/{account['id']}/prop-status", params={"base": "JPY"}
     ).json()
     assert in_yen["base_currency"] == "JPY"
-    assert in_yen["total_net"] == 5000.0
+    assert in_yen["total_net"] == pytest.approx(5000.0, abs=1.0)
 
 
 # --- the schema migration --------------------------------------------------

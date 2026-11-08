@@ -919,7 +919,12 @@
 							{@render fieldMessage(fieldErrors.exit)}
 						</label>
 						<label class="flex min-w-0 flex-col gap-1">
-							<span class="eyebrow">Fees</span>
+							<span class="eyebrow">
+								Fees
+								{#if trade.quote_currency && trade.quote_currency !== 'USD'}
+									(in USD)
+								{/if}
+							</span>
 							<input
 								type="text"
 								inputmode="decimal"

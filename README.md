@@ -213,6 +213,10 @@ past buy gold, 0.1, 4000, 3990, exit: 4015, pnl: 150, date: 2026-09-20 14:30
 - **Breakeven** is `|net_pnl| <= $5`, applied consistently across stats, calendars, and streaks.
 - **Unpriced** is not breakeven. A closed trade with no P&L — because its symbol had no contract — is counted separately and excluded from the win rate, the streaks and the day buckets. The ledger flags it `UNPRICED`.
 - **Net P&L:** `net = gross − fees` when gross is known.
+- **Money inputs are in the account's deposit currency** (USD for these
+  accounts): a manual P&L or fee on close/backfill/import is converted to
+  the pair's quote currency (JPY for USDJPY) at the close-day rate, so a
+  broker figure can be typed as-is.
 - **Risk** is recorded per trade: `initial_risk` from the planned stop, `realized_risk` from the stop it was actually carried to.
 - **R-multiple** recomputes on close, edit, and backfill, against the risk actually taken — a trailed stop changes the R.
 - **Closes without gross** fall back to a price-based estimate for registered symbols, otherwise stay `null`.

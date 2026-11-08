@@ -10,6 +10,9 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
+import pytest
+from sqlmodel import select
+
 from app.models import Trade
 from app.services.telegram_bot import daily_stats_text
 
@@ -110,6 +113,115 @@ def test_a_closed_trade_is_bucketed_on_its_close_day(client):
     closed_on = {d["date"] for d in days}
     today = datetime.now(timezone.utc).date().isoformat()
     assert today in closed_on
+
+
+# --- non-USD quote currencies -----------------------------------------------
+#
+# A manual P&L / fee entry mirrors what the broker statement shows: account
+# currency, USD. For a JPY-quoted pair (USDJPY) the stored quote-currency
+# amount must be derived from that USD input, not stored verbatim.
+
+
+def _open_jpy(client) -> dict:
+    return _open(
+        client,
+        symbol="USDJPY",
+        direction="sell",
+        size=0.2,
+        entry_price=158.326,
+        initial_sl=158.6,
+        tp=157.493,
+    )
+
+
+def test_close_usdjpy_explicit_usd_money_is_converted_to_quote(client):
+    """close usdjpy, 158.49, -20.7, fee: 1 — USD in, JPY stored."""
+    trade = _open_jpy(client)
+    tsl = client.post(f"/api/trades/{trade['id']}/tsl", json={"current_sl": 158.49})
+    assert tsl.status_code == 200, tsl.text
+    response = client.post(
+        f"/api/trades/{trade['id']}/close",
+        json={"exit_price": 158.49, "gross_pnl": -20.7, "fees": 1.0},
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+
+    assert body["gross_pnl"] == pytest.approx(-3280.74, abs=0.01)
+    assert body["fees"] == pytest.approx(158.49, abs=0.01)
+    assert body["net_pnl"] == pytest.approx(-3439.23, abs=0.01)
+    assert body["gross_pnl_usd"] == pytest.approx(-20.70, abs=0.01)
+    assert body["net_pnl_usd"] == pytest.approx(-21.70, abs=0.01)
+    assert body["r_multiple"] == -1.0
+
+
+def test_close_usdjpy_estimates_gross_when_left_blank(client):
+    """Leave gross blank: the price-based estimate is the safe default."""
+    trade = _open_jpy(client)
+    tsl = client.post(f"/api/trades/{trade['id']}/tsl", json={"current_sl": 158.49})
+    assert tsl.status_code == 200, tsl.text
+    response = client.post(
+        f"/api/trades/{trade['id']}/close",
+        json={"exit_price": 158.49, "fees": 1.0},
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+
+    assert body["gross_pnl"] == pytest.approx(-3280.0, abs=0.01)
+    assert body["fees"] == pytest.approx(158.49, abs=0.01)
+    assert body["net_pnl"] == pytest.approx(-3438.49, abs=0.01)
+    assert body["net_pnl_usd"] == pytest.approx(-21.70, abs=0.02)
+    assert body["r_multiple"] == -1.0
+
+
+def test_patch_fees_on_jpy_pair_converts_usd_to_quote(client):
+    trade = _open_jpy(client)
+    response = client.patch(f"/api/trades/{trade['id']}", json={"fees": 1.0})
+    assert response.status_code == 200, response.text
+    # The trade is still open, so the implied rate comes from the entry
+    # price (158.326) — the close-day exit price is not known yet.
+    assert response.json()["fees"] == pytest.approx(158.33, abs=0.01)
+
+
+def test_backfill_usdjpy_pnl_in_usd_converts_to_quote(client, session):
+    payload = {
+        "symbol": "USDJPY",
+        "direction": "sell",
+        "size": 0.2,
+        "entry_price": 158.326,
+        "exit_price": 158.49,
+        "initial_sl": 158.6,
+        "entry_time": "2026-11-06T13:04:33",
+        "exit_time": "2026-11-06T19:25:34",
+        "gross_pnl": -20.7,
+        "fees": 1.0,
+    }
+    response = client.post("/api/trades/backfill", json=payload)
+    assert response.status_code == 200, response.text
+    ticket = response.json()["inserted"][0]
+    trade = session.exec(select(Trade).where(Trade.ticket == ticket)).first()
+    assert trade is not None
+    assert trade.gross_pnl == pytest.approx(-3280.74, abs=0.01)
+    assert trade.fees == pytest.approx(158.49, abs=0.01)
+    assert trade.net_pnl == pytest.approx(-3439.23, abs=0.01)
+    assert trade.gross_pnl_usd == pytest.approx(-20.70, abs=0.01)
+    assert trade.net_pnl_usd == pytest.approx(-21.70, abs=0.01)
+
+
+def test_close_gold_explicit_usd_money_passes_through(client):
+    """USD-quoted symbols are untouched: identity conversion."""
+    trade = _open(client)
+    response = client.post(
+        f"/api/trades/{trade['id']}/close",
+        json={"exit_price": 4015.0, "gross_pnl": 150.0, "fees": 0.5},
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+
+    assert body["gross_pnl"] == 150.0
+    assert body["fees"] == 0.5
+    assert body["net_pnl"] == 149.5
+    assert body["gross_pnl_usd"] == 150.0
+    assert body["net_pnl_usd"] == 149.5
 
 
 # --- the guardrail ---------------------------------------------------------

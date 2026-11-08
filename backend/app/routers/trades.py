@@ -55,11 +55,16 @@ from app.services.trade_filters import (
     sort_trades,
 )
 from app.services.trade_money import (
+    account_base_currency,
+    base_input_to_quote,
     fx_missing,
     quote_currency_for,
+    rate_fallback,
     set_trade_pnl,
+    symbol_rate_fallback,
     sync_trade_currency,
     sync_trade_usd,
+    trade_date,
     usd_net,
 )
 
@@ -312,9 +317,19 @@ def close_trade(trade_id: int, payload: TradeCloseRequest, session: Session = De
     if trade.status == "CLOSED":
         raise HTTPException(status_code=422, detail="Trade is already closed")
 
-    fees = payload.fees if payload.fees is not None else (trade.fees or 0.0)
+    # Manual money inputs (gross, fees) are what the broker statement shows:
+    # the account's deposit currency (USD for these accounts). For a pair
+    # quoted in something else (USDJPY is quoted in JPY) the stored
+    # quote-currency amount has to be converted, or the record is off by
+    # the exchange rate.
+    trade.exit_price = payload.exit_price
+    when = trade_date(trade)
+    base = account_base_currency(session, trade.account_id)
+    fallback_rate = symbol_rate_fallback(trade)
     if payload.gross_pnl is not None:
-        gross = payload.gross_pnl
+        gross = base_input_to_quote(
+            session, base, trade.quote_currency, payload.gross_pnl, when, fallback_rate
+        )
     else:
         # Price the trade in its quote currency (yen for USDJPY, dollars
         # for EURUSD); the USD view is derived at the close-day FX rate.
@@ -323,11 +338,16 @@ def close_trade(trade_id: int, payload: TradeCloseRequest, session: Session = De
         )
         if gross is None:
             gross = trade.gross_pnl
+    if payload.fees is not None:
+        fees = base_input_to_quote(
+            session, base, trade.quote_currency, payload.fees, when, fallback_rate
+        )
+    else:
+        fees = trade.fees or 0.0
     r = compute_r_multiple(
         trade.direction, trade.entry_price, trade.initial_sl, trade.current_sl, payload.exit_price
     )
 
-    trade.exit_price = payload.exit_price
     trade.r_multiple = r
     closed_at = as_naive_utc(payload.timestamp_close or _now())
     assert closed_at is not None
@@ -417,6 +437,19 @@ def insert_backfill_record(session: Session, rec: BackfillRecord) -> tuple[str, 
     fees = rec.fees if rec.fees is not None else 0.0
     gross = rec.gross_pnl
     net = rec.net_pnl
+    # Manual money inputs are in the account's deposit currency (what the
+    # broker shows). For a pair quoted in another currency they are
+    # converted to the quote currency before the invariant math below runs.
+    quote = quote_currency_for(session, rec.symbol)
+    base = account_base_currency(session, account_id)
+    when = exit_time.date()
+    fallback_rate = rate_fallback(quote, rec.exit_price, rec.symbol)
+    if rec.fees is not None:
+        fees = base_input_to_quote(session, base, quote, fees, when, fallback_rate)
+    if gross is not None:
+        gross = base_input_to_quote(session, base, quote, gross, when, fallback_rate)
+    if net is not None:
+        net = base_input_to_quote(session, base, quote, net, when, fallback_rate)
     if gross is None and net is None:
         # The trader gave no P&L at all: price the trade in its quote
         # currency from the symbol registry. A history row with no net is
@@ -977,6 +1010,26 @@ def patch_trade(trade_id: int, patch: TradePatch, session: Session = Depends(get
     # an explicit quote_currency in the same patch overrides it.
     if "symbol" in data and "quote_currency" not in data:
         sync_trade_currency(session, trade, force=True)
+    # Manual money inputs are in the account's deposit currency (what the
+    # broker shows). For a pair quoted in another currency they are
+    # converted to the quote currency here, before net is recomputed or the
+    # USD view is synced below.
+    if any(k in data for k in ("gross_pnl", "net_pnl", "fees")):
+        when = trade_date(trade)
+        base = account_base_currency(session, trade.account_id)
+        fallback_rate = symbol_rate_fallback(trade)
+        for key in ("gross_pnl", "net_pnl", "fees"):
+            if key in data:
+                converted = base_input_to_quote(
+                    session,
+                    base,
+                    trade.quote_currency,
+                    getattr(trade, key),
+                    when,
+                    fallback_rate,
+                )
+                setattr(trade, key, converted)
+                session.add(trade)
     if patch.tags is not None:
         trade.tags = [
             get_or_create_tag(session, name, category)

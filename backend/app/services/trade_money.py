@@ -21,9 +21,11 @@ from typing import Optional
 
 from sqlmodel import Session
 
-from app.models import Trade
+from app.models import Account, Trade
 from app.services.fx import (
+    RateQuote,
     convert_amount,
+    lookup_rate,
     normalize_currency,
     reporting_currency,
 )
@@ -74,22 +76,93 @@ def sync_trade_currency(session: Session, trade: Trade, force: bool = False) -> 
         trade.quote_currency = quote_currency_for(session, trade.symbol)
 
 
-def symbol_rate_fallback(trade: Trade) -> Optional[float]:
-    """A ``quote -> USD`` rate implied by the trade when the table has none.
+def rate_fallback(
+    quote: str, price: Optional[float], symbol: str = ""
+) -> Optional[float]:
+    """A ``quote -> USD`` rate implied by a pair's own price.
 
-    USDJPY at 151 is literally "151 yen per dollar", so its exit price
-    states the *USD -> JPY* rate. The conversion needs the other
-    direction — dollars per yen — so the price is inverted here. This is
-    only a fallback for the pair the journal trades; a cross with no
-    stored rate still stays unpriceable.
+    USDJPY at 151 is literally "151 yen per dollar", so its price states
+    the *USD -> JPY* rate. The conversion needs the other direction —
+    dollars per yen — so the price is inverted here. This is only a
+    fallback for a pair the journal trades; a cross with no stored rate
+    still stays unpriceable.
     """
-    quote = normalize_currency(trade.quote_currency)
-    symbol = str(trade.symbol or "").strip().upper()
+    quote = normalize_currency(quote)
+    symbol = str(symbol or "").strip().upper()
     if quote and quote != REPORTING_CURRENCY and symbol == f"{REPORTING_CURRENCY}{quote}":
-        price = trade.exit_price
         if price is not None and price > 0:
             return 1.0 / float(price)
     return None
+
+
+def symbol_rate_fallback(trade: Trade) -> Optional[float]:
+    """A ``quote -> USD`` rate implied by the trade when the table has none.
+
+    ``exit_price`` is the close-day proxy; an open trade falls back to its
+    entry price, which is the rate the position was priced at.
+    """
+    price = trade.exit_price
+    if price is None:
+        price = trade.entry_price
+    return rate_fallback(
+        trade.quote_currency, price, str(trade.symbol or "")
+    )
+
+
+def account_base_currency(session: Session, account_id: Optional[int]) -> str:
+    """The deposit currency of an account, or the reporting currency.
+
+    Manual P&L and fee entries mirror what a broker statement shows, which
+    is the account's deposit currency. Accounts default to the reporting
+    currency when they carry none.
+    """
+    if account_id is not None:
+        account = session.get(Account, account_id)
+        if account is not None:
+            return normalize_currency(account.base_currency, REPORTING_CURRENCY)
+    return REPORTING_CURRENCY
+
+
+def base_input_to_quote(
+    session: Session,
+    base: str,
+    quote: str,
+    amount: Optional[float],
+    when: Optional[date_type] = None,
+    fallback_rate: Optional[float] = None,
+) -> Optional[float]:
+    """Convert a user-entered money amount into the trade's quote currency.
+
+    Manual P&L and fee entries mirror what a broker statement shows, which
+    is the account's deposit currency (``base``). The stored quote-currency
+    amounts (``gross_pnl`` / ``net_pnl`` / ``fees``) must live in the
+    symbol's own quote currency, so when the two differ the input is
+    converted at the close-day rate — or the pair's own price when the rate
+    table has nothing (``fallback_rate``). When no rate resolves at all the
+    amount is kept verbatim, matching the legacy behavior: the trade then
+    reports as unpriced rather than guessing. ``None`` passes through.
+    """
+    if amount is None:
+        return None
+    quote = normalize_currency(quote)
+    base = normalize_currency(base, REPORTING_CURRENCY)
+    if not quote or quote == base:
+        return round(float(amount), 2)
+    when = when or date_type.today()
+    quote_rate = lookup_rate(session, quote, base, when)
+    if (quote_rate.missing or quote_rate.rate is None or quote_rate.rate <= 0) and fallback_rate:
+        quote_rate = RateQuote(
+            base=quote,
+            quote=base,
+            requested_date=when,
+            rate=float(fallback_rate),
+            as_of=when,
+            source="symbol",
+            missing=False,
+        )
+    if quote_rate.missing or quote_rate.rate is None or quote_rate.rate <= 0:
+        return round(float(amount), 2)
+    return round(float(amount) / float(quote_rate.rate), 2)
 
 
 def sync_trade_usd(session: Session, trade: Trade) -> None:
