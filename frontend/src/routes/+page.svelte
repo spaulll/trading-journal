@@ -61,6 +61,7 @@
 	const closed = $derived(summary?.total_trades ?? 0);
 	const wins = $derived(summary?.wins ?? 0);
 	const losses = $derived(summary?.losses ?? 0);
+	const breakeven = $derived(summary?.breakeven ?? 0);
 	const unpriced = $derived(summary?.unpriced ?? 0);
 	const grossProfit = $derived(summary?.gross_profit ?? 0);
 	const grossLoss = $derived(summary?.gross_loss ?? 0);
@@ -95,13 +96,6 @@
 			format: (v: number) => fmtR(v),
 			hint: summary?.avg_r == null ? 'no R data' : 'per trade',
 			tone: 'text-fg'
-		},
-		{
-			label: 'Open now',
-			value: summary?.open_trades ?? 0,
-			format: (v: number) => `${Math.round(v)}`,
-			hint: 'open trades',
-			tone: (summary?.open_trades ?? 0) > 0 ? 'text-accent' : 'text-dim'
 		}
 	]);
 </script>
@@ -279,32 +273,63 @@
 		</div>
 
 		<div class="card overflow-hidden rise" style="animation-delay: 120ms">
-			<dl
-				class="grid grid-cols-3 divide-x divide-line md:grid-cols-1 md:divide-x-0 md:divide-y md:pt-2"
-			>
-				{#each supporting as cell (cell.label)}
-					<div
-						class="min-w-0 px-3 py-3.5 sm:px-4 md:flex md:items-baseline md:justify-between md:gap-4 md:px-5 md:py-2.5"
-					>
-						<dt class="eyebrow">{cell.label}</dt>
-						<dd class="mt-1 min-w-0 md:mt-0 md:text-right">
-							{#if cell.value === null}
-								<span class="num text-xl leading-none font-medium text-dim">—</span>
-							{:else}
-								<span
-									class="num text-xl leading-none font-medium tracking-[-0.01em] {cell.tone}"
-									use:countup={{ value: cell.value, format: cell.format }}
-								>
-									{cell.format(cell.value)}
+			<div class="grid md:grid-cols-2">
+				<dl class="divide-y divide-line md:pt-2">
+					{#each supporting as cell (cell.label)}
+						<div
+							class="min-w-0 px-3 py-3.5 sm:px-4 md:flex md:items-baseline md:justify-between md:gap-4 md:px-5 md:py-2.5"
+						>
+							<dt class="eyebrow">{cell.label}</dt>
+							<dd class="mt-1 min-w-0 md:mt-0 md:text-right">
+								{#if cell.value === null}
+									<span class="num text-xl leading-none font-medium text-dim">—</span>
+								{:else}
+									<span
+										class="num text-xl leading-none font-medium tracking-[-0.01em] {cell.tone}"
+										use:countup={{ value: cell.value, format: cell.format }}
+									>
+										{cell.format(cell.value)}
+									</span>
+								{/if}
+								<span class="num mt-0.5 block text-[11px] leading-tight text-dim md:mt-1">
+									{cell.hint}
 								</span>
-							{/if}
-							<span class="num mt-0.5 block text-[11px] leading-tight text-dim md:mt-1">
-								{cell.hint}
-							</span>
-						</dd>
+							</dd>
+						</div>
+					{/each}
+				</dl>
+
+				<div
+					class="min-w-0 border-t border-line px-3 py-3.5 sm:px-4 md:border-l md:border-t-0 md:px-5 md:py-2.5"
+				>
+					<p class="eyebrow">Outcome</p>
+					<div class="mt-1.5 flex flex-wrap items-center gap-x-3.5 gap-y-1.5">
+						<span class="inline-flex items-center gap-1.5">
+							<span class="size-1.5 rounded-full bg-win" aria-hidden="true"></span>
+							<span class="num text-sm font-semibold tabular-nums">{wins}W</span>
+						</span>
+						<span class="inline-flex items-center gap-1.5">
+							<span class="size-1.5 rounded-full bg-loss" aria-hidden="true"></span>
+							<span class="num text-sm font-semibold tabular-nums">{losses}L</span>
+						</span>
+						<span class="inline-flex items-center gap-1.5">
+							<span class="size-1.5 rounded-full bg-flat" aria-hidden="true"></span>
+							<span class="num text-sm font-semibold tabular-nums">{breakeven}BE</span>
+						</span>
+						{#if unpriced > 0}
+							<span class="num text-[11px] text-dim">{unpriced} unpriced</span>
+						{/if}
 					</div>
-				{/each}
-			</dl>
+					<div class="mt-3 flex items-baseline justify-between gap-4">
+						<span class="eyebrow">Open now</span>
+						<span class="num text-xl leading-none font-medium {summary?.open_trades
+							? 'text-accent'
+							: 'text-dim'}">
+							{summary?.open_trades ?? 0}
+						</span>
+					</div>
+				</div>
+			</div>
 		</div>
 	</section>
 
