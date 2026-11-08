@@ -151,7 +151,9 @@ def test_close_usdjpy_explicit_usd_money_is_converted_to_quote(client):
     assert body["net_pnl"] == pytest.approx(-3439.23, abs=0.01)
     assert body["gross_pnl_usd"] == pytest.approx(-20.70, abs=0.01)
     assert body["net_pnl_usd"] == pytest.approx(-21.70, abs=0.01)
-    assert body["r_multiple"] == -1.0
+    # Exit at the trailing stop (158.490), but R is scored against the
+    # planned stop (158.600): -0.164 / 0.274 = -0.5985.
+    assert body["r_multiple"] == pytest.approx(-0.5985, abs=1e-4)
 
 
 def test_close_usdjpy_estimates_gross_when_left_blank(client):
@@ -170,7 +172,8 @@ def test_close_usdjpy_estimates_gross_when_left_blank(client):
     assert body["fees"] == pytest.approx(158.49, abs=0.01)
     assert body["net_pnl"] == pytest.approx(-3438.49, abs=0.01)
     assert body["net_pnl_usd"] == pytest.approx(-21.70, abs=0.02)
-    assert body["r_multiple"] == -1.0
+    # R scored against the planned stop (158.600), not the trailing stop.
+    assert body["r_multiple"] == pytest.approx(-0.5985, abs=1e-4)
 
 
 def test_patch_fees_on_jpy_pair_converts_usd_to_quote(client):

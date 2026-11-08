@@ -218,7 +218,10 @@ past buy gold, 0.1, 4000, 3990, exit: 4015, pnl: 150, date: 2026-09-20 14:30
   the pair's quote currency (JPY for USDJPY) at the close-day rate, so a
   broker figure can be typed as-is.
 - **Risk** is recorded per trade: `initial_risk` from the planned stop, `realized_risk` from the stop it was actually carried to.
-- **R-multiple** recomputes on close, edit, and backfill, against the risk actually taken — a trailed stop changes the R.
+- **R-multiple** is always scored against the **planned stop** (the
+  `initial_sl` from the plan): trailing or widening the stop mid-trade
+  does not rescale the R — it shows up as the carried-risk deviation
+  (`realized_risk`). R recomputes on close, edit, and backfill.
 - **Closes without gross** fall back to a price-based estimate for registered symbols, otherwise stay `null`.
 - **Pagination:** the trades list is paginated (`page` / `page_size`, max 5000); the frontend fetches all pages for full-set stats.
 

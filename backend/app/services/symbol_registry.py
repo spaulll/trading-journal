@@ -18,8 +18,10 @@ FX rate table converts it to USD for the totals (see ``app.services.fx``).
 
 The R-multiple
 --------------
-R is the price move over the risk the trade actually carried. A trailed
-stop shrinks that risk, so it changes the R — see :func:`effective_stop`.
+R is the price move over the risk the *plan* committed to — the initial
+stop. Trailing or widening the stop mid-trade does not rescale the score:
+the plan is the journal's reference frame, and a moved stop shows up as a
+deviation from it (``realized_risk``) rather than a different R.
 
 Fallback
 --------
@@ -315,8 +317,8 @@ def apply_trade_risk(session: Session, trade) -> None:
     trade.initial_risk = risk_amount(
         spec, trade.size, trade.entry_price, trade.initial_sl
     )
-    # The same stop the R is scored against, so the recorded risk and the
-    # recorded R can never disagree about what the trade carried.
+    # ``realized_risk`` is the *carried* dollars at risk (the current
+    # stop); the recorded R is scored against the plan, not against this.
     stop = effective_stop(
         trade.direction, trade.entry_price, trade.initial_sl, trade.current_sl
     )
@@ -330,19 +332,19 @@ def effective_stop(
     initial_sl: Optional[float],
     current_sl: Optional[float],
 ) -> Optional[float]:
-    """The stop a trade's R is scored against.
+    """The stop the *carried* risk is measured against.
 
-    A trailed stop shrinks the risk the trade actually carried, so the R
-    has to be scored against it — that is the whole point of the realized
-    risk. Two cases fall back to the planned stop:
+    Used to record ``realized_risk`` — the dollars actually at risk. R
+    itself is always scored against the planned stop (see
+    :func:`compute_r_multiple`). Two cases fall back to the planned stop:
 
     - the stop was moved to breakeven (or onto the wrong side of the
-      entry), so the trade carried no risk and has no realized R to
+      entry), so the trade carried no risk and has no realized risk to
       report;
     - there is no current stop at all.
 
     A stop that was *widened* is honoured: that is the risk the trade
-    really took, and it makes the R smaller.
+    really took.
     """
     if current_sl is None or entry is None:
         return initial_sl
@@ -366,20 +368,22 @@ def compute_r_multiple(
     current_sl: Optional[float],
     exit_price: Optional[float],
 ) -> Optional[float]:
-    """R-multiple: the price move over the risk the trade actually took.
+    """R-multiple: the price move over the risk the plan committed to.
 
-    The denominator is the effective stop (see :func:`effective_stop`), so
-    a trailed stop produces a different R than the initial stop would.
+    The denominator is always the *planned* stop (``initial_sl``): the
+    plan is the journal's reference frame, so trailing or widening the
+    stop mid-trade does not rescale the score — it shows as a deviation
+    from the plan instead. ``current_sl`` is accepted for call-site
+    compatibility but does not affect the score.
     """
     if entry is None or exit_price is None:
         return None
     sign = direction_sign(direction)
     if sign == 0:
         return None
-    stop = effective_stop(direction, entry, initial_sl, current_sl)
-    if stop is None:
+    if initial_sl is None:
         return None
-    risk = abs(entry - stop)
+    risk = abs(entry - initial_sl)
     if risk == 0:
         return None
     move = (exit_price - entry) * sign

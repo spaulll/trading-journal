@@ -310,19 +310,19 @@ def test_the_r_uses_the_planned_stop_when_nothing_moved():
     assert compute_r_multiple("sell", 4000.0, 4010.0, 4010.0, 3980.0) == 2.0
 
 
-def test_a_trailed_stop_produces_a_different_r():
-    """The R follows the risk the trade actually carried."""
+def test_a_trailed_stop_keeps_the_planned_r():
+    """The R is scored against the plan — trailing does not rescale it."""
     planned = compute_r_multiple("buy", 4000.0, 3990.0, 3990.0, 4020.0)
     trailed = compute_r_multiple("buy", 4000.0, 3990.0, 3995.0, 4020.0)
     assert planned == 2.0
-    assert trailed == 4.0
+    assert trailed == 2.0
 
 
-def test_a_widened_stop_also_changes_the_r():
-    assert compute_r_multiple("buy", 4000.0, 3990.0, 3985.0, 4020.0) == 20 / 15
+def test_a_widened_stop_also_keeps_the_planned_r():
+    assert compute_r_multiple("buy", 4000.0, 3990.0, 3985.0, 4020.0) == 2.0
 
 
-def test_a_breakeven_stop_falls_back_to_the_planned_stop():
+def test_a_breakeven_stop_keeps_the_planned_r():
     """A stop at the entry carries no risk — the planned R stands."""
     assert compute_r_multiple("buy", 4000.0, 3990.0, 4000.0, 4020.0) == 2.0
 
@@ -341,7 +341,7 @@ def test_an_r_needs_a_stop_and_an_exit():
     assert compute_r_multiple("sideways", 4000.0, 3990.0, 3990.0, 4020.0) is None
 
 
-def test_the_closed_trade_scores_the_r_it_carried(client):
+def test_the_closed_trade_scores_the_planned_r(client):
     trade = client.post(
         "/api/trades/open",
         json={
@@ -356,7 +356,9 @@ def test_the_closed_trade_scores_the_r_it_carried(client):
     closed = client.patch(
         f"/api/trades/{trade['id']}", json={"exit_price": 4020.0}
     ).json()
-    assert closed["r_multiple"] == 4.0
+    # The trailing stop (3995) does not rescale the R: the plan's stop
+    # (3990) stays the denominator. The carried risk is recorded separately.
+    assert closed["r_multiple"] == 2.0
     assert closed["initial_risk"] == 100.0
     assert closed["realized_risk"] == 50.0
 
