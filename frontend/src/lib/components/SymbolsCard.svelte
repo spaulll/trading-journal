@@ -1,8 +1,11 @@
 <script lang="ts">
-	import { BookOpen, ChevronDown, Plus, Save, X } from 'lucide-svelte';
+	import { BookOpen, ChevronDown, Pencil, Plus, X } from 'lucide-svelte';
+	import { fade, scale } from 'svelte/transition';
 	import { api, errMsg, type SymbolSpecDto } from '$lib/api';
 	import { toasts } from '$lib/stores/toast';
 	import { fmtNum } from '$lib/utils/format';
+	import { FADE, MODAL } from '$lib/utils/transitions';
+	import { dialogLayer } from '$lib/utils/dialogs';
 
 	let specs = $state<SymbolSpecDto[]>([]);
 	let loading = $state(true);
@@ -20,7 +23,8 @@
 	let formError = $state<string | null>(null);
 
 	const CATEGORIES = ['fx', 'metal', 'crypto', 'index', 'future'];
-	const label = 'font-mono text-[10px] tracking-[0.14em] text-dim uppercase';
+	const label = 'flex flex-col gap-1 text-[11px] font-medium tracking-[0.14em] uppercase text-dim';
+	const field = 'field font-mono text-[13px]';
 
 	async function load(): Promise<void> {
 		loading = true;
@@ -89,8 +93,10 @@
 		}
 	}
 
-	// Inline edit (same row, tiny inputs)
-	let editingId = $state<number | null>(null);
+	// Edit modal
+	let editing = $state<SymbolSpecDto | null>(null);
+	let eDisplay = $state('');
+	let eCategory = $state('fx');
 	let eContract = $state('');
 	let ePip = $state('');
 	let eQuote = $state('');
@@ -98,8 +104,10 @@
 	let editSaving = $state(false);
 	let editError = $state<string | null>(null);
 
-	function beginEdit(spec: SymbolSpecDto): void {
-		editingId = spec.id;
+	function openEdit(spec: SymbolSpecDto): void {
+		editing = spec;
+		eDisplay = spec.display;
+		eCategory = spec.category;
 		eContract = String(spec.contract_size);
 		ePip = String(spec.pip_size);
 		eQuote = spec.quote_currency;
@@ -108,11 +116,12 @@
 	}
 
 	function cancelEdit(): void {
-		editingId = null;
+		editing = null;
 		editError = null;
 	}
 
-	async function saveEdit(spec: SymbolSpecDto): Promise<void> {
+	async function saveEdit(): Promise<void> {
+		if (!editing) return;
 		const contract = Number(eContract);
 		const pip = Number(ePip);
 		if (!Number.isFinite(contract) || contract <= 0) {
@@ -126,14 +135,16 @@
 		editSaving = true;
 		editError = null;
 		try {
-			await api.updateSymbol(spec.id, {
+			const updated = await api.updateSymbol(editing.id, {
+				display: eDisplay.trim() || editing.symbol,
+				category: eCategory,
 				contract_size: contract,
 				pip_size: pip,
 				quote_currency: eQuote.trim().toUpperCase() || 'USD',
 				enabled: eEnabled
 			});
-			toasts.push('success', `${spec.symbol} updated.`);
-			editingId = null;
+			toasts.push('success', `${updated.symbol} updated.`);
+			cancelEdit();
 			await load();
 		} catch (e) {
 			editError = errMsg(e);
@@ -170,23 +181,23 @@
 			<div class="mt-3 rounded-xl border border-line bg-raised/30 p-3" aria-label="Add symbol form">
 				<div class="grid grid-cols-2 gap-x-2 gap-y-2 sm:grid-cols-4">
 					<label class="flex min-w-0 flex-col gap-1">
-						<span class={label}>Symbol</span>
+						<span class="font-mono text-[10px] tracking-[0.14em] text-dim uppercase">Symbol</span>
 						<input type="text" bind:value={fSymbol} placeholder="EURTRY" class="field h-8 font-mono text-[12px]" />
 					</label>
 					<label class="flex min-w-0 flex-col gap-1">
-						<span class={label}>Contract size</span>
+						<span class="font-mono text-[10px] tracking-[0.14em] text-dim uppercase">Contract size</span>
 						<input type="number" bind:value={fContract} class="field h-8 font-mono text-[12px]" />
 					</label>
 					<label class="flex min-w-0 flex-col gap-1">
-						<span class={label}>Pip size</span>
+						<span class="font-mono text-[10px] tracking-[0.14em] text-dim uppercase">Pip size</span>
 						<input type="number" bind:value={fPip} step="any" class="field h-8 font-mono text-[12px]" />
 					</label>
 					<label class="flex min-w-0 flex-col gap-1">
-						<span class={label}>Quote currency</span>
+						<span class="font-mono text-[10px] tracking-[0.14em] text-dim uppercase">Quote currency</span>
 						<input type="text" bind:value={fQuote} placeholder="USD" class="field h-8 font-mono text-[12px]" />
 					</label>
 					<label class="flex min-w-0 flex-col gap-1">
-						<span class={label}>Category</span>
+						<span class="font-mono text-[10px] tracking-[0.14em] text-dim uppercase">Category</span>
 						<select bind:value={fCategory} class="field h-8 text-[12px]">
 							{#each CATEGORIES as c (c)}
 								<option value={c}>{c}</option>
@@ -231,59 +242,24 @@
 				</thead>
 				<tbody>
 					{#each specs as spec (spec.id)}
-						{#if editingId === spec.id}
-							<tr class="border-b border-line bg-raised/30 last:border-0">
-								<td class="py-1 pl-3 pr-2">
-									<span class="num text-[12px] font-semibold text-fg">{spec.symbol}</span>
-								</td>
-								<td class="py-1 pr-2">
-									<input type="number" bind:value={eContract} class="field h-7 w-full min-w-16 font-mono text-[11px]" />
-								</td>
-								<td class="py-1 pr-2">
-									<input type="number" bind:value={ePip} step="any" class="field h-7 w-full min-w-14 font-mono text-[11px]" />
-								</td>
-								<td class="py-1 pr-2">
-									<input type="text" bind:value={eQuote} class="field h-7 w-full min-w-12 font-mono text-[11px]" />
-								</td>
-								<td class="py-1 pr-2">
-									<label class="inline-flex items-center gap-1" title="Enabled">
-										<input type="checkbox" bind:checked={eEnabled} class="accent-accent" />
-									</label>
-								</td>
-								<td class="py-1 pl-2 pr-3 text-right">
-									<div class="inline-flex items-center gap-1">
-										<button type="button" onclick={() => void saveEdit(spec)} disabled={editSaving} class="btn btn-primary h-7 px-2 text-[11px]">
-											<Save size={12} aria-hidden="true" class="mr-0.5" /> {editSaving ? '…' : 'Save'}
-										</button>
-										<button type="button" onclick={cancelEdit} disabled={editSaving} class="btn h-7 px-2 text-[11px]">
-											Cancel
-										</button>
-									</div>
-									{#if editError}
-										<span class="num block text-[10px] text-loss">{editError}</span>
-									{/if}
-								</td>
-							</tr>
-						{:else}
-							<tr class="border-b border-line last:border-0">
-								<td class="py-1.5 pl-3 pr-2">
-									<span class="num font-semibold text-fg">{spec.symbol}</span>
-								</td>
-								<td class="py-1.5 pr-2 text-right"><span class="num text-mut">{fmtNum(spec.contract_size)}</span></td>
-								<td class="py-1.5 pr-2 text-right"><span class="num text-mut">{fmtNum(spec.pip_size)}</span></td>
-								<td class="py-1.5 pr-2"><span class="num text-mut">{spec.quote_currency}</span></td>
-								<td class="py-1.5 pr-2">
-									<span class="num text-[10px] uppercase tracking-wide {spec.enabled ? 'text-win' : 'text-dim'}">
-										{spec.enabled ? 'on' : 'off'}
-									</span>
-								</td>
-								<td class="py-1.5 pl-2 pr-3 text-right">
-									<button type="button" onclick={() => beginEdit(spec)} class="btn h-7 px-2 text-[11px]">
-										Edit
-									</button>
-								</td>
-							</tr>
-						{/if}
+						<tr class="border-b border-line last:border-0">
+							<td class="py-1.5 pl-3 pr-2">
+								<span class="num font-semibold text-fg">{spec.symbol}</span>
+							</td>
+							<td class="py-1.5 pr-2 text-right"><span class="num text-mut">{fmtNum(spec.contract_size)}</span></td>
+							<td class="py-1.5 pr-2 text-right"><span class="num text-mut">{fmtNum(spec.pip_size)}</span></td>
+							<td class="py-1.5 pr-2"><span class="num text-mut">{spec.quote_currency}</span></td>
+							<td class="py-1.5 pr-2">
+								<span class="num text-[10px] uppercase tracking-wide {spec.enabled ? 'text-win' : 'text-dim'}">
+									{spec.enabled ? 'on' : 'off'}
+								</span>
+							</td>
+							<td class="py-1.5 pl-2 pr-3 text-right">
+								<button type="button" onclick={() => openEdit(spec)} class="btn h-7 px-2 text-[11px]">
+									<Pencil size={11} aria-hidden="true" class="mr-1" /> Edit
+								</button>
+							</td>
+						</tr>
 					{/each}
 					{#if !loading && specs.length === 0}
 						<tr>
@@ -298,3 +274,77 @@
 		</div>
 	{/if}
 </section>
+
+{#if editing}
+	<!-- svelte-ignore a11y_click_events_have_key_events -->
+	<div
+		transition:fade={FADE}
+		onclick={() => cancelEdit()}
+		use:dialogLayer={() => cancelEdit()}
+		tabindex={-1}
+		class="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-base/75 p-4 backdrop-blur-[3px]"
+		role="dialog"
+		aria-modal="true"
+		aria-label="Edit symbol contract"
+	>
+		<div transition:scale={MODAL} class="card w-full max-w-md overflow-hidden p-0 shadow-pop">
+			<div class="flex items-center gap-2.5 border-b border-line px-5 py-4">
+				<span class="grid h-8 w-8 place-items-center rounded-lg bg-accent/12 text-accent">
+					<Pencil size={17} strokeWidth={2} aria-hidden="true" />
+				</span>
+				<h2 class="display text-xl text-fg">Edit {editing.symbol}</h2>
+				<button type="button" onclick={() => cancelEdit()} aria-label="Close" class="btn-icon ml-auto h-8 w-8">
+					<X size={17} strokeWidth={1.8} aria-hidden="true" />
+				</button>
+			</div>
+
+			<form class="px-5 py-4" onsubmit={(e) => { e.preventDefault(); void saveEdit(); }}>
+				<div class="grid grid-cols-2 gap-3">
+					<label class={label}>
+						Display name
+						<input type="text" bind:value={eDisplay} class={field} />
+					</label>
+					<label class={label}>
+						Category
+						<select bind:value={eCategory} class={field}>
+							{#each CATEGORIES as c (c)}
+								<option value={c}>{c}</option>
+							{/each}
+						</select>
+					</label>
+					<label class={label}>
+						Contract size
+						<input type="number" bind:value={eContract} min="0" step="any" class={field} />
+					</label>
+					<label class={label}>
+						Pip size
+						<input type="number" bind:value={ePip} min="0" step="any" class={field} />
+					</label>
+					<label class={label}>
+						Quote currency
+						<input type="text" bind:value={eQuote} placeholder="USD" class={field} />
+					</label>
+					<label class="flex items-end gap-2 pb-1">
+						<input type="checkbox" bind:checked={eEnabled} class="accent-accent" />
+						<span class="text-[13px] text-fg">Enabled</span>
+					</label>
+				</div>
+
+				{#if editError}
+					<p role="alert" class="mt-3 rounded-xl border border-loss/40 bg-loss/8 px-3 py-2 text-[13px] text-loss">
+						{editError}
+					</p>
+				{/if}
+
+				<div class="mt-4 flex items-center justify-end gap-2 border-t border-line pt-4">
+					<button type="button" onclick={() => cancelEdit()} disabled={editSaving} class="btn h-9 px-4 text-[13px]">
+						Cancel
+					</button>
+					<button type="submit" disabled={editSaving} class="btn btn-primary h-9 px-4 text-[13px]">
+						{editSaving ? 'Saving…' : 'Save'}
+					</button>
+				</div>
+			</form>
+		</div>
+	</div>
+{/if}
