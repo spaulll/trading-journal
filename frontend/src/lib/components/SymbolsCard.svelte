@@ -104,6 +104,10 @@
 	let editSaving = $state(false);
 	let editError = $state<string | null>(null);
 
+	function onBackdrop(e: MouseEvent): void {
+		if (e.target === e.currentTarget) cancelEdit();
+	}
+
 	function openEdit(spec: SymbolSpecDto): void {
 		editing = spec;
 		eDisplay = spec.display;
@@ -279,7 +283,7 @@
 	<!-- svelte-ignore a11y_click_events_have_key_events -->
 	<div
 		transition:fade={FADE}
-		onclick={() => cancelEdit()}
+		onclick={onBackdrop}
 		use:dialogLayer={() => cancelEdit()}
 		tabindex={-1}
 		class="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-base/75 p-4 backdrop-blur-[3px]"
