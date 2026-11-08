@@ -39,9 +39,9 @@ That's it. Settings are saved to `.backup.env` and the systemd units
 
 | Command | Does |
 |---|---|
-| `./backup.sh` | interactive wizard in a terminal; otherwise runs one backup |
+| `./backup.sh` | interactive wizard on **first run**; on later runs prints `Setup has already been done.` and asks `Start a backup now? [y/N]` (y → runs one backup). In a non-TTY context (cron/systemd), runs one backup |
 | `./backup.sh --backup` | run a single backup now, never prompts |
-| `./backup.sh --setup` | force the wizard |
+| `./backup.sh --setup` | force the wizard (re-configure) |
 | `./backup.sh --yes` | wizard with all defaults, no questions |
 | `./backup.sh --help` | usage |
 

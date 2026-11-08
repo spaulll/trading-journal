@@ -277,6 +277,20 @@ case "$MODE" in
   backup) run_backup ;;
   setup)  wizard ;;
   auto)
-    if [[ -t 0 ]]; then wizard; else run_backup; fi
+    if [[ -t 0 ]]; then
+      if [[ -f "$CONF" ]]; then
+        # second run: setup already done — don't re-open the wizard
+        echo "Setup has already been done."
+        echo "To re-configure, run '$(basename "$0") --setup'."
+        ask_yn "Start a backup now?" n
+        if [[ "$REPLY" == y ]]; then
+          run_backup
+        fi
+      else
+        wizard
+      fi
+    else
+      run_backup
+    fi
     ;;
 esac
