@@ -64,21 +64,15 @@
 	const unpriced = $derived(summary?.unpriced ?? 0);
 	const grossProfit = $derived(summary?.gross_profit ?? 0);
 	const grossLoss = $derived(summary?.gross_loss ?? 0);
-	const balanceScale = $derived(Math.max(grossProfit, grossLoss));
-	// Profit/loss balance bar: the larger pool sets the bar width; the
-	// smaller magnitude is drawn first, and the remainder (|P−L|) takes
-	// the color of the net sign.
+	// Profit/loss balance bar: green (profits) always on the left, red
+	// (losses) always on the right, each sized relative to the total volume
+	// (P+L) — so whichever pool is bigger visibly dominates the bar.
+	const balanceVolume = $derived(grossProfit + grossLoss);
 	const balanceSegments = $derived.by(() => {
-		if (balanceScale === 0) return null;
-		if (grossProfit >= grossLoss) {
-			return [
-				{ w: (grossLoss / balanceScale) * 100, tone: 'bg-loss' },
-				{ w: ((grossProfit - grossLoss) / balanceScale) * 100, tone: 'bg-win' }
-			].filter((s) => s.w > 0);
-		}
+		if (balanceVolume === 0) return null;
 		return [
-			{ w: (grossProfit / balanceScale) * 100, tone: 'bg-win' },
-			{ w: ((grossLoss - grossProfit) / balanceScale) * 100, tone: 'bg-loss' }
+			{ w: (grossProfit / balanceVolume) * 100, tone: 'bg-win' },
+			{ w: (grossLoss / balanceVolume) * 100, tone: 'bg-loss' }
 		].filter((s) => s.w > 0);
 	});
 	const balanceLabel = $derived(
