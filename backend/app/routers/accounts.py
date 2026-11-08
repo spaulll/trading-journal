@@ -26,7 +26,7 @@ from app.services.account_rules import (
     sync_account_rules,
 )
 from app.services.fx import convert_amount, normalize_currency
-from app.services.trade_money import usd_net
+from app.services.trade_money import symbol_rate_fallback, usd_net
 from app.services.trading_day import day_of_trade, get_trading_day
 
 router = APIRouter(prefix="/api/accounts", tags=["accounts"])
@@ -333,7 +333,13 @@ def _prop_numbers(acc: Account, session: Session, base_override: Optional[str] =
         if t.net_pnl is None:
             continue
         quote = normalize_currency(t.quote_currency, "USD")
-        conv = convert_amount(session, t.net_pnl, quote, target, when)
+        # A pair's own price implies its USD rate (USDJPY = USD/JPY), the
+        # same fallback the trade's stored USD view uses, so a JPY-quoted
+        # trade without a stored FX row still moves the balance.
+        conv = convert_amount(
+            session, t.net_pnl, quote, target, when,
+            fallback_rate=symbol_rate_fallback(t),
+        )
         if conv.missing:
             fx_missing += 1
             continue

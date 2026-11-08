@@ -290,7 +290,7 @@
 				<div><p class="eyebrow">Daily left · {prop.base_currency}</p><p class="num mt-1 text-lg font-semibold tabular-nums {(prop.daily_left ?? 0) < 0 ? 'text-loss' : 'text-fg'}">{prop.daily_left?.toLocaleString() ?? '—'}</p><p class="num mt-0.5 text-[11px] text-dim">{prop.daily_pnl >= 0 ? '+' : ''}{prop.daily_pnl.toLocaleString()} today · {prop.daily_loss_pct}% ({prop.daily_basis})</p></div>
 				<div><p class="eyebrow">Max left · {prop.base_currency}</p><p class="num mt-1 text-lg font-semibold tabular-nums {(prop.max_left ?? 1) <= 0 ? 'text-loss' : 'text-fg'}">{prop.max_left?.toLocaleString() ?? '—'}</p><p class="num mt-0.5 text-[11px] text-dim">{prop.max_mode} {prop.max_loss_pct}% · floor {prop.max_floor?.toLocaleString() ?? '—'}</p></div>
 				<div><p class="eyebrow">Target · {prop.base_currency}</p><p class="num mt-1 text-lg font-semibold text-fg tabular-nums">{prop.target_pct === null ? '—' : `${prop.target_pct.toFixed(1)}%`}</p><p class="num mt-0.5 text-[11px] text-dim">goal {prop.profit_target?.toLocaleString() ?? '—'}{prop.profit_target_pct !== null ? ` (${prop.profit_target_pct}%)` : ''}</p></div>
-				<div><p class="eyebrow">Status</p><p class="mt-1 font-mono text-[12px] font-bold tracking-[0.14em] uppercase {prop.breached ? 'text-loss' : 'text-win'}">{prop.breached ? 'breach' : prop.status}</p><p class="num mt-0.5 text-[11px] text-dim">@{prop.alias}</p></div>
+				<div><p class="eyebrow">Status</p><p class="mt-1 font-mono text-[12px] font-bold tracking-[0.14em] uppercase {prop.breached || prop.status === 'breach' ? 'text-loss' : 'text-win'}">{prop.breached || prop.status === 'breach' ? 'breach' : prop.status}</p><p class="num mt-0.5 text-[11px] text-dim">@{prop.alias}</p></div>
 			</div>
 		</section>
 	{/if}

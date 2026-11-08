@@ -371,6 +371,25 @@ def test_a_usd_account_sums_a_yen_trade_in_usd(client):
     assert in_yen["total_net"] == pytest.approx(5000.0, abs=1.0)
 
 
+def test_a_usd_account_sums_a_yen_trade_using_the_pair_s_own_rate(client):
+    """No stored FX row: a JPY trade still moves the balance via its own
+    price (USDJPY's exit price is the USD/JPY rate). It must not be
+    silently skipped like a missing-rate cross."""
+    account = _account(client, alias="usd-account-2", base_currency="USD", start_balance=10_000.0)
+    _backfill(
+        client,
+        account_id=account["id"],
+        ticket="JPY-IMPLIED-ACCT",
+        gross_pnl=round(5000.0 / 150.5, 2),  # $33.22 ≈ 5,000 JPY at 150.5
+    )
+
+    prop = client.get(f"/api/accounts/{account['id']}/prop-status").json()
+    assert prop["fx"]["missing"] == 0
+    assert prop["total_net"] == pytest.approx(round(5000.0 / 150.5, 2), abs=0.01)
+    assert prop["balance"] == pytest.approx(10_000.0 + round(5000.0 / 150.5, 2), abs=0.01)
+    assert prop["total_net_usd"] == pytest.approx(round(5000.0 / 150.5, 2), abs=0.01)
+
+
 # --- the schema migration --------------------------------------------------
 
 
