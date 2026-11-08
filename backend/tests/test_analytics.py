@@ -100,6 +100,25 @@ def test_the_breakeven_band_holds_at_the_api_boundary(client):
     assert summary["wins"] == 1
     assert summary["losses"] == 1
     assert summary["breakeven"] == 2
+    assert summary["gross_profit"] == 5.01
+    assert summary["gross_loss"] == 5.01
+
+
+def test_summary_reports_gross_profit_and_loss_for_the_balance_bar(client):
+    """The first-page bar needs the gross pools, not just the net."""
+    _store(
+        [
+            _closed("BAL-1", 120.0, opened=datetime(2026, 9, 1, 10, 0)),
+            _closed("BAL-2", 80.0, opened=datetime(2026, 9, 1, 11, 0)),
+            _closed("BAL-3", -250.0, opened=datetime(2026, 9, 1, 12, 0)),
+            _closed("BAL-4", -2.0, opened=datetime(2026, 9, 1, 13, 0)),
+        ]
+    )
+    summary = client.get("/api/analytics/summary").json()
+    assert summary["net_pnl"] == -52.0
+    assert summary["gross_profit"] == 200.0
+    assert summary["gross_loss"] == 250.0
+    assert summary["breakeven"] == 1
 
 
 def test_the_breakeven_count_is_reported_next_to_the_rate(client):

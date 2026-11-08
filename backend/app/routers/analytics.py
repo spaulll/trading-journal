@@ -318,6 +318,8 @@ def summary(
         "expectancy": expectancy,
         "avg_win": avg_win,
         "avg_loss": avg_loss,
+        "gross_profit": round(gross_profit, 2),
+        "gross_loss": round(gross_loss, 2),
         "avg_r": avg_r,
         "max_drawdown": max_dd,
         # The overall figure is USD; this is the quote-currency audit trail.

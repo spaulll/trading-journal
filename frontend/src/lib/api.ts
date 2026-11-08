@@ -404,6 +404,10 @@ export interface SummaryDto {
 	expectancy: number;
 	avg_win: number;
 	avg_loss: number;
+	/** Gross USD profit of the winning closed trades in the filter. */
+	gross_profit: number;
+	/** Gross USD loss (positive magnitude) of the losing closed trades. */
+	gross_loss: number;
 	/** The average R of the closed trades in the filter. */
 	avg_r: number | null;
 	max_drawdown: number;

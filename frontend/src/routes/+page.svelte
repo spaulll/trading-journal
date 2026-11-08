@@ -61,10 +61,28 @@
 	const closed = $derived(summary?.total_trades ?? 0);
 	const wins = $derived(summary?.wins ?? 0);
 	const losses = $derived(summary?.losses ?? 0);
-	const breakeven = $derived(summary?.breakeven ?? 0);
 	const unpriced = $derived(summary?.unpriced ?? 0);
-	const outcomeLabel = $derived(
-		`Outcome mix: ${wins} wins, ${losses} losses, ${breakeven} breakeven${unpriced ? `, ${unpriced} unpriced` : ''}`
+	const grossProfit = $derived(summary?.gross_profit ?? 0);
+	const grossLoss = $derived(summary?.gross_loss ?? 0);
+	const balanceScale = $derived(Math.max(grossProfit, grossLoss));
+	// Profit/loss balance bar: the larger pool sets the bar width; the
+	// smaller magnitude is drawn first, and the remainder (|P−L|) takes
+	// the color of the net sign.
+	const balanceSegments = $derived.by(() => {
+		if (balanceScale === 0) return null;
+		if (grossProfit >= grossLoss) {
+			return [
+				{ w: (grossLoss / balanceScale) * 100, tone: 'bg-loss' },
+				{ w: ((grossProfit - grossLoss) / balanceScale) * 100, tone: 'bg-win' }
+			].filter((s) => s.w > 0);
+		}
+		return [
+			{ w: (grossProfit / balanceScale) * 100, tone: 'bg-win' },
+			{ w: ((grossLoss - grossProfit) / balanceScale) * 100, tone: 'bg-loss' }
+		].filter((s) => s.w > 0);
+	});
+	const balanceLabel = $derived(
+		`Profits ${fmtMoney(grossProfit)}, losses ${fmtMoney(grossLoss)} — net ${fmtMoney(summary?.net_pnl ?? 0)}`
 	);
 
 	// Supporting figures stay deliberately small — the net is the only number
@@ -241,31 +259,26 @@
 					<div
 						class="flex h-1.5 items-stretch gap-1 overflow-hidden rounded-full bg-raised"
 						role="img"
-						aria-label={outcomeLabel}
+						aria-label={balanceLabel}
 					>
-						{#if wins > 0}
-							<span class="h-full rounded-full bg-win" style={`flex: ${wins} 1 0%`}></span>
-						{/if}
-						{#if losses > 0}
-							<span class="h-full rounded-full bg-loss" style={`flex: ${losses} 1 0%`}></span>
-						{/if}
-						{#if breakeven > 0}
-							<span class="h-full rounded-full bg-flat" style={`flex: ${breakeven} 1 0%`}></span>
+						{#if balanceSegments}
+							{#each balanceSegments as seg, i (i)}
+								<span class="h-full rounded-full {seg.tone}" style={`flex: ${seg.w} 1 0%`}></span>
+							{/each}
+						{:else}
+							<span class="h-full rounded-full bg-flat"></span>
 						{/if}
 					</div>
 					<div class="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-dim">
 						<span class="inline-flex items-center gap-1.5">
 							<span class="size-1.5 rounded-full bg-win" aria-hidden="true"></span>
-							Win
+							Profits {fmtMoney(grossProfit)}
 						</span>
 						<span class="inline-flex items-center gap-1.5">
 							<span class="size-1.5 rounded-full bg-loss" aria-hidden="true"></span>
-							Loss
+							Losses {fmtMoney(grossLoss)}
 						</span>
-						<span class="inline-flex items-center gap-1.5">
-							<span class="size-1.5 rounded-full bg-flat" aria-hidden="true"></span>
-							BE
-						</span>
+						<span class="num text-mut">Net {fmtMoney(summary?.net_pnl ?? 0)}</span>
 					</div>
 				</div>
 			</div>
