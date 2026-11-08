@@ -281,25 +281,25 @@
 
 		<div class="card overflow-hidden rise" style="animation-delay: 120ms">
 			<dl
-				class="grid grid-cols-3 divide-x divide-line md:grid-cols-1 md:divide-x-0 md:divide-y md:pt-2"
+				class="grid grid-cols-3 divide-x divide-line md:grid-cols-1 md:divide-x-0 md:divide-y"
 			>
 				{#each supporting as cell (cell.label)}
 					<div
-						class="min-w-0 px-3 py-3.5 sm:px-4 md:flex md:items-baseline md:justify-between md:gap-4 md:px-5 md:py-2.5"
+						class="min-w-0 px-3 py-2.5 sm:px-4 md:flex md:items-baseline md:justify-between md:gap-4 md:px-5 md:py-2"
 					>
 						<dt class="eyebrow">{cell.label}</dt>
-						<dd class="mt-1 min-w-0 md:mt-0 md:text-right">
+						<dd class="mt-0.5 min-w-0 md:mt-0 md:text-right">
 							{#if cell.value === null}
-								<span class="num text-xl leading-none font-medium text-dim">—</span>
+								<span class="num text-lg leading-none font-medium text-dim">—</span>
 							{:else}
 								<span
-									class="num text-xl leading-none font-medium tracking-[-0.01em] {cell.tone}"
+									class="num text-lg leading-none font-medium tracking-[-0.01em] {cell.tone}"
 									use:countup={{ value: cell.value, format: cell.format }}
 								>
 									{cell.format(cell.value)}
 								</span>
 							{/if}
-							<span class="num mt-0.5 block text-[11px] leading-tight text-dim md:mt-1">
+							<span class="num mt-0.5 block text-[11px] leading-tight text-dim md:mt-0.5">
 								{cell.hint}
 							</span>
 						</dd>
@@ -307,7 +307,7 @@
 				{/each}
 			</dl>
 			<div
-				class="flex flex-wrap items-center gap-x-3.5 gap-y-1 border-t border-line px-3 py-2 text-[11px] text-dim sm:px-4 md:px-5"
+				class="flex flex-wrap items-center gap-x-3.5 gap-y-0.5 border-t border-line px-3 py-1.5 text-[11px] text-dim sm:px-4 md:px-5"
 			>
 				<span class="eyebrow">Outcome</span>
 				<span class="inline-flex items-center gap-1.5">
