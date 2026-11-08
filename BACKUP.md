@@ -26,7 +26,7 @@ The wizard asks:
 | Backup directory | `/root/backups` | snapshots land here |
 | Keep snapshots for how many days? | 14 | older ones are pruned |
 | Install systemd timer? | n | **answer `y`** for automatic backups |
-| Backup time (24h, UTC) | `03:30` | after the nightly EOD writes |
+| Backup time (24h, system timezone) | 03:30 UTC converted to local | e.g. `09:00` for `Asia/Kolkata`; timer runs at this local time |
 | Frequency | `daily` | also `weekly` (Mon) / `monthly` (1st) |
 
 That's it. Settings are saved to `.backup.env` and the systemd units

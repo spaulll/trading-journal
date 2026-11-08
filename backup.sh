@@ -35,6 +35,7 @@ EOF
 
 load_conf() {
   [[ -f "$CONF" ]] && source "$CONF" || true
+  SYSTEM_TZ="${SYSTEM_TZ:-$(system_tz)}"
   JOURNAL_DB="${JOURNAL_DB:-$ROOT/backend/journal.db}"
   BACKUP_DIR="${BACKUP_DIR:-/root/backups}"
   RETENTION_DAYS="${RETENTION_DAYS:-14}"
@@ -46,6 +47,7 @@ load_conf() {
 save_conf() {
   umask 077
   cat >"$CONF" <<EOF
+SYSTEM_TZ=$SYSTEM_TZ
 JOURNAL_DB=$JOURNAL_DB
 BACKUP_DIR=$BACKUP_DIR
 RETENTION_DAYS=$RETENTION_DAYS
@@ -82,6 +84,26 @@ ask_yn() { # $1 prompt, $2 default (y|n) -> $REPLY
 
 valid_time() { [[ "$1" =~ ^([01]?[0-9]|2[0-3]):[0-5][0-9]$ ]]; }
 valid_freq() { case "$1" in daily|weekly|monthly) return 0 ;; esac; return 1; }
+
+# ---------- timezone ----------
+
+system_tz() {
+  local tz=""
+  if command -v timedatectl >/dev/null 2>&1; then
+    tz="$(timedatectl show -p Timezone --value 2>/dev/null || true)"
+  fi
+  [[ -z "$tz" && -f /etc/timezone ]] && tz="$(tr -d '[:space:]' </etc/timezone 2>/dev/null || true)"
+  if [[ -z "$tz" ]]; then
+    tz="$(readlink /etc/localtime 2>/dev/null | sed 's#^.*/zoneinfo/##' || true)"
+  fi
+  printf '%s' "${tz:-UTC}"
+}
+
+utc_to_local() { # $1 HH:MM (UTC), $2 TZ -> HH:MM in that TZ
+  local out
+  out="$(TZ="$2" date -d "today $1 UTC" +%H:%M 2>/dev/null || true)"
+  printf '%s' "${out:-$1}"
+}
 
 # ---------- backup ----------
 
@@ -179,6 +201,7 @@ EOF
 Description=Trading Journal DB snapshot backup timer
 
 [Timer]
+# Runs at $BACKUP_TIME in the system timezone ($SYSTEM_TZ)
 OnCalendar=$cal
 Persistent=true
 RandomizedDelaySec=120
@@ -196,6 +219,8 @@ EOF
 
 wizard() {
   load_conf
+  local dflt_time
+  dflt_time="$(utc_to_local 03:30 "$SYSTEM_TZ")"
   cat <<EOF
 Trading Journal backup setup
 (Ctrl-C to cancel; Enter accepts the default shown in brackets.)
@@ -210,9 +235,9 @@ EOF
   INSTALL_SYSTEMD="$REPLY"
 
   if [[ "$INSTALL_SYSTEMD" == y ]]; then
-    ask "Backup time (24h, UTC)" "$BACKUP_TIME"
+    ask "Backup time (24h, $SYSTEM_TZ)" "$dflt_time"
     while ! valid_time "$REPLY"; do
-      ask "Backup time (24h, UTC, e.g. 03:30)" "$BACKUP_TIME"
+      ask "Backup time (24h, $SYSTEM_TZ, e.g. $dflt_time)" "$dflt_time"
     done
     BACKUP_TIME="$REPLY"
 
