@@ -302,6 +302,9 @@ def summary(
 
     points = _equity_points(trades)
     max_dd = min((p["drawdown"] for p in points), default=0.0)
+    # The running best inside the filter, with a 0 baseline — the first-page
+    # retention bar measures retained vs given back against this.
+    peak_pnl = max(0.0, max((p["equity"] for p in points), default=0.0))
 
     open_stmt = apply_trade_filters(select(Trade).where(Trade.status == "OPEN"), base)
     open_count = len(session.exec(open_stmt).all())
@@ -322,6 +325,7 @@ def summary(
         "gross_loss": round(gross_loss, 2),
         "avg_r": avg_r,
         "max_drawdown": max_dd,
+        "peak_pnl": round(peak_pnl, 2),
         # The overall figure is USD; this is the quote-currency audit trail.
         "by_currency": currency_breakdown(trades),
     }

@@ -63,21 +63,27 @@
 	const losses = $derived(summary?.losses ?? 0);
 	const breakeven = $derived(summary?.breakeven ?? 0);
 	const unpriced = $derived(summary?.unpriced ?? 0);
-	const grossProfit = $derived(summary?.gross_profit ?? 0);
-	const grossLoss = $derived(summary?.gross_loss ?? 0);
-	// Profit/loss balance bar: green (profits) always on the left, red
-	// (losses) always on the right, each sized relative to the total volume
-	// (P+L) — so whichever pool is bigger visibly dominates the bar.
-	const balanceVolume = $derived(grossProfit + grossLoss);
+	const netPnl = $derived(summary?.net_pnl ?? 0);
+	const peakPnl = $derived(summary?.peak_pnl ?? 0);
+	// Retained/given-back bar: green is what remains of the peak, red is
+	// what was given back (peak − current net). No peak yet → flat bar;
+	// underwater (net ≤ 0) → the whole bar is red.
 	const balanceSegments = $derived.by(() => {
-		if (balanceVolume === 0) return null;
+		if (peakPnl <= 0) return null;
+		if (netPnl <= 0) return [{ w: 100, tone: 'bg-loss' }];
+		const retained = (netPnl / peakPnl) * 100;
 		return [
-			{ w: (grossProfit / balanceVolume) * 100, tone: 'bg-win' },
-			{ w: (grossLoss / balanceVolume) * 100, tone: 'bg-loss' }
+			{ w: retained, tone: 'bg-win' },
+			{ w: 100 - retained, tone: 'bg-loss' }
 		].filter((s) => s.w > 0);
 	});
+	const givenBack = $derived(Math.max(0, peakPnl - netPnl));
 	const balanceLabel = $derived(
-		`Profits ${fmtMoney(grossProfit)}, losses ${fmtMoney(grossLoss)} — net ${fmtMoney(summary?.net_pnl ?? 0)}`
+		netPnl > 0 && peakPnl > 0
+			? `Retained ${fmtMoney(netPnl)}, given back ${fmtMoney(givenBack)} — net ${fmtMoney(netPnl)}`
+			: peakPnl > 0
+				? `Underwater ${fmtMoney(-netPnl)} vs peak ${fmtMoney(peakPnl)} — net ${fmtMoney(netPnl)}`
+				: `Net ${fmtMoney(netPnl)} — no gains to measure against yet`
 	);
 
 	// Supporting figures stay deliberately small — the net is the only number
@@ -267,13 +273,13 @@
 					<div class="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-dim">
 						<span class="inline-flex items-center gap-1.5">
 							<span class="size-1.5 rounded-full bg-win" aria-hidden="true"></span>
-							Profits {fmtMoney(grossProfit)}
+							Peak {fmtMoney(peakPnl)}
 						</span>
 						<span class="inline-flex items-center gap-1.5">
 							<span class="size-1.5 rounded-full bg-loss" aria-hidden="true"></span>
-							Losses {fmtMoney(grossLoss)}
+							Given back {fmtMoney(givenBack)}
 						</span>
-						<span class="num text-mut">Net {fmtMoney(summary?.net_pnl ?? 0)}</span>
+						<span class="num text-mut">Net {fmtMoney(netPnl)}</span>
 					</div>
 				</div>
 			</div>

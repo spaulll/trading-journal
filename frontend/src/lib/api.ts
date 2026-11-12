@@ -411,6 +411,8 @@ export interface SummaryDto {
 	/** The average R of the closed trades in the filter. */
 	avg_r: number | null;
 	max_drawdown: number;
+	/** Peak cumulative net (USD) inside the filter, 0 baseline. */
+	peak_pnl: number;
 	/** Quote-currency totals behind the USD figure, e.g. { JPY: 5000 }. */
 	by_currency?: Record<string, number>;
 }

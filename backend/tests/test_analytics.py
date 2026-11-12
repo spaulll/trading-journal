@@ -121,6 +121,38 @@ def test_summary_reports_gross_profit_and_loss_for_the_balance_bar(client):
     assert summary["breakeven"] == 1
 
 
+def test_summary_reports_peak_equity_for_the_retention_bar(client):
+    """Peak is the running best, not gross profit: losses first never inflate it."""
+    _store(
+        [
+            _closed("PEAK-1", -70.0, opened=datetime(2026, 9, 1, 10, 0)),
+            _closed("PEAK-2", -50.0, opened=datetime(2026, 9, 1, 11, 0)),
+            _closed("PEAK-3", 200.0, opened=datetime(2026, 9, 1, 12, 0)),
+        ]
+    )
+    summary = client.get("/api/analytics/summary").json()
+    assert summary["net_pnl"] == 80.0
+    assert summary["gross_profit"] == 200.0
+    assert summary["gross_loss"] == 120.0
+    # Losses ran first, so the true peak is the final net, not the $200 win.
+    assert summary["peak_pnl"] == 80.0
+
+
+def test_summary_reports_peak_when_gains_come_first(client):
+    """The account shape from the UI: a big win, then giveback — peak is the win."""
+    _store(
+        [
+            _closed("GAIN-1", 200.0, opened=datetime(2026, 9, 1, 10, 0)),
+            _closed("GAIN-2", -50.0, opened=datetime(2026, 9, 1, 11, 0)),
+            _closed("GAIN-3", -70.0, opened=datetime(2026, 9, 1, 12, 0)),
+        ]
+    )
+    summary = client.get("/api/analytics/summary").json()
+    assert summary["net_pnl"] == 80.0
+    assert summary["peak_pnl"] == 200.0
+    assert summary["max_drawdown"] == -120.0
+
+
 def test_the_breakeven_count_is_reported_next_to_the_rate(client):
     _store(
         [
